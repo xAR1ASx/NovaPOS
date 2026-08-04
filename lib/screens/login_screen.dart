@@ -1,7 +1,6 @@
 import 'home_screen.dart';
 import 'package:flutter/material.dart';
-import '../database/db_helper.dart'; // Importamos la base de datos
-// Para poder ir a la pantalla principal después
+import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,6 +11,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   // Controladores para leer lo que escribe el usuario
+  final AuthService _authService = AuthService();
   final TextEditingController _userController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
 
@@ -30,7 +30,10 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     // Preguntamos a la base de datos
-    var usuarioEncontrado = await DBHelper().login(user, pass);
+    var usuarioEncontrado = await _authService.login(
+      usuario: user,
+      password: pass,
+    );
 
     if (usuarioEncontrado != null) {
       // ¡LOGIN EXITOSO! 🎉
