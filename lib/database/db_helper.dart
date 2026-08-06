@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import '../services/password_service.dart';
 
 class DBHelper {
   static final DBHelper _instance = DBHelper._internal();
@@ -29,7 +30,12 @@ class DBHelper {
 
     final path = join(rutaCarpeta.path, 'mifruver_sistema_v12_imagenes_ok.db');
 
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path,
+      version: 2,
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+    );
   }
 
   Future _createDB(Database db, int version) async {
@@ -63,10 +69,134 @@ class DBHelper {
     await db.execute(
       'CREATE TABLE presentaciones (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, nombre TEXT, cantidad REAL, precio REAL, codigo_barras TEXT)',
     );
+    final adminPassword = PasswordService.hashPassword("1234");
 
-    await db.execute(
-      "INSERT INTO usuarios (usuario, password_hash, rol, nombre_completo) VALUES ('admin', '1234', 'ADMIN', 'Administrador')",
-    );
+    await db.execute('''
+CREATE TABLE roles(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL UNIQUE,
+  descripcion TEXT
+)
+''');
+
+    await db.execute('''
+CREATE TABLE permisos(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  codigo TEXT NOT NULL UNIQUE,
+  descripcion TEXT
+)
+''');
+
+    await db.execute('''
+CREATE TABLE roles_permisos(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  rol_id INTEGER NOT NULL,
+  permiso_id INTEGER NOT NULL,
+  FOREIGN KEY (rol_id) REFERENCES roles(id),
+  FOREIGN KEY (permiso_id) REFERENCES permisos(id)
+)
+''');
+
+    // =======================
+    // ROLES DEL SISTEMA
+    // =======================
+
+    await db.insert("roles", {
+      "nombre": "ADMIN",
+      "descripcion": "Administrador del sistema",
+    });
+
+    await db.insert("roles", {"nombre": "CAJERO", "descripcion": "Cajero"});
+
+    // =======================
+    // PERMISOS
+    // =======================
+
+    final permisos = [
+      ["VENTAS_VER", "Ver ventas"],
+      ["VENTAS_CREAR", "Crear ventas"],
+      ["VENTAS_EDITAR", "Editar ventas"],
+      ["VENTAS_ANULAR", "Anular ventas"],
+
+      ["CAJA_VER", "Ver caja"],
+      ["CAJA_ABRIR", "Abrir caja"],
+      ["CAJA_CERRAR", "Cerrar caja"],
+      ["CAJA_MOVIMIENTOS", "Movimientos de caja"],
+
+      ["INVENTARIO_VER", "Ver inventario"],
+      ["INVENTARIO_CREAR", "Crear productos"],
+      ["INVENTARIO_EDITAR", "Editar productos"],
+      ["INVENTARIO_ELIMINAR", "Eliminar productos"],
+
+      ["COMPRAS_VER", "Ver compras"],
+      ["COMPRAS_CREAR", "Crear compras"],
+      ["COMPRAS_EDITAR", "Editar compras"],
+      ["COMPRAS_ELIMINAR", "Eliminar compras"],
+
+      ["REPORTES_VER", "Ver reportes"],
+
+      ["USUARIOS_VER", "Ver usuarios"],
+      ["USUARIOS_CREAR", "Crear usuarios"],
+      ["USUARIOS_EDITAR", "Editar usuarios"],
+      ["USUARIOS_ELIMINAR", "Eliminar usuarios"],
+
+      ["CONFIGURACION_GENERAL", "Configuración general"],
+    ];
+
+    for (var permiso in permisos) {
+      await db.insert("permisos", {
+        "codigo": permiso[0],
+        "descripcion": permiso[1],
+      });
+    }
+
+    // =======================
+    // ASIGNAR TODOS LOS PERMISOS AL ADMIN
+    // =======================
+
+    final permisosDB = await db.query("permisos");
+
+    for (final permiso in permisosDB) {
+      await db.insert("roles_permisos", {
+        "rol_id": 1, // ADMIN
+        "permiso_id": permiso["id"],
+      });
+    }
+
+    // =======================
+    // PERMISOS DEL CAJERO
+    // =======================
+
+    const permisosCajero = [
+      "VENTAS_VER",
+      "VENTAS_CREAR",
+      "CAJA_VER",
+      "CAJA_ABRIR",
+      "CAJA_CERRAR",
+    ];
+
+    for (final codigo in permisosCajero) {
+      final permiso = await db.query(
+        "permisos",
+        where: "codigo = ?",
+        whereArgs: [codigo],
+        limit: 1,
+      );
+
+      if (permiso.isNotEmpty) {
+        await db.insert("roles_permisos", {
+          "rol_id": 2, // CAJERO
+          "permiso_id": permiso.first["id"],
+        });
+      }
+    }
+
+    await db.insert('usuarios', {
+      'usuario': 'admin',
+      'password_hash': adminPassword,
+      'rol': 'ADMIN',
+      'nombre_completo': 'Administrador',
+    });
     await db.execute(
       "INSERT INTO configuracion (clave, valor) VALUES ('empresa_nombre', 'MI FRUVER')",
     );
@@ -75,15 +205,47 @@ class DBHelper {
     );
   }
 
-  // --- 🔑 AUTENTICACIÓN (RECUPERADO) ---
-  Future<Map<String, dynamic>?> login(String u, String p) async {
+  /// Obtiene todos los permisos de un rol
+  Future<List<String>> getPermissionsByRole(String rol) async {
     final db = await database;
-    var res = await db.query(
-      'usuarios',
-      where: 'usuario = ? AND password_hash = ?',
-      whereArgs: [u, p],
+
+    final resultado = await db.rawQuery(
+      '''
+    SELECT p.codigo
+    FROM permisos p
+    INNER JOIN roles_permisos rp ON p.id = rp.permiso_id
+    INNER JOIN roles r ON r.id = rp.rol_id
+    WHERE r.nombre = ?
+  ''',
+      [rol],
     );
-    return res.isNotEmpty ? res.first : null;
+
+    return resultado.map((e) => e["codigo"].toString()).toList();
+  }
+
+  // --- 🔑 AUTENTICACIÓN (RECUPERADO) ---
+  Future<Map<String, dynamic>?> login(String usuario, String password) async {
+    final db = await database;
+
+    final resultado = await db.query(
+      'usuarios',
+      where: 'usuario = ?',
+      whereArgs: [usuario],
+      limit: 1,
+    );
+
+    if (resultado.isEmpty) {
+      return null;
+    }
+
+    final usuarioDB = resultado.first;
+    final hashGuardado = usuarioDB['password_hash']?.toString() ?? '';
+
+    if (PasswordService.verifyPassword(password, hashGuardado)) {
+      return usuarioDB;
+    }
+
+    return null;
   }
 
   // --- GESTIÓN DINÁMICA DE CATEGORÍAS ---
@@ -732,5 +894,37 @@ class DBHelper {
         'direccion': 'Local',
       });
     });
+  }
+
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      final usuarios = await db.query('usuarios');
+
+      for (final usuario in usuarios) {
+        final passwordActual = usuario['password_hash']?.toString() ?? '';
+
+        // Evitar volver a convertir un hash existente
+        if (passwordActual.length != 64) {
+          final nuevoHash = PasswordService.hashPassword(passwordActual);
+
+          await db.update(
+            'usuarios',
+            {'password_hash': nuevoHash},
+            where: 'id = ?',
+            whereArgs: [usuario['id']],
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> debugUsuarios() async {
+    final db = await database;
+
+    final usuarios = await db.query('usuarios');
+
+    for (final u in usuarios) {
+      print(u);
+    }
   }
 }

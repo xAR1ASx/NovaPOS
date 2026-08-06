@@ -10,6 +10,8 @@ import 'clients_screen.dart';
 import 'settings_screen.dart';
 import 'reports_screen.dart';
 import 'purchases_screen.dart';
+import '../services/session_service.dart';
+import '../services/permission_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -56,6 +58,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final usuario = SessionService.currentUser();
+    Text(SessionService.userRole());
+    Text(SessionService.userRole());
+    Text(SessionService.userId().toString());
+    debugPrint("===== USUARIO =====");
+    debugPrint(usuario.toString());
+    debugPrint("===================");
     return Scaffold(
       // Fondo gris azulado moderno (Tech Background)
       backgroundColor: const Color(0xFFF0F2F5),
@@ -91,13 +100,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Hola, Administrador 👋",
+                      "Bienvenido ${SessionService.userName()}",
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.grey[600],
                         fontWeight: FontWeight.w500,
                       ),
                     ),
+
+                    const SizedBox(height: 6),
+
                     const Text(
                       "Panel de Control",
                       style: TextStyle(

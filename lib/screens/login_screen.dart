@@ -1,6 +1,8 @@
 import 'home_screen.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../database/db_helper.dart';
+import '../services/session_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -35,9 +37,11 @@ class _LoginScreenState extends State<LoginScreen> {
       password: pass,
     );
 
+    // ¡LOGIN EXITOSO! 🎉
+    // Navegar a la pantalla principal y borrar el historial para no volver atrás
+
     if (usuarioEncontrado != null) {
-      // ¡LOGIN EXITOSO! 🎉
-      // Navegar a la pantalla principal y borrar el historial para no volver atrás
+      await SessionService.login(usuarioEncontrado);
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
