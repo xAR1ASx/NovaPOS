@@ -12,6 +12,8 @@ import 'reports_screen.dart';
 import 'purchases_screen.dart';
 import '../services/session_service.dart';
 import '../widgets/permission_gate.dart';
+import '../services/permission_service.dart';
+import 'login_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -56,6 +58,19 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _cerrarSesion() async {
+    await SessionService.logout();
+    await PermissionService.clear();
+
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final usuario = SessionService.currentUser();
@@ -82,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
             tooltip: "Salir",
-            onPressed: () => Navigator.pop(context),
+            onPressed: _cerrarSesion,
           ),
         ],
       ),
