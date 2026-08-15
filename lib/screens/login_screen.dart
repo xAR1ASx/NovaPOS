@@ -1,7 +1,6 @@
 import 'home_screen.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import '../database/db_helper.dart';
 import '../services/session_service.dart';
 
 class LoginScreen extends StatefulWidget {

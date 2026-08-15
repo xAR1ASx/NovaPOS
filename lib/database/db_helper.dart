@@ -69,7 +69,6 @@ class DBHelper {
     await db.execute(
       'CREATE TABLE presentaciones (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, nombre TEXT, cantidad REAL, precio REAL, codigo_barras TEXT)',
     );
-    final adminPassword = PasswordService.hashPassword("1234");
 
     await db.execute('''
 CREATE TABLE roles(
@@ -96,6 +95,23 @@ CREATE TABLE roles_permisos(
   FOREIGN KEY (permiso_id) REFERENCES permisos(id)
 )
 ''');
+
+    final adminPassword = PasswordService.hashPassword("1234");
+    final cajeroPassword = PasswordService.hashPassword("1234");
+
+    await db.insert('usuarios', {
+      'usuario': 'cajero',
+      'password_hash': cajeroPassword,
+      'rol': 'CAJERO',
+      'nombre_completo': 'Usuario Cajero',
+    });
+
+    await db.insert("usuarios", {
+      "usuario": "admin",
+      "password_hash": adminPassword,
+      "rol": "ADMIN",
+      "nombre_completo": "Administrador",
+    });
 
     // =======================
     // ROLES DEL SISTEMA
@@ -191,12 +207,6 @@ CREATE TABLE roles_permisos(
       }
     }
 
-    await db.insert('usuarios', {
-      'usuario': 'admin',
-      'password_hash': adminPassword,
-      'rol': 'ADMIN',
-      'nombre_completo': 'Administrador',
-    });
     await db.execute(
       "INSERT INTO configuracion (clave, valor) VALUES ('empresa_nombre', 'MI FRUVER')",
     );

@@ -11,7 +11,7 @@ import 'settings_screen.dart';
 import 'reports_screen.dart';
 import 'purchases_screen.dart';
 import '../services/session_service.dart';
-import '../services/permission_service.dart';
+import '../widgets/permission_gate.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -210,17 +210,20 @@ class _HomeScreenState extends State<HomeScreen> {
               physics: const NeverScrollableScrollPhysics(),
               children: [
                 // Fila 1
-                _menuButton(
-                  "NUEVA VENTA",
-                  Icons.point_of_sale,
-                  Colors.green,
-                  () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (c) => const PosScreen()),
-                    );
-                    _cargarDatosDashboard();
-                  },
+                PermissionGate(
+                  permission: "VENTAS_CREAR",
+                  child: _menuButton(
+                    "NUEVA VENTA",
+                    Icons.point_of_sale,
+                    Colors.green,
+                    () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (c) => const PosScreen()),
+                      );
+                      _cargarDatosDashboard();
+                    },
+                  ),
                 ),
                 _menuButton(
                   "CAJA",
@@ -295,16 +298,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   },
                 ),
-                _menuButton(
-                  "CONFIGURACIÓN",
-                  Icons.settings,
-                  Colors.blueGrey,
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (c) => const SettingsScreen()),
-                    );
-                  },
+                PermissionGate(
+                  permission: "CONFIGURACION_GENERAL",
+                  child: _menuButton(
+                    "CONFIGURACIÓN",
+                    Icons.settings,
+                    Colors.blueGrey,
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => const SettingsScreen(),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
