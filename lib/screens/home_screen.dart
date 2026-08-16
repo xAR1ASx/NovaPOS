@@ -73,13 +73,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final usuario = SessionService.currentUser();
     Text(SessionService.userRole());
     Text(SessionService.userRole());
     Text(SessionService.userId().toString());
-    debugPrint("===== USUARIO =====");
-    debugPrint(usuario.toString());
-    debugPrint("===================");
+
     return Scaffold(
       // Fondo gris azulado moderno (Tech Background)
       backgroundColor: const Color(0xFFF0F2F5),

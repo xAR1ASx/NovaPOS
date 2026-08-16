@@ -933,14 +933,4 @@ CREATE TABLE roles_permisos(
       }
     }
   }
-
-  Future<void> debugUsuarios() async {
-    final db = await database;
-
-    final usuarios = await db.query('usuarios');
-
-    for (final u in usuarios) {
-      print(u);
-    }
-  }
 }
