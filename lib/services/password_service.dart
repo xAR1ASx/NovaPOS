@@ -9,10 +9,7 @@ class PasswordService {
   }
 
   /// Compara una contraseña ingresada con un hash almacenado
-  static bool verifyPassword(
-    String password,
-    String storedHash,
-  ) {
+  static bool verifyPassword(String password, String storedHash) {
     return hashPassword(password) == storedHash;
   }
 }

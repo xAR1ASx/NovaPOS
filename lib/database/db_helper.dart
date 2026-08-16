@@ -449,14 +449,20 @@ CREATE TABLE roles_permisos(
     );
   }
 
-  Future<int> registrarMovimientoCaja(String t, double m, String d) async {
+  Future<int> registrarMovimientoCaja(
+    String tipo,
+    double monto,
+    String descripcion,
+    int usuarioId,
+  ) async {
     final db = await database;
+
     return await db.insert('caja_movimientos', {
       'fecha': DateTime.now().toIso8601String(),
-      'tipo': t,
-      'monto': m,
-      'descripcion': d,
-      'usuario_id': 1,
+      'tipo': tipo,
+      'monto': monto,
+      'descripcion': descripcion,
+      'usuario_id': usuarioId,
     });
   }
 

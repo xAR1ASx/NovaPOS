@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
+import '../services/cash_service.dart';
 
 class CashControlScreen extends StatefulWidget {
   const CashControlScreen({super.key});
@@ -15,7 +16,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
     symbol: '\$',
     decimalDigits: 0,
   );
-
+  final CashService _cashService = CashService();
   // Variables de Estado
   double _base = 0;
   double _ventas = 0;
@@ -155,10 +156,10 @@ class _CashControlScreenState extends State<CashControlScreen> {
                   );
                   return;
                 }
-                await DBHelper().registrarMovimientoCaja(
-                  tipo,
-                  m,
-                  descCtrl.text,
+                await _cashService.registrarMovimiento(
+                  tipo: tipo,
+                  monto: m,
+                  descripcion: descCtrl.text,
                 );
                 Navigator.pop(ctx);
                 _cargarDatosCaja();
@@ -232,10 +233,10 @@ class _CashControlScreenState extends State<CashControlScreen> {
                           montoCtrl.text.replaceAll(',', '.'),
                         );
                         if (m != null) {
-                          await DBHelper().registrarMovimientoCaja(
-                            'GASTO',
-                            m,
-                            descCtrl.text,
+                          await _cashService.registrarMovimiento(
+                            tipo: 'GASTO',
+                            monto: m,
+                            descripcion: descCtrl.text,
                           );
                           Navigator.pop(ctx);
                           final nuevo = await DBHelper().obtenerResumenCaja();
@@ -440,16 +441,16 @@ class _CashControlScreenState extends State<CashControlScreen> {
                   onPressed: () async {
                     // Ajustes automáticos
                     if (diferencia > 0) {
-                      await DBHelper().registrarMovimientoCaja(
-                        'INGRESO',
-                        diferencia,
-                        "Ajuste Sobrante Automático",
+                      await _cashService.registrarMovimiento(
+                        tipo: 'INGRESO',
+                        monto: diferencia,
+                        descripcion: "Ajuste Sobrante Automático",
                       );
                     } else if (diferencia < 0) {
-                      await DBHelper().registrarMovimientoCaja(
-                        'GASTO',
-                        diferencia.abs(),
-                        "Pérdida / Descuadre Cierre",
+                      await _cashService.registrarMovimiento(
+                        tipo: 'GASTO',
+                        monto: diferencia.abs(),
+                        descripcion: "Pérdida / Descuadre Cierre",
                       );
                     }
 
@@ -460,10 +461,10 @@ class _CashControlScreenState extends State<CashControlScreen> {
                     String desc =
                         "Cierre: Sistema ${_totalEnCajaSistema.toInt()} | Real ${dineroReal.toInt()} | Estado: $estado";
 
-                    await DBHelper().registrarMovimientoCaja(
-                      'CIERRE',
-                      dineroReal,
-                      desc,
+                    await _cashService.registrarMovimiento(
+                      tipo: 'CIERRE',
+                      monto: dineroReal,
+                      descripcion: desc,
                     );
                     Navigator.pop(context);
                     _cargarDatosCaja();
