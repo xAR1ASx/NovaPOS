@@ -6,6 +6,7 @@ import 'dart:io'; // Necesario para manejar archivos
 import 'package:image_picker/image_picker.dart'; // Para abrir el explorador
 import 'package:path_provider/path_provider.dart'; // Para guardar la copia
 import 'package:path/path.dart' as path;
+import '../services/inventory_service.dart';
 
 class InventoryScreen extends StatefulWidget {
   final String? codigoPrellenado;
@@ -25,7 +26,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     symbol: '\$',
     decimalDigits: 0,
   );
-
+  final InventoryService _inventoryService = InventoryService();
   // --- VARIABLES FORMULARIO ---
   final _nombreCtrl = TextEditingController();
   final _precioVentaCtrl = TextEditingController();
@@ -346,9 +347,8 @@ class _InventoryScreenState extends State<InventoryScreen>
         'imagen_path': _imagenPathActual,
       };
 
-      final db = await DBHelper().database;
       if (_idEdicion == null) {
-        await DBHelper().insertProduct(datos);
+        await _inventoryService.crearProducto(datos);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -358,12 +358,7 @@ class _InventoryScreenState extends State<InventoryScreen>
           );
         }
       } else {
-        await db.update(
-          'productos',
-          datos,
-          where: 'id = ?',
-          whereArgs: [_idEdicion],
-        );
+        await _inventoryService.actualizarProducto(_idEdicion!, datos);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -403,7 +398,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   }
 
   void _eliminarProducto(int id) async {
-    await DBHelper().desactivarProducto(id);
+    await _inventoryService.eliminarProducto(id);
     _cargarProductos();
     if (mounted) {
       ScaffoldMessenger.of(

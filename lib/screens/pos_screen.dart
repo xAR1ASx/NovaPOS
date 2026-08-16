@@ -6,6 +6,8 @@ import 'inventory_screen.dart';
 import 'cash_control_screen.dart';
 import 'clients_screen.dart';
 import 'dart:io';
+import '../services/permission_service.dart';
+import '../services/sales_service.dart';
 
 class PosScreen extends StatefulWidget {
   const PosScreen({super.key});
@@ -21,7 +23,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
-
+  final SalesService _salesService = SalesService();
   final formater = NumberFormat.currency(
     locale: 'es_CO',
     symbol: '\$',
@@ -781,6 +783,18 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   ),
                 ),
                 onPressed: () async {
+                  if (!PermissionService.can("VENTAS_CREAR")) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          "No tienes permiso para realizar ventas.",
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
                   if (metodo == "CREDITO" &&
                       _clienteSeleccionadoGlobal == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -801,10 +815,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
                   try {
                     // 🔥 1. GUARDAMOS Y OBTENEMOS EL ID (Tu BD debe devolver 'int')
-                    int ventaId = await DBHelper().registrarVenta(
-                      total,
-                      metodo,
-                      _currentCart,
+                    int ventaId = await _salesService.registrarVenta(
+                      total: total,
+                      metodoPago: metodo,
+                      items: _currentCart,
                       clienteId: _clienteSeleccionadoGlobal != null
                           ? _clienteSeleccionadoGlobal!['id']
                           : 0,
