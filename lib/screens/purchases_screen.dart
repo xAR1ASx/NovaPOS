@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
+import '../services/session_service.dart';
 import 'purchase_history_screen.dart'; // ✅ IMPORTANTE: CONECTA CON EL HISTORIAL
 
 class PurchasesScreen extends StatefulWidget {
@@ -466,6 +467,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     totalFactura,
                     _pagoConCaja,
                     _proveedorCtrl.text,
+                    usuarioId: SessionService.userId() ?? 1,
                   );
                   Navigator.pop(ctx);
                   Navigator.pop(context);

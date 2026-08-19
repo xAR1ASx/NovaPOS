@@ -408,7 +408,7 @@ CREATE TABLE roles_permisos(
       double v = (m['monto'] as num).toDouble();
       if (m['tipo'] == 'APERTURA') base += v;
       if (m['tipo'] == 'INGRESO') ingresos += v;
-      if (m['tipo'] == 'GASTO') gastos += v;
+      if (m['tipo'] == 'GASTO' || m['tipo'] == 'ANULACION' || m['tipo'] == 'DEVOLUCION') gastos += v;
     }
     return {
       'base': base,
@@ -471,6 +471,7 @@ CREATE TABLE roles_permisos(
     String metodo,
     List<Map<String, dynamic>> items, {
     int clienteId = 0,
+    required int usuarioId,
   }) async {
     final db = await database;
     return await db.transaction((txn) async {
@@ -478,7 +479,7 @@ CREATE TABLE roles_permisos(
         'fecha': DateTime.now().toIso8601String(),
         'total': total,
         'metodo_pago': metodo,
-        'usuario_id': 1,
+        'usuario_id': usuarioId,
         'cliente_id': clienteId,
       });
       for (var i in items) {
@@ -513,8 +514,9 @@ CREATE TABLE roles_permisos(
     int prodId,
     int ventId,
     double cant,
-    double dinero,
-  ) async {
+    double dinero, {
+    required int usuarioId,
+  }) async {
     final db = await database;
     final vi = await db.query('ventas', where: 'id = ?', whereArgs: [ventId]);
     if (vi.isEmpty) return;
@@ -538,15 +540,15 @@ CREATE TABLE roles_permisos(
       } else if (metodo == 'EFECTIVO')
         await txn.insert('caja_movimientos', {
           'fecha': DateTime.now().toIso8601String(),
-          'tipo': 'GASTO',
+          'tipo': 'DEVOLUCION',
           'monto': dinero,
           'descripcion': 'Devolución Venta #$ventId',
-          'usuario_id': 1,
+          'usuario_id': usuarioId,
         });
     });
   }
 
-  Future<void> anularVenta(int vId) async {
+  Future<void> anularVenta(int vId, {required int usuarioId}) async {
     final db = await database;
     await db.transaction((txn) async {
       final items = await txn.query(
@@ -570,13 +572,21 @@ CREATE TABLE roles_permisos(
       );
       final v = await txn.query('ventas', where: 'id = ?', whereArgs: [vId]);
       double tot = (v.first['total'] as num).toDouble();
+      String metodo = v.first['metodo_pago'] as String;
+      int cid = (v.first['cliente_id'] as num?)?.toInt() ?? 0;
       await txn.delete('ventas', where: 'id = ?', whereArgs: [vId]);
+      if (metodo == 'CREDITO' && cid > 0) {
+        await txn.rawUpdate(
+          'UPDATE clientes SET deuda_actual = deuda_actual - ? WHERE id = ?',
+          [tot, cid],
+        );
+      }
       await txn.insert('caja_movimientos', {
         'fecha': DateTime.now().toIso8601String(),
-        'tipo': 'GASTO',
+        'tipo': 'ANULACION',
         'monto': tot,
         'descripcion': 'ANULACIÓN Venta #$vId',
-        'usuario_id': 1,
+        'usuario_id': usuarioId,
       });
     });
   }
@@ -586,8 +596,9 @@ CREATE TABLE roles_permisos(
     List<Map<String, dynamic>> productos,
     double total,
     bool pagoConCaja,
-    String proveedor,
-  ) async {
+    String proveedor, {
+    required int usuarioId,
+  }) async {
     final db = await database;
     await db.transaction((txn) async {
       int compraId = await txn.insert('compras', {
@@ -624,7 +635,7 @@ CREATE TABLE roles_permisos(
         'tipo': tipoMov,
         'monto': total,
         'descripcion': desc,
-        'usuario_id': 1,
+        'usuario_id': usuarioId,
       });
     });
   }
@@ -713,7 +724,7 @@ CREATE TABLE roles_permisos(
     return await db.insert('clientes', r);
   }
 
-  Future<void> registrarAbonoCliente(int id, String nom, double m) async {
+  Future<void> registrarAbonoCliente(int id, String nom, double m, {required int usuarioId}) async {
     final db = await database;
     await db.transaction((txn) async {
       await txn.rawUpdate(
@@ -725,7 +736,7 @@ CREATE TABLE roles_permisos(
         'tipo': 'INGRESO',
         'monto': m,
         'descripcion': 'Abono: $nom',
-        'usuario_id': 1,
+        'usuario_id': usuarioId,
       });
     });
   }
@@ -760,7 +771,7 @@ CREATE TABLE roles_permisos(
     );
     double costos = (resCostos.first['t'] as num?)?.toDouble() ?? 0;
     final resGastos = await db.rawQuery(
-      "SELECT SUM(monto) as t FROM caja_movimientos WHERE tipo = 'GASTO' AND fecha BETWEEN ? AND ?",
+      "SELECT SUM(monto) as t FROM caja_movimientos WHERE tipo IN ('GASTO', 'ANULACION', 'DEVOLUCION') AND fecha BETWEEN ? AND ?",
       [inicio, fin],
     );
     double gastos = (resGastos.first['t'] as num?)?.toDouble() ?? 0;
@@ -882,10 +893,11 @@ CREATE TABLE roles_permisos(
   // --- SEGURIDAD ---
   Future<bool> validarContrasenaAdmin(String password) async {
     final db = await database;
+    final hash = PasswordService.hashPassword(password);
     final res = await db.query(
       'usuarios',
       where: "usuario = 'admin' AND password_hash = ?",
-      whereArgs: [password],
+      whereArgs: [hash],
     );
     return res.isNotEmpty;
   }

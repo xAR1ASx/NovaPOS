@@ -203,7 +203,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                 final c = _compras[index];
 
                 // Lógica para saber si se pagó con caja
-                bool pagadoConCaja = (c['pago_con_caja'] == 1);
+                bool pagadoConCaja = (c['metodo_pago'] == 'CAJA');
 
                 return Card(
                   elevation: 3,

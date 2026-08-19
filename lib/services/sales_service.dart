@@ -1,5 +1,6 @@
 import '../database/db_helper.dart';
 import 'permission_service.dart';
+import 'session_service.dart';
 
 class SalesService {
   final DBHelper _dbHelper = DBHelper();
@@ -14,11 +15,14 @@ class SalesService {
       throw Exception("No tienes permiso para crear ventas.");
     }
 
+    int usuarioId = SessionService.userId() ?? 1;
+
     return await _dbHelper.registrarVenta(
       total,
       metodoPago,
       items,
       clienteId: clienteId,
+      usuarioId: usuarioId,
     );
   }
 }

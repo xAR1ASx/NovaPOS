@@ -670,8 +670,10 @@ class _CashControlScreenState extends State<CashControlScreen> {
                           mov['tipo'] == 'APERTURA' || mov['tipo'] == 'INGRESO';
                       bool esGasto = mov['tipo'] == 'GASTO';
                       bool esCredito =
-                          mov['tipo'] == 'COMPRA_CREDITO'; // El nuevo tipo
+                          mov['tipo'] == 'COMPRA_CREDITO';
                       bool esCierre = mov['tipo'] == 'CIERRE';
+                      bool esAnulacion = mov['tipo'] == 'ANULACION';
+                      bool esDevolucion = mov['tipo'] == 'DEVOLUCION';
 
                       Color colorItem = Colors.grey; // Por defecto
                       IconData iconItem = Icons.info;
@@ -691,7 +693,15 @@ class _CashControlScreenState extends State<CashControlScreen> {
                       if (esCredito) {
                         colorItem = Colors.blueGrey;
                         iconItem = Icons.credit_card;
-                      } // Color diferente para crédito
+                      }
+                      if (esAnulacion) {
+                        colorItem = Colors.deepOrange;
+                        iconItem = Icons.cancel;
+                      }
+                      if (esDevolucion) {
+                        colorItem = Colors.brown;
+                        iconItem = Icons.replay;
+                      }
 
                       if (mov['tipo'] == 'APERTURA') {
                         colorItem = Colors.blue;

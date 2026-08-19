@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
+import '../services/session_service.dart';
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({super.key});
@@ -108,6 +109,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                     c['id'],
                     c['nombre'],
                     m,
+                    usuarioId: SessionService.userId() ?? 1,
                   );
                   Navigator.pop(ctx);
                   _cargarClientes();
