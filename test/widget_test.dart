@@ -3,8 +3,8 @@ import 'package:mi_fruver_pos/main.dart';
 
 void main() {
   testWidgets('NovaPOS inicia correctamente', (WidgetTester tester) async {
-    await tester.pumpWidget(const MiFruverApp());
+    await tester.pumpWidget(const NovaPOSApp());
 
-    expect(find.text('MI FRUVER POS'), findsOneWidget);
+    expect(find.text('NovaPOS'), findsOneWidget);
   });
 }

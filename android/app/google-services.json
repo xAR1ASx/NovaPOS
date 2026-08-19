@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "146198723610",
+    "project_id": "novapos-bc9d3",
+    "storage_bucket": "novapos-bc9d3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:146198723610:android:f1df9765a1ee8ace4265a3",
+        "android_client_info": {
+          "package_name": "com.example.mi_fruver_pos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyATS0QvKV-TNLf8fQ5z0dVwnWFwpmbPn5g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

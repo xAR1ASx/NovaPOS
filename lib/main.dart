@@ -1,11 +1,15 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'screens/login_screen.dart';
+import 'firebase_options.dart';
+import 'screens/pin_login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   if (Platform.isWindows || Platform.isLinux) {
     sqfliteFfiInit();
@@ -14,23 +18,23 @@ void main() async {
 
   await initializeDateFormatting('es_CO', null);
 
-  runApp(const MiFruverApp());
+  runApp(const NovaPOSApp());
 }
 
-class MiFruverApp extends StatelessWidget {
-  const MiFruverApp({super.key});
+class NovaPOSApp extends StatelessWidget {
+  const NovaPOSApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Mi Fruver POS',
+      title: 'NovaPOS',
       theme: ThemeData(
         primarySwatch: Colors.green,
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF5F5F5),
       ),
-      home: const LoginScreen(),
+      home: const PinLoginScreen(),
     );
   }
 }

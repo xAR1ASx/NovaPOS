@@ -1,44 +1,42 @@
 class SessionService {
-  // Usuario que tiene la sesión iniciada
   static Map<String, dynamic>? _currentUser;
+  static String? _negocioId;
 
-  /// Guarda el usuario que inició sesión
-  static Future<void> login(Map<String, dynamic> usuario) async {
+  static Future<void> login(Map<String, dynamic> usuario, {String? negocioId}) async {
     _currentUser = usuario;
+    _negocioId = negocioId;
   }
 
-  /// Devuelve el usuario completo
   static Map<String, dynamic>? currentUser() {
     return _currentUser;
   }
 
-  /// Indica si existe una sesión activa
   static bool isLogged() {
     return _currentUser != null;
   }
 
-  /// ID del usuario
   static int? userId() {
     return _currentUser?["id"] as int?;
   }
 
-  /// Usuario (login)
   static String username() {
     return _currentUser?["usuario"] ?? "";
   }
 
-  /// Nombre completo
   static String userName() {
     return _currentUser?["nombre_completo"] ?? "";
   }
 
-  /// Rol del usuario
   static String userRole() {
     return _currentUser?["rol"] ?? "";
   }
 
-  /// Cerrar sesión
+  static String? negocioId() {
+    return _negocioId;
+  }
+
   static Future<void> logout() async {
     _currentUser = null;
+    _negocioId = null;
   }
 }

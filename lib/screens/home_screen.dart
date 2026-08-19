@@ -13,7 +13,9 @@ import 'purchases_screen.dart';
 import '../services/session_service.dart';
 import '../widgets/permission_gate.dart';
 import '../services/permission_service.dart';
-import 'login_screen.dart';
+import '../services/pin_auth_service.dart';
+import 'pin_login_screen.dart';
+import 'users_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -59,31 +61,48 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _cerrarSesion() async {
+    bool? confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cerrar sesion'),
+        content: const Text('Deseas cerrar sesion?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Cerrar sesion', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true || !mounted) return;
+
     await SessionService.logout();
     await PermissionService.clear();
+    await PinAuthService.limpiarSesion();
 
     if (!mounted) return;
 
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      MaterialPageRoute(builder: (context) => const PinLoginScreen()),
       (route) => false,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    Text(SessionService.userRole());
-    Text(SessionService.userRole());
-    Text(SessionService.userId().toString());
-
     return Scaffold(
-      // Fondo gris azulado moderno (Tech Background)
       backgroundColor: const Color(0xFFF0F2F5),
 
       appBar: AppBar(
         title: const Text(
-          "MI FRUVER POS",
+          "NovaPOS",
           style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5),
         ),
         backgroundColor: const Color(0xFF1A1F2B), // Dark Navy
@@ -91,9 +110,12 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
-            tooltip: "Salir",
+          TextButton.icon(
+            icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+            label: const Text(
+              'Salir',
+              style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+            ),
             onPressed: _cerrarSesion,
           ),
         ],
@@ -326,6 +348,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                 ),
+                if (SessionService.userRole() == 'ADMIN')
+                  _menuButton(
+                    "USUARIOS",
+                    Icons.people_alt,
+                    Colors.deepPurple,
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => const UsersScreen(),
+                        ),
+                      );
+                    },
+                  ),
               ],
             ),
           ],
