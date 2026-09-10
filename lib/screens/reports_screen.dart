@@ -38,6 +38,7 @@ class _ReportsScreenState extends State<ReportsScreen>
   List<Map<String, dynamic>> _cajeros = [];
   int _cajeroIdFiltro = -1; // -1 = todos los cajeros
   bool _cargandoDetalle = true;
+  String? _errorDetalle;
 
   @override
   void initState() {
@@ -149,31 +150,42 @@ class _ReportsScreenState extends State<ReportsScreen>
   }
 
   void _cargarInformeDetallado() async {
-    setState(() => _cargandoDetalle = true);
-    final db = DBHelper();
-
-    String iStr =
-        "${DateFormat('yyyy-MM-dd').format(_fechaInicioDetalle)}T00:00:00";
-    String fStr =
-        "${DateFormat('yyyy-MM-dd').format(_fechaFinDetalle)}T23:59:59";
-
-    final finanzas = await db.obtenerReporteFinanciero(
-      iStr,
-      fStr,
-      usuarioId: _cajeroIdFiltro == -1 ? null : _cajeroIdFiltro,
-    );
-    final top = await db.obtenerTopProductosPorRango(iStr, fStr);
-    final cats = await db.obtenerVentasPorCategoria(iStr, fStr);
-    final pagos = await db.obtenerMetodosPagoPorRango(iStr, fStr);
-
-    if (!mounted) return;
     setState(() {
-      _finanzasDetalle = finanzas;
-      _topProductos = top;
-      _ventasCategoria = cats;
-      _metodosPago = pagos;
-      _cargandoDetalle = false;
+      _cargandoDetalle = true;
+      _errorDetalle = null;
     });
+    try {
+      final db = DBHelper();
+
+      String iStr =
+          "${DateFormat('yyyy-MM-dd').format(_fechaInicioDetalle)}T00:00:00";
+      String fStr =
+          "${DateFormat('yyyy-MM-dd').format(_fechaFinDetalle)}T23:59:59";
+
+      final finanzas = await db.obtenerReporteFinanciero(
+        iStr,
+        fStr,
+        usuarioId: _cajeroIdFiltro == -1 ? null : _cajeroIdFiltro,
+      );
+      final top = await db.obtenerTopProductosPorRango(iStr, fStr);
+      final cats = await db.obtenerVentasPorCategoria(iStr, fStr);
+      final pagos = await db.obtenerMetodosPagoPorRango(iStr, fStr);
+
+      if (!mounted) return;
+      setState(() {
+        _finanzasDetalle = finanzas;
+        _topProductos = top;
+        _ventasCategoria = cats;
+        _metodosPago = pagos;
+        _cargandoDetalle = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _cargandoDetalle = false;
+        _errorDetalle = "No se pudo cargar el informe: $e";
+      });
+    }
   }
 
   // ==========================================
@@ -391,20 +403,21 @@ class _ReportsScreenState extends State<ReportsScreen>
       children: [
         // Selector de Fechas
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 6),
           color: Colors.white,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.all(10),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _filtroChip("Hoy"),
-              _filtroChip("Ayer"),
-              _filtroChip("Esta Semana"),
-              _filtroChip("Este Mes"),
-              _filtroChip("Este Año"),
+              _filtroChip("Hoy", Icons.today),
+              _filtroChip("Ayer", Icons.arrow_back),
+              _filtroChip("Esta Semana", Icons.calendar_view_week),
+              _filtroChip("Este Mes", Icons.calendar_month),
+              _filtroChip("Este Año", Icons.event),
               ActionChip(
                 label: const Text("Rango"),
-                avatar: const Icon(Icons.calendar_month, size: 16),
+                avatar: const Icon(Icons.date_range, size: 16),
                 backgroundColor: _rangoSeleccionado == "Rango"
                     ? Colors.orange[100]
                     : Colors.grey[100],
@@ -412,7 +425,7 @@ class _ReportsScreenState extends State<ReportsScreen>
               ),
               if (_cajeros.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(left: 10),
+                  padding: const EdgeInsets.only(left: 10, top: 2),
                   child: DropdownButton<int>(
                     value: _cajeroIdFiltro,
                     isDense: true,
@@ -441,6 +454,19 @@ class _ReportsScreenState extends State<ReportsScreen>
         ),
         if (_cargandoDetalle)
           const Expanded(child: Center(child: CircularProgressIndicator()))
+        else if (_errorDetalle != null)
+          Expanded(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  _errorDetalle ?? "",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                ),
+              ),
+            ),
+          )
         else
           Expanded(
             child: SingleChildScrollView(
@@ -472,17 +498,17 @@ class _ReportsScreenState extends State<ReportsScreen>
                             children: [
                               _datoResumenBlanco(
                                 "Ventas",
-                                _finanzasDetalle['ventas']!,
+                                _finanzasDetalle['ventas'] ?? 0,
                                 Colors.green,
                               ),
                               _datoResumenBlanco(
                                 "Gastos",
-                                _finanzasDetalle['gastos']!,
+                                _finanzasDetalle['gastos'] ?? 0,
                                 Colors.red,
                               ),
                               _datoResumenBlanco(
                                 "Ganancia Neta",
-                                _finanzasDetalle['utilidad_neta']!,
+                                _finanzasDetalle['utilidad_neta'] ?? 0,
                                 Colors.white,
                               ),
                             ],
@@ -562,8 +588,8 @@ class _ReportsScreenState extends State<ReportsScreen>
                         : Column(
                             children: _ventasCategoria.map((c) {
                               double totalVentas =
-                                  _finanzasDetalle['ventas']! > 0
-                                  ? _finanzasDetalle['ventas']!
+                                  (_finanzasDetalle['ventas'] ?? 0) > 0
+                                  ? _finanzasDetalle['ventas'] ?? 0
                                   : 1;
                               double porcentaje = (c['total'] / totalVentas);
                               return Column(
@@ -648,20 +674,22 @@ class _ReportsScreenState extends State<ReportsScreen>
 
   // --- WIDGETS AUXILIARES ---
 
-  Widget _filtroChip(String label) {
+  Widget _filtroChip(String label, IconData icon) {
     bool selected = _rangoSeleccionado == label;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8.0),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        selectedColor: const Color(0xFF1A1F2B),
-        labelStyle: TextStyle(
-          color: selected ? Colors.white : Colors.black,
-          fontWeight: FontWeight.bold,
-        ),
-        onSelected: (v) => _aplicarFiltroDetalle(label),
+    return ChoiceChip(
+      label: Text(label),
+      avatar: Icon(
+        icon,
+        size: 17,
+        color: selected ? Colors.orangeAccent : Colors.grey[600],
       ),
+      selected: selected,
+      selectedColor: const Color(0xFF1A1F2B),
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : Colors.black,
+        fontWeight: FontWeight.bold,
+      ),
+      onSelected: (v) => _aplicarFiltroDetalle(label),
     );
   }
 
