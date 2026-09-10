@@ -315,14 +315,14 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   void _importarInventario() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['xlsx'],
       );
-      if (result != null) {
+      if (file != null) {
         setState(() => _procesando = true);
-        File file = File(result.files.single.path!);
-        var bytes = file.readAsBytesSync();
+        File archivo = File(file.path!);
+        var bytes = archivo.readAsBytesSync();
         var excel = Excel.decodeBytes(bytes);
         List<Map<String, dynamic>> listaProductos = [];
         int filasLeidas = 0;
