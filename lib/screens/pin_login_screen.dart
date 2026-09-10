@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/pin_auth_service.dart';
 import '../services/session_service.dart';
 import '../services/permission_service.dart';
@@ -68,7 +69,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
   }
 
   void _cambiarUsuario() async {
-    await PinAuthService.limpiarSesion();
+    await PinAuthService.cerrarSesion();
     setState(() {
       _soloPin = false;
       _emailGuardado = '';
@@ -148,6 +149,27 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      String mensaje;
+      switch (e.code) {
+        case 'user-disabled':
+          mensaje = 'Usuario desactivado por el administrador';
+          break;
+        case 'too-many-requests':
+          mensaje = 'Demasiados intentos fallidos. Espera unos minutos';
+          break;
+        case 'network-request-failed':
+          mensaje = 'Sin conexion a internet';
+          break;
+        default:
+          mensaje = 'Error de conexion';
+      }
+      setState(() {
+        _error = mensaje;
+        _pin = '';
+        _cargando = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -354,7 +376,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
 
   Widget _buildTecla(String tecla) {
     bool esEntrar = tecla == 'ENTRAR';
-    bool deshabilitado = esEntrar && _pin.length < 4;
+    bool deshabilitado = esEntrar && _pin.length < 6;
 
     return SizedBox(
       width: esEntrar ? 160 : 72,
@@ -373,7 +395,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
               },
         style: ElevatedButton.styleFrom(
           backgroundColor: esEntrar
-              ? (_pin.length >= 4 ? Colors.green.shade700 : Colors.grey.shade300)
+              ? (_pin.length >= 6 ? Colors.green.shade700 : Colors.grey.shade300)
               : Colors.grey.shade100,
           foregroundColor: esEntrar ? Colors.white : Colors.black87,
           elevation: esEntrar ? 2 : 0,
@@ -387,7 +409,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
             fontSize: esEntrar ? 16 : 22,
             fontWeight: FontWeight.w700,
             color: esEntrar
-                ? (_pin.length >= 4 ? Colors.white : Colors.grey.shade500)
+                ? (_pin.length >= 6 ? Colors.white : Colors.grey.shade500)
                 : tecla == 'C'
                     ? Colors.red
                     : Colors.black87,

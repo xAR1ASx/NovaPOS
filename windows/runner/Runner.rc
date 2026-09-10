@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "mi_fruver_pos" "\0"
+            VALUE "CompanyName", "NovaPOS" "\0"
+            VALUE "FileDescription", "NovaPOS - Sistema Point of Sale" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "mi_fruver_pos" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "mi_fruver_pos.exe" "\0"
-            VALUE "ProductName", "mi_fruver_pos" "\0"
+            VALUE "InternalName", "NovaPOS" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 NovaPOS. All rights reserved." "\0"
+            VALUE "OriginalFilename", "NovaPOS.exe" "\0"
+            VALUE "ProductName", "NovaPOS" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -2,8 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'password_service.dart';
+import '../firebase_options.dart';
 
 class PinAuthService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -50,7 +51,7 @@ class PinAuthService {
     }
   }
 
-  /// Limpiar sesion guardada
+  /// Limpiar sesion guardada (archivo)
   static Future<void> limpiarSesion() async {
     try {
       final file = await _sesionFile();
@@ -60,102 +61,114 @@ class PinAuthService {
     } catch (e) {}
   }
 
-  /// Login con PIN: hashea el PIN y busca en Firestore
-  static Future<Map<String, dynamic>?> loginConPin(String pin) async {
+  /// Cerrar sesion completa: firma fuera de Firebase y borra el archivo local
+  static Future<void> cerrarSesion() async {
     try {
-      String pinHash = PasswordService.hashPassword(pin);
-
-      QuerySnapshot snapshot = await _firestore
-          .collection('usuarios')
-          .where('pin_hash', isEqualTo: pinHash)
-          .where('esta_activo', isEqualTo: true)
-          .limit(1)
-          .get();
-
-      if (snapshot.docs.isEmpty) return null;
-
-      DocumentSnapshot doc = snapshot.docs.first;
-      Map<String, dynamic> userData = doc.data() as Map<String, dynamic>;
-      userData['uid'] = doc.id;
-
-      return userData;
-    } catch (e) {
-      return null;
-    }
+      await _auth.signOut();
+    } catch (e) {}
+    await limpiarSesion();
   }
 
-  /// Login con email + PIN (primera vez en el dispositivo)
-  static Future<Map<String, dynamic>?> loginConEmailPin(String email, String pin) async {
+  /// Trae el documento del usuario desde Firestore (ya autenticado)
+  static Future<Map<String, dynamic>?> _obtenerDocUsuario(String uid) async {
     try {
-      String pinHash = PasswordService.hashPassword(pin);
-
-      QuerySnapshot snapshot = await _firestore
-          .collection('usuarios')
-          .where('email', isEqualTo: email.trim())
-          .where('pin_hash', isEqualTo: pinHash)
-          .where('esta_activo', isEqualTo: true)
-          .limit(1)
-          .get();
-
-      if (snapshot.docs.isEmpty) return null;
-
-      DocumentSnapshot doc = snapshot.docs.first;
-      Map<String, dynamic> userData = doc.data() as Map<String, dynamic>;
-      userData['uid'] = doc.id;
-
-      return userData;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /// Verificar si el negocio tiene licencia valida
-  static Future<Map<String, dynamic>> verificarLicencia(String negocioId) async {
-    try {
-      DocumentSnapshot doc = await _firestore
-          .collection('negocios')
-          .doc(negocioId)
-          .get();
-
-      if (!doc.exists) {
-        return {'valida': false, 'mensaje': 'Negocio no encontrado'};
-      }
+      DocumentSnapshot doc =
+          await _firestore.collection('usuarios').doc(uid).get();
+      if (!doc.exists) return null;
 
       Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+      if (data['esta_activo'] != true) return null;
 
-      if (data['estado'] == 'bloqueada') {
-        return {'valida': false, 'mensaje': 'Licencia bloqueada. Contacte al administrador.'};
-      }
-
-      dynamic licenciaFin = data['licencia_fin'];
-
-      if (licenciaFin == null) {
-        return {'valida': true, 'mensaje': 'Licencia sin limite'};
-      }
-
-      DateTime fechaFin = (licenciaFin as Timestamp).toDate();
-      if (fechaFin.isAfter(DateTime.now())) {
-        int diasRestantes = fechaFin.difference(DateTime.now()).inDays;
-        return {'valida': true, 'mensaje': 'Licencia valida ($diasRestantes dias restantes)'};
-      }
-
-      return {'valida': false, 'mensaje': 'Licencia vencida. Contacte al administrador.'};
+      data['uid'] = doc.id;
+      return data;
     } catch (e) {
-      return {'valida': false, 'mensaje': 'Error verificando licencia: $e'};
+      return null;
     }
   }
 
-  /// Verificar si ya existe un negocio configurado (para saber si mostrar wizard)
-  static Future<bool> existeNegocioConfigurado() async {
+  /// Enviar enlace de recuperacion (admin resetea PIN de un cajero)
+  static Future<bool> enviarEnlaceRecuperacion(String email) async {
     try {
-      QuerySnapshot snapshot = await _firestore.collection('negocios').limit(1).get();
-      return snapshot.docs.isNotEmpty;
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      return true;
     } catch (e) {
       return false;
     }
   }
 
-  /// Crear negocio + admin (wizard de instalacion)
+  /// Login con email + PIN (primera vez en el dispositivo).
+  /// El PIN es el password real de la cuenta Firebase.
+  /// Devuelve null si las credenciales son invalidas o el usuario no existe.
+  static Future<Map<String, dynamic>?> loginConEmailPin(
+      String email, String pin) async {
+    try {
+      UserCredential cred = await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: pin,
+      );
+      return await _obtenerDocUsuario(cred.user!.uid);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'invalid-credential' ||
+          e.code == 'wrong-password' ||
+          e.code == 'user-not-found') {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  /// Login con solo PIN usando la sesion guardada (email en disco).
+  static Future<Map<String, dynamic>?> loginConPin(String pin) async {
+    String? email = await emailGuardado();
+    if (email == null || email.isEmpty) return null;
+
+    try {
+      UserCredential cred = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: pin,
+      );
+      return await _obtenerDocUsuario(cred.user!.uid);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'invalid-credential' ||
+          e.code == 'wrong-password' ||
+          e.code == 'user-not-found') {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  /// Verificar el PIN actual del usuario conectado (para acciones sensibles)
+  static Future<bool> verificarPinActual(String pinActual) async {
+    final user = _auth.currentUser;
+    if (user == null || user.email == null) return false;
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: user.email!, password: pinActual),
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Cambiar el propio PIN (self-service): requiere el PIN actual
+  static Future<Map<String, dynamic>> cambiarPinPropio(
+      String pinActual, String nuevoPin) async {
+    try {
+      final ok = await verificarPinActual(pinActual);
+      if (!ok) {
+        return {'exito': false, 'mensaje': 'El PIN actual es incorrecto'};
+      }
+
+      await _auth.currentUser!.updatePassword(nuevoPin);
+      return {'exito': true, 'mensaje': 'PIN actualizado correctamente'};
+    } catch (e) {
+      return {'exito': false, 'mensaje': 'Error al cambiar el PIN'};
+    }
+  }
+
+  /// Crear negocio + admin (wizard de instalacion / herramientas de desarrollo)
   static Future<Map<String, dynamic>> crearNegocioAdmin({
     required String nombreNegocio,
     required String nit,
@@ -166,14 +179,17 @@ class PinAuthService {
     String? licenciaFin,
   }) async {
     try {
-      UserCredential cred = await _auth.createUserWithEmailAndPassword(
+      final creado = await _crearCuentaFirebase(
         email: emailAdmin,
-        password: passwordAdmin,
+        pin: passwordAdmin,
       );
+      if (!creado['exito']) return creado;
 
-      String uid = cred.user!.uid;
+      String uid = creado['uid'];
 
-      DocumentReference negocioRef = await _firestore.collection('negocios').add({
+      DocumentReference negocioRef = await _firestore
+          .collection('negocios')
+          .add({
         'nombre': nombreNegocio,
         'nit': nit,
         'direccion': direccion,
@@ -183,11 +199,8 @@ class PinAuthService {
         'created_by': uid,
       });
 
-      String pinHash = PasswordService.hashPassword(passwordAdmin);
-
       await _firestore.collection('usuarios').doc(uid).set({
-        'email': emailAdmin,
-        'pin_hash': pinHash,
+        'email': emailAdmin.trim(),
         'nombre': nombreAdmin,
         'rol': 'ADMIN',
         'negocio_id': negocioRef.id,
@@ -209,23 +222,50 @@ class PinAuthService {
     }
   }
 
-  /// Verificar si un PIN ya esta en uso dentro de un negocio
-  static Future<bool> pinEnUso(String pin, String negocioId, {String? excluirUid}) async {
-    String pinHash = PasswordService.hashPassword(pin);
-    QuerySnapshot snapshot = await _firestore
-        .collection('usuarios')
-        .where('pin_hash', isEqualTo: pinHash)
-        .where('negocio_id', isEqualTo: negocioId)
-        .where('esta_activo', isEqualTo: true)
-        .limit(1)
-        .get();
+  /// Crear una cuenta en Firebase Auth por REST sin cambiar la sesion actual.
+  /// El PIN queda como password real de la cuenta.
+  static Future<Map<String, dynamic>> _crearCuentaFirebase({
+    required String email,
+    required String pin,
+  }) async {
+    try {
+      final config = DefaultFirebaseOptions.currentPlatform;
+      final url =
+          'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${config.apiKey}';
 
-    if (snapshot.docs.isEmpty) return false;
-    if (excluirUid != null && snapshot.docs.first.id == excluirUid) return false;
-    return true;
+      final resp = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email.trim(),
+          'password': pin,
+          'returnSecureToken': true,
+        }),
+      );
+
+      Map<String, dynamic> data = jsonDecode(resp.body);
+
+      if (resp.statusCode == 200) {
+        return {'exito': true, 'uid': data['localId'] as String};
+      }
+
+      String code = data['error']?['message'] ?? 'Error desconocido';
+      if (code.contains('EMAIL_EXISTS')) {
+        return {'exito': false, 'mensaje': 'Ese correo ya esta registrado'};
+      }
+      if (code.contains('WEAK_PASSWORD')) {
+        return {
+          'exito': false,
+          'mensaje': 'El PIN debe tener al menos 6 caracteres'
+        };
+      }
+      return {'exito': false, 'mensaje': 'No se pudo crear la cuenta: $code'};
+    } catch (e) {
+      return {'exito': false, 'mensaje': 'Error de conexion al crear cuenta'};
+    }
   }
 
-  /// Crear usuario (cajero o admin) desde la app
+  /// Crear usuario (cajero o admin) desde la app sin afectar la sesion actual
   static Future<Map<String, dynamic>> crearUsuario({
     required String nombre,
     required String email,
@@ -234,29 +274,18 @@ class PinAuthService {
     required String negocioId,
   }) async {
     try {
-      if (await pinEnUso(pin, negocioId)) {
-        return {
-          'exito': false,
-          'mensaje': 'Ese PIN ya esta en uso por otro usuario',
-        };
-      }
+      final creado = await _crearCuentaFirebase(email: email, pin: pin);
+      if (!creado['exito']) return creado;
 
-      String pinHash = PasswordService.hashPassword(pin);
-
-      UserCredential cred = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: pin,
-      );
-
-      String uid = cred.user!.uid;
+      String uid = creado['uid'];
 
       await _firestore.collection('usuarios').doc(uid).set({
-        'email': email,
-        'pin_hash': pinHash,
+        'email': email.trim(),
         'nombre': nombre,
         'rol': rol,
         'negocio_id': negocioId,
         'esta_activo': true,
+        'created_by': _auth.currentUser?.uid,
         'created_at': FieldValue.serverTimestamp(),
       });
 
@@ -274,7 +303,8 @@ class PinAuthService {
   }
 
   /// Obtener usuarios de un negocio
-  static Future<List<Map<String, dynamic>>> obtenerUsuarios(String negocioId) async {
+  static Future<List<Map<String, dynamic>>> obtenerUsuarios(
+      String negocioId) async {
     try {
       QuerySnapshot snapshot = await _firestore
           .collection('usuarios')
@@ -304,26 +334,6 @@ class PinAuthService {
     }
   }
 
-  /// Cambiar PIN de un usuario
-  static Future<Map<String, dynamic>> cambiarPin(String uid, String nuevoPin, String negocioId) async {
-    try {
-      if (await pinEnUso(nuevoPin, negocioId, excluirUid: uid)) {
-        return {
-          'exito': false,
-          'mensaje': 'Ese PIN ya esta en uso por otro usuario',
-        };
-      }
-
-      String pinHash = PasswordService.hashPassword(nuevoPin);
-      await _firestore.collection('usuarios').doc(uid).update({
-        'pin_hash': pinHash,
-      });
-      return {'exito': true, 'mensaje': 'PIN actualizado'};
-    } catch (e) {
-      return {'exito': false, 'mensaje': 'Error al cambiar PIN'};
-    }
-  }
-
   /// Editar nombre y rol de un usuario
   static Future<bool> editarUsuario(String uid, String nombre, String rol) async {
     try {
@@ -334,6 +344,46 @@ class PinAuthService {
       return true;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Verificar si el negocio tiene licencia valida
+  static Future<Map<String, dynamic>> verificarLicencia(String negocioId) async {
+    try {
+      DocumentSnapshot doc = await _firestore
+          .collection('negocios')
+          .doc(negocioId)
+          .get();
+
+      if (!doc.exists) {
+        return {'valida': false, 'mensaje': 'Negocio no encontrado'};
+      }
+
+      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+
+      if (data['estado'] == 'bloqueada') {
+        return {
+          'valida': false,
+          'mensaje': 'Licencia bloqueada. Contacte al administrador.'
+        };
+      }
+
+      dynamic licenciaFin = data['licencia_fin'];
+      if (licenciaFin == null) {
+        return {'valida': true};
+      }
+
+      DateTime fechaFin = (licenciaFin as Timestamp).toDate();
+      if (fechaFin.isBefore(DateTime.now())) {
+        return {
+          'valida': false,
+          'mensaje': 'Tu licencia de NovaPOS ha vencido. Renueva para continuar.'
+        };
+      }
+
+      return {'valida': true};
+    } catch (e) {
+      return {'valida': false, 'mensaje': 'Error de conexion'};
     }
   }
 }

@@ -17,7 +17,7 @@ class PrinterService {
   ) async {
     // 1. Datos del Negocio
     final config = await DBHelper().obtenerConfiguracion();
-    String empresa = config['empresa_nombre'] ?? "MI FRUVER POS";
+    String empresa = config['empresa_nombre'] ?? "NovaPOS";
     String nit = config['empresa_nit'] ?? "NIT: 000000000";
     String dir = config['empresa_direccion'] ?? "Ciudad";
 
@@ -170,9 +170,59 @@ class PrinterService {
     );
 
     // 3. Imprimir
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => doc.save(),
-      name: 'Ticket_${venta['id']}',
-    );
+    final directa = config['impresion_directa'] == '1';
+    final impresoraNombre = config['impresora_nombre'] ?? '';
+
+    if (directa && impresoraNombre.isNotEmpty) {
+      await _imprimirDirecto(
+        impresoras: await obtenerImpresoras(),
+        impresoraNombre: impresoraNombre,
+        doc: doc,
+        nombreTicket: 'Ticket_${venta['id']}',
+      );
+    } else {
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => doc.save(),
+        name: 'Ticket_${venta['id']}',
+      );
+    }
+  }
+
+  /// Lista los nombres de impresoras disponibles en Windows.
+  Future<List<String>> obtenerImpresoras() async {
+    try {
+      final printers = await Printing.listPrinters();
+      return printers.map((p) => p.name).where((n) => n.isNotEmpty).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Imprime sin dialogo hacia la impresora elegida.
+  Future<void> _imprimirDirecto({
+    required List<String> impresoras,
+    required String impresoraNombre,
+    required pw.Document doc,
+    required String nombreTicket,
+  }) async {
+    try {
+      final printers = await Printing.listPrinters();
+      final printer = printers.firstWhere(
+        (p) => p.name == impresoraNombre,
+        orElse: () => printers.first,
+      );
+
+      await Printing.directPrintPdf(
+        printer: printer,
+        onLayout: (PdfPageFormat format) async => doc.save(),
+        name: nombreTicket,
+      );
+    } catch (e) {
+      // Si falla la impresion directa, caer al dialogo del sistema
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => doc.save(),
+        name: nombreTicket,
+      );
+    }
   }
 }

@@ -5,6 +5,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import '../database/db_helper.dart';
+import '../services/pin_auth_service.dart';
+import '../services/printer_service.dart';
+import '../services/balanza_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -19,9 +22,14 @@ class _SettingsScreenState extends State<SettingsScreen>
   final _nombreEmpresaCtrl = TextEditingController();
   final _nitEmpresaCtrl = TextEditingController();
   final _direccionEmpresaCtrl = TextEditingController();
-  String _impresoraSeleccionada = "SUNMI";
+  String _impresoraSeleccionada = "";
+  List<String> _impresoras = [];
+  bool _impresionDirecta = false;
   String _balanzaPuerto = "COM1";
   String _balanzaVelocidad = "9600";
+  List<String> _puertosSerial = [];
+  bool _balanzaConectada = false;
+  String _estadoBalanza = "";
   bool _procesando = false;
 
   @override
@@ -47,7 +55,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       _nombreEmpresaCtrl.text = config['empresa_nombre'] ?? "";
       _nitEmpresaCtrl.text = config['empresa_nit'] ?? "";
       _direccionEmpresaCtrl.text = config['empresa_direccion'] ?? "";
-      _impresoraSeleccionada = config['impresora_tipo'] ?? "SUNMI";
+      _impresoraSeleccionada = config['impresora_nombre'] ?? "";
+      _impresionDirecta = config['impresion_directa'] == '1';
       _balanzaPuerto = config['balanza_puerto'] ?? "COM1";
       _balanzaVelocidad = config['balanza_velocidad'] ?? "9600";
     });
@@ -61,7 +70,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       'empresa_direccion',
       _direccionEmpresaCtrl.text,
     );
-    await db.guardarConfiguracion('impresora_tipo', _impresoraSeleccionada);
+    await db.guardarConfiguracion('impresora_nombre', _impresoraSeleccionada);
+    await db.guardarConfiguracion(
+      'impresion_directa',
+      _impresionDirecta ? '1' : '0',
+    );
     await db.guardarConfiguracion('balanza_puerto', _balanzaPuerto);
     await db.guardarConfiguracion('balanza_velocidad', _balanzaVelocidad);
     if (!mounted) return;
@@ -69,6 +82,98 @@ class _SettingsScreenState extends State<SettingsScreen>
       const SnackBar(
         content: Text("✅ Configuración guardada"),
         backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  void _solicitarCambiarPin() {
+    final pinActualCtrl = TextEditingController();
+    final pinNuevoCtrl = TextEditingController();
+    final pinConfirmCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Cambiar mi PIN"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: pinActualCtrl,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: "PIN actual",
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: pinNuevoCtrl,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: "PIN nuevo (6 digitos)",
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.key),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: pinConfirmCtrl,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: "Confirmar PIN nuevo",
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.key),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade700,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              if (pinNuevoCtrl.text.length < 6) return;
+              if (pinNuevoCtrl.text != pinConfirmCtrl.text) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Los PIN nuevos no coinciden"),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              Map<String, dynamic> resultado =
+                  await PinAuthService.cambiarPinPropio(
+                pinActualCtrl.text,
+                pinNuevoCtrl.text,
+              );
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(resultado['mensaje']),
+                  backgroundColor:
+                      resultado['exito'] ? Colors.green : Colors.red,
+                ),
+              );
+            },
+            child: const Text("Guardar"),
+          ),
+        ],
       ),
     );
   }
@@ -94,13 +199,15 @@ class _SettingsScreenState extends State<SettingsScreen>
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
-            const Text("Ingresa tu contraseña de ADMIN para confirmar:"),
+            const Text("Ingresa tu PIN de ADMIN para confirmar:"),
             const SizedBox(height: 10),
             TextField(
               controller: passCtrl,
               obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
               decoration: const InputDecoration(
-                labelText: "Contraseña",
+                labelText: "PIN",
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.lock),
               ),
@@ -119,7 +226,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             onPressed: () async {
               if (passCtrl.text.isEmpty) return;
-              bool esCorrecta = await DBHelper().validarContrasenaAdmin(
+              bool esCorrecta = await PinAuthService.verificarPinActual(
                 passCtrl.text,
               );
               if (esCorrecta) {
@@ -482,18 +589,59 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                     const Divider(),
                     DropdownButtonFormField<String>(
-                      initialValue: _impresoraSeleccionada,
-                      items: ["SUNMI", "USB", "BLUETOOTH"]
+                      initialValue: _impresoras.contains(_impresoraSeleccionada)
+                          ? _impresoraSeleccionada
+                          : null,
+                      hint: const Text("Elige una impresora..."),
+                      items: _impresoras
                           .map(
                             (e) => DropdownMenuItem(value: e, child: Text(e)),
                           )
                           .toList(),
                       onChanged: (v) =>
-                          setState(() => _impresoraSeleccionada = v!),
+                          setState(() => _impresoraSeleccionada = v ?? ""),
                       decoration: const InputDecoration(
-                        labelText: "Tipo Conexión",
+                        labelText: "Impresora (Windows)",
                         border: OutlineInputBorder(),
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final lista =
+                                await PrinterService().obtenerImpresoras();
+                            if (!mounted) return;
+                            setState(() {
+                              _impresoras = lista;
+                              if (lista.contains(_impresoraSeleccionada)) {
+                              } else if (lista.isNotEmpty) {
+                                _impresoraSeleccionada = lista.first;
+                              }
+                            });
+                          },
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text("Detectar impresoras"),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _impresoras.isEmpty
+                                ? "Ninguna detectada aun"
+                                : "Encontradas: ${_impresoras.length}",
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SwitchListTile(
+                      title: const Text("Impresión directa (sin diálogo)"),
+                      subtitle: const Text(
+                        "Envía el ticket directo a la impresora elegida",
+                      ),
+                      value: _impresionDirecta,
+                      onChanged: (v) => setState(() => _impresionDirecta = v),
                     ),
                     const SizedBox(height: 20),
                     const Text(
@@ -508,17 +656,27 @@ class _SettingsScreenState extends State<SettingsScreen>
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            initialValue: _balanzaPuerto,
-                            items: ["COM1", "COM2", "/dev/ttyS0"]
-                                .map(
-                                  (e) => DropdownMenuItem(
-                                    value: e,
-                                    child: Text(e),
-                                  ),
-                                )
-                                .toList(),
+                            initialValue: _puertosSerial.contains(_balanzaPuerto)
+                                ? _balanzaPuerto
+                                : null,
+                            hint: const Text("Elige un puerto..."),
+                            items: _puertosSerial.isEmpty
+                                ? const [
+                                    DropdownMenuItem(
+                                      value: "COM1",
+                                      child: Text("COM1"),
+                                    ),
+                                  ]
+                                : _puertosSerial
+                                    .map(
+                                      (e) => DropdownMenuItem(
+                                        value: e,
+                                        child: Text(e),
+                                      ),
+                                    )
+                                    .toList(),
                             onChanged: (v) =>
-                                setState(() => _balanzaPuerto = v!),
+                                setState(() => _balanzaPuerto = v ?? "COM1"),
                             decoration: const InputDecoration(
                               labelText: "Puerto",
                               border: OutlineInputBorder(),
@@ -529,7 +687,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         Expanded(
                           child: DropdownButtonFormField<String>(
                             initialValue: _balanzaVelocidad,
-                            items: ["9600", "115200"]
+                            items: ["9600", "19200", "115200"]
                                 .map(
                                   (e) => DropdownMenuItem(
                                     value: e,
@@ -543,6 +701,82 @@ class _SettingsScreenState extends State<SettingsScreen>
                               labelText: "Baudios",
                               border: OutlineInputBorder(),
                             ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final puertos = BalanzaService
+                                .puertosDisponibles();
+                            if (!mounted) return;
+                            setState(() {
+                              _puertosSerial = puertos;
+                              if (puertos.contains(_balanzaPuerto)) {
+                              } else if (puertos.isNotEmpty) {
+                                _balanzaPuerto = puertos.first;
+                              }
+                            });
+                          },
+                          icon: const Icon(Icons.usb, size: 18),
+                          label: const Text("Detectar puertos"),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _puertosSerial.isEmpty
+                                ? "Sin puertos serial detectados"
+                                : "Puertos: ${_puertosSerial.join(', ')}",
+                            style: const TextStyle(fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _procesando || _balanzaConectada
+                              ? null
+                              : () async {
+                                  setState(() {
+                                    _procesando = true;
+                                    _estadoBalanza = "";
+                                  });
+                                  final resultado = await BalanzaService
+                                      .conectar();
+                                  if (!mounted) return;
+                                  final conectada =
+                                      BalanzaService.estaConectada;
+                                  setState(() {
+                                    _procesando = false;
+                                    _balanzaConectada = conectada;
+                                    _estadoBalanza = resultado;
+                                  });
+                                },
+                          icon: Icon(
+                            _balanzaConectada
+                                ? Icons.link_off
+                                : Icons.link,
+                            size: 18,
+                          ),
+                          label: Text(
+                            _balanzaConectada
+                                ? "Desconectar balanza"
+                                : "Probar conexión",
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _estadoBalanza,
+                            style: const TextStyle(fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
                           ),
                         ),
                       ],
@@ -603,6 +837,23 @@ class _SettingsScreenState extends State<SettingsScreen>
 
                     const SizedBox(height: 30),
                     const Text(
+                      "🔒 Seguridad",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal,
+                      ),
+                    ),
+                    const Divider(),
+                    ListTile(
+                      leading: const Icon(Icons.password, color: Colors.teal),
+                      title: const Text("Cambiar mi PIN"),
+                      subtitle: const Text("Requiere tu PIN actual"),
+                      onTap: _solicitarCambiarPin,
+                    ),
+
+                    const SizedBox(height: 30),
+                    const Text(
                       "⚠️ Zona de Peligro",
                       style: TextStyle(
                         fontSize: 18,
@@ -623,7 +874,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      subtitle: const Text("Requiere contraseña de Admin"),
+                      subtitle: const Text("Requiere tu PIN actual"),
                       onTap: _solicitarPasswordYBorrar,
                     ),
                   ],

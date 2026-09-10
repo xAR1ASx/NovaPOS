@@ -79,9 +79,9 @@ class _UsersScreenState extends State<UsersScreen> {
               TextField(
                 controller: pinCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'PIN (4 a 6 digitos)',
+                  labelText: 'PIN (6 digitos)',
                   border: OutlineInputBorder(),
-                  hintText: 'Ej: 1234',
+                  hintText: 'Ej: 123456',
                 ),
                 keyboardType: TextInputType.number,
                 maxLength: 6,
@@ -99,7 +99,7 @@ class _UsersScreenState extends State<UsersScreen> {
             onPressed: () async {
               if (nombreCtrl.text.trim().isEmpty) return;
               if (emailCtrl.text.trim().isEmpty) return;
-              if (pinCtrl.text.length < 4) return;
+              if (pinCtrl.text.length < 6) return;
 
               String? negocioId = SessionService.negocioId();
               if (negocioId == null) return;
@@ -136,22 +136,13 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 
-  void _mostrarDialogoCambiarPin(Map<String, dynamic> usuario) {
-    final pinCtrl = TextEditingController();
-
+  void _mostrarDialogoRecuperar(Map<String, dynamic> usuario) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Cambiar PIN - ${usuario['nombre']}'),
-        content: TextField(
-          controller: pinCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Nuevo PIN (4 a 6 digitos)',
-            border: OutlineInputBorder(),
-          ),
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          obscureText: true,
+        title: const Text('Recuperar PIN'),
+        content: Text(
+          'Se enviara un enlace a ${usuario['email']}.\n\nEl usuario debera abrirlo, crear un PIN nuevo y luego usarlo para entrar a NovaPOS.',
         ),
         actions: [
           TextButton(
@@ -160,28 +151,23 @@ class _UsersScreenState extends State<UsersScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              if (pinCtrl.text.length < 4) return;
               Navigator.pop(ctx);
-
-              String? negocioId = SessionService.negocioId();
-              if (negocioId == null) return;
-
-              Map<String, dynamic> resultado = await PinAuthService.cambiarPin(
-                usuario['uid'],
-                pinCtrl.text,
-                negocioId,
+              bool ok = await PinAuthService.enviarEnlaceRecuperacion(
+                usuario['email'] ?? '',
               );
-
               if (!mounted) return;
-
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(resultado['mensaje']),
-                  backgroundColor: resultado['exito'] ? Colors.green : Colors.red,
+                  content: Text(
+                    ok
+                        ? 'Enlace enviado a ${usuario['email']}'
+                        : 'No se pudo enviar el enlace',
+                  ),
+                  backgroundColor: ok ? Colors.green : Colors.red,
                 ),
               );
             },
-            child: const Text('Guardar'),
+            child: const Text('Enviar enlace'),
           ),
         ],
       ),
@@ -369,12 +355,12 @@ class _UsersScreenState extends State<UsersScreen> {
                               ),
                             ),
                             const PopupMenuItem(
-                              value: 'pin',
+                              value: 'recuperar',
                               child: Row(
                                 children: [
-                                  Icon(Icons.key, size: 20),
+                                  Icon(Icons.mail_outline, size: 20),
                                   SizedBox(width: 8),
-                                  Text('Cambiar PIN'),
+                                  Text('Recuperar PIN'),
                                 ],
                               ),
                             ),
@@ -393,7 +379,7 @@ class _UsersScreenState extends State<UsersScreen> {
                           ],
                           onSelected: (valor) {
                             if (valor == 'editar') _mostrarDialogoEditar(u);
-                            if (valor == 'pin') _mostrarDialogoCambiarPin(u);
+                            if (valor == 'recuperar') _mostrarDialogoRecuperar(u);
                             if (valor == 'desactivar') _confirmarDesactivar(u);
                           },
                         ),

@@ -20,11 +20,13 @@ class SessionService {
   }
 
   static String username() {
-    return _currentUser?["usuario"] ?? "";
+    return _currentUser?["nombre"] ?? "";
   }
 
   static String userName() {
-    return _currentUser?["nombre_completo"] ?? "";
+    return _currentUser?["nombre"] ??
+        _currentUser?["nombre_completo"] ??
+        "";
   }
 
   static String userRole() {

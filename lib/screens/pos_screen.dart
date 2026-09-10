@@ -8,6 +8,7 @@ import 'clients_screen.dart';
 import 'dart:io';
 import '../services/permission_service.dart';
 import '../services/sales_service.dart';
+import '../services/balanza_service.dart';
 
 class PosScreen extends StatefulWidget {
   const PosScreen({super.key});
@@ -32,6 +33,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   String _codigoTeclado = "";
   final ScrollController _scrollController = ScrollController();
   Map<String, dynamic>? _clienteSeleccionadoGlobal;
+  double _pesoActualBalanza = 0;
 
   // Categorías
   List<String> _categorias = ["TODO"];
@@ -547,42 +549,94 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   }
 
   void _dialogoBalanza(Map<String, dynamic> p) {
+    _pesoActualBalanza = 0;
+    StateSetter? stSet;
+    final sub = BalanzaService.pesoStream.listen((v) {
+      if (v != null && v > 0) {
+        _pesoActualBalanza = v;
+        stSet?.call(() {});
+      }
+    });
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.scale, color: Colors.green),
-            const SizedBox(width: 10),
-            Expanded(child: Text("Pesando: ${p['nombre']}")),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              "Coloca el producto en la balanza... ⚖️",
-              style: TextStyle(fontStyle: FontStyle.italic),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, st) {
+          stSet = st;
+          final peso = _pesoActualBalanza;
+          final hayBalanza = BalanzaService.estaConectada;
+
+          return AlertDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.scale, color: Colors.green),
+                const SizedBox(width: 10),
+                Expanded(child: Text("Pesando: ${p['nombre']}")),
+              ],
             ),
-            const SizedBox(height: 20),
-            const CircularProgressIndicator(color: Colors.green),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () {
-                _agregar(p, cantidad: 1.5);
-                Navigator.pop(ctx);
-              },
-              icon: const Icon(Icons.download),
-              label: const Text("SIMULAR PESO (1.5 Kg)"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue[50],
-                foregroundColor: Colors.blue[900],
-              ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  hayBalanza
+                      ? "Coloca el producto en la balanza..."
+                      : "Sin balanza conectada. Usa la simulacion.",
+                  style: const TextStyle(fontStyle: FontStyle.italic),
+                ),
+                const SizedBox(height: 16),
+                if (hayBalanza) ...[
+                  Text(
+                    peso > 0
+                        ? "${peso.toStringAsFixed(3)} Kg"
+                        : "Esperando peso estable...",
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: peso > 0
+                        ? () {
+                            _agregar(p, cantidad: peso);
+                            Navigator.pop(ctx);
+                          }
+                        : null,
+                    icon: const Icon(Icons.check),
+                    label: Text(
+                      peso > 0
+                          ? "USAR PESO (${peso.toStringAsFixed(3)} Kg)"
+                          : "ESPERANDO...",
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                ElevatedButton.icon(
+                  onPressed: () {
+                    _agregar(p, cantidad: 1.5);
+                    Navigator.pop(ctx);
+                  },
+                  icon: const Icon(Icons.download),
+                  label: const Text("SIMULAR PESO (1.5 Kg)"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[50],
+                    foregroundColor: Colors.blue[900],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
-    ).then((_) => _searchFocusNode.requestFocus());
+    ).whenComplete(() {
+      sub.cancel();
+      _searchFocusNode.requestFocus();
+    });
   }
 
   void _mostrarPago() {

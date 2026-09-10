@@ -84,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await SessionService.logout();
     await PermissionService.clear();
-    await PinAuthService.limpiarSesion();
+    await PinAuthService.cerrarSesion();
 
     if (!mounted) return;
 

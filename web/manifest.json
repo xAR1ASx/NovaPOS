@@ -1,11 +1,11 @@
 {
-    "name": "mi_fruver_pos",
-    "short_name": "mi_fruver_pos",
+    "name": "NovaPOS",
+    "short_name": "NovaPOS",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1F8A4C",
+    "theme_color": "#1F8A4C",
+    "description": "NovaPOS - Sistema Point of Sale para negocios",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

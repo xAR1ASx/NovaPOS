@@ -96,23 +96,6 @@ CREATE TABLE roles_permisos(
 )
 ''');
 
-    final adminPassword = PasswordService.hashPassword("1234");
-    final cajeroPassword = PasswordService.hashPassword("1234");
-
-    await db.insert('usuarios', {
-      'usuario': 'cajero',
-      'password_hash': cajeroPassword,
-      'rol': 'CAJERO',
-      'nombre_completo': 'Usuario Cajero',
-    });
-
-    await db.insert("usuarios", {
-      "usuario": "admin",
-      "password_hash": adminPassword,
-      "rol": "ADMIN",
-      "nombre_completo": "Administrador",
-    });
-
     // =======================
     // ROLES DEL SISTEMA
     // =======================
@@ -208,7 +191,7 @@ CREATE TABLE roles_permisos(
     }
 
     await db.execute(
-      "INSERT INTO configuracion (clave, valor) VALUES ('empresa_nombre', 'MI FRUVER')",
+      "INSERT INTO configuracion (clave, valor) VALUES ('empresa_nombre', 'NovaPOS')",
     );
     await db.execute(
       "INSERT INTO clientes (nombre, telefono, direccion) VALUES ('Cliente Casual', '000', 'Local')",
@@ -231,31 +214,6 @@ CREATE TABLE roles_permisos(
     );
 
     return resultado.map((e) => e["codigo"].toString()).toList();
-  }
-
-  // --- 🔑 AUTENTICACIÓN (RECUPERADO) ---
-  Future<Map<String, dynamic>?> login(String usuario, String password) async {
-    final db = await database;
-
-    final resultado = await db.query(
-      'usuarios',
-      where: 'usuario = ?',
-      whereArgs: [usuario],
-      limit: 1,
-    );
-
-    if (resultado.isEmpty) {
-      return null;
-    }
-
-    final usuarioDB = resultado.first;
-    final hashGuardado = usuarioDB['password_hash']?.toString() ?? '';
-
-    if (PasswordService.verifyPassword(password, hashGuardado)) {
-      return usuarioDB;
-    }
-
-    return null;
   }
 
   // --- GESTIÓN DINÁMICA DE CATEGORÍAS ---
@@ -891,17 +849,6 @@ CREATE TABLE roles_permisos(
   }
 
   // --- SEGURIDAD ---
-  Future<bool> validarContrasenaAdmin(String password) async {
-    final db = await database;
-    final hash = PasswordService.hashPassword(password);
-    final res = await db.query(
-      'usuarios',
-      where: "usuario = 'admin' AND password_hash = ?",
-      whereArgs: [hash],
-    );
-    return res.isNotEmpty;
-  }
-
   Future<void> resetFactory() async {
     final db = await database;
     await db.transaction((txn) async {

@@ -1,5 +1,5 @@
-name: mi_fruver_pos
-description: "A new Flutter project."
+name: novapos
+description: "NovaPOS - Sistema Point of Sale para negocios"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
@@ -44,7 +44,6 @@ dependencies:
   sqflite_common_ffi: ^2.4.0
   path: ^1.9.1
   sqlite3_flutter_libs: ^0.5.41
-  provider: ^6.1.5+1
   intl: ^0.20.2
   excel: ^4.0.6
   file_picker: ^6.1.1
@@ -52,6 +51,8 @@ dependencies:
   firebase_core: ^3.12.1
   firebase_auth: ^5.5.4
   cloud_firestore: ^5.6.9
+  http: ^1.2.0
+  flutter_libserialport: ^0.6.0
 
 dev_dependencies:
   flutter_test:
@@ -62,6 +63,23 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    icon_size: 256
+  android:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+  ios:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -72,6 +90,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/icon/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
