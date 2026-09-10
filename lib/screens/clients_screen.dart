@@ -77,13 +77,63 @@ class _ClientsScreenState extends State<ClientsScreen> {
     );
   }
 
+  void _editarCupo(Map<String, dynamic> c) async {
+    final ctrl = TextEditingController(
+      text: (c['cupo_credito'] ?? 0).toString(),
+    );
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Editar Cupo de Crédito"),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: "Cupo",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancelar", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              double? cupo = double.tryParse(ctrl.text.replaceAll(',', '.'));
+              if (cupo == null || cupo < 0) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Cupo inválido"),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              final ok = await DBHelper().actualizarClienteCupo(c['id'], cupo);
+              if (ctx.mounted) Navigator.pop(ctx);
+              _cargarClientes();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(ok ? "✅ Cupo actualizado" : "❌ No se pudo actualizar"),
+                  backgroundColor: ok ? Colors.green : Colors.red,
+                ),
+              );
+            },
+            child: const Text("GUARDAR"),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _mostrarFichaCliente(Map<String, dynamic> c) {
     final a = TextEditingController();
     showModalBottomSheet(
       context: context,
       builder: (ctx) => Container(
         padding: const EdgeInsets.all(20),
-        height: 400,
+        height: 430,
         child: Column(
           children: [
             Text(
@@ -95,6 +145,21 @@ class _ClientsScreenState extends State<ClientsScreen> {
               "Deuda: ${formater.format(c['deuda_actual'])}",
               style: const TextStyle(fontSize: 20, color: Colors.red),
             ),
+            const SizedBox(height: 5),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  "Cupo: ${formater.format(c['cupo_credito'] ?? 0)}",
+                  style: const TextStyle(fontSize: 15, color: Colors.grey),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _editarCupo(c),
+                  child: const Icon(Icons.edit, size: 16, color: Colors.blueGrey),
+                ),
+              ],
+            ),
             const SizedBox(height: 20),
             TextField(
               controller: a,
@@ -105,14 +170,33 @@ class _ClientsScreenState extends State<ClientsScreen> {
               onPressed: () async {
                 double? m = double.tryParse(a.text);
                 if (m != null) {
-                  await DBHelper().registrarAbonoCliente(
+                  double deudaActual =
+                      (c['deuda_actual'] as num?)?.toDouble() ?? 0;
+                  if (m <= 0 || m > deudaActual) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Monto inválido"),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                  final res = await DBHelper().registrarAbonoCliente(
                     c['id'],
                     c['nombre'],
                     m,
                     usuarioId: SessionService.userId() ?? 1,
                   );
+                  if (!ctx.mounted) return;
                   Navigator.pop(ctx);
                   _cargarClientes();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(res['mensaje']?.toString() ?? "Resultado"),
+                      backgroundColor:
+                          res['exito'] == true ? Colors.green : Colors.red,
+                    ),
+                  );
                 }
               },
               child: const Text("REGISTRAR ABONO"),

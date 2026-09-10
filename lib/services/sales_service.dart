@@ -5,7 +5,7 @@ import 'session_service.dart';
 class SalesService {
   final DBHelper _dbHelper = DBHelper();
 
-  Future<int> registrarVenta({
+  Future<Map<String, dynamic>> registrarVenta({
     required double total,
     required String metodoPago,
     required List<Map<String, dynamic>> items,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/pin_auth_service.dart';
 import '../services/session_service.dart';
 
@@ -86,6 +87,7 @@ class _UsersScreenState extends State<UsersScreen> {
                 keyboardType: TextInputType.number,
                 maxLength: 6,
                 obscureText: true,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
             ],
           ),

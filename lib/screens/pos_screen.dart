@@ -1,4 +1,5 @@
 import '../services/printer_service.dart'; // 🔥 Importamos el servicio de impresión
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
@@ -31,6 +32,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     decimalDigits: 0,
   );
   String _codigoTeclado = "";
+  Timer? _debounceBuscador;
   final ScrollController _scrollController = ScrollController();
   Map<String, dynamic>? _clienteSeleccionadoGlobal;
   double _pesoActualBalanza = 0;
@@ -245,7 +247,16 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   }
 
   // 🔥 1. FUNCIÓN INTELIGENTE DE BÚSQUEDA 🔥
-  void _procesarEntradaBuscador(String query) {
+  void _procesarEntradaBuscador(String query, {bool inmediato = false}) {
+    if (!inmediato) {
+      // Debounce: evita agregar productos cuando el escáner emite tramas parciales
+      _debounceBuscador?.cancel();
+      _debounceBuscador = Timer(const Duration(milliseconds: 400), () {
+        _procesarEntradaBuscador(query, inmediato: true);
+      });
+      return;
+    }
+    _debounceBuscador?.cancel();
     String codigoLimpio = query.trim();
 
     if (codigoLimpio.isEmpty) {
@@ -253,14 +264,17 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
       return;
     }
 
-    final exactMatch = _products.firstWhere(
-      (p) =>
-          (p['codigo_barras'] ?? '') == codigoLimpio ||
-          (p['codigo_plu'] ?? '') == codigoLimpio,
-      orElse: () => {},
-    );
+    Map<String, dynamic>? exactMatch;
+    for (var p in _products) {
+      final barras = (p['codigo_barras'] ?? '').toString().trim();
+      final plu = (p['codigo_plu'] ?? '').toString().trim();
+      if (barras == codigoLimpio || plu == codigoLimpio) {
+        exactMatch = p;
+        break;
+      }
+    }
 
-    if (exactMatch.isNotEmpty) {
+    if (exactMatch != null) {
       _onSelect(exactMatch);
       _searchController.clear();
       _filtrar("");
@@ -367,6 +381,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
             'subtotal': cantidad * precioFinal,
             'es_pesable': p['es_pesable'],
             'contenido_pack': packSize,
+            'costo_unitario': p['precio_costo'] ?? 0,
           });
         }
       }
@@ -869,7 +884,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
                   try {
                     // 🔥 1. GUARDAMOS Y OBTENEMOS EL ID (Tu BD debe devolver 'int')
-                    int ventaId = await _salesService.registrarVenta(
+                    final resultado = await _salesService.registrarVenta(
                       total: total,
                       metodoPago: metodo,
                       items: _currentCart,
@@ -877,6 +892,28 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           ? _clienteSeleccionadoGlobal!['id']
                           : 0,
                     );
+
+                    if (resultado['exito'] != true) {
+                      showDialog(
+                        context: context,
+                        builder: (c) => AlertDialog(
+                          title: const Text("⚠️ No se pudo registrar la venta"),
+                          content: Text(
+                            resultado['mensaje']?.toString() ??
+                                "Error desconocido",
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(c),
+                              child: const Text("OK"),
+                            ),
+                          ],
+                        ),
+                      );
+                      return;
+                    }
+
+                    int ventaId = resultado['venta_id'] as int;
 
                     // 2. PREPARAR DATOS PARA EL TICKET
                     Map<String, dynamic> datosVenta = {
@@ -997,21 +1034,26 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
         _codigoTeclado = _codigoTeclado.substring(0, _codigoTeclado.length - 1);
       } else if (v == 'ENTER')
         _buscarCodigo();
-      else if (_codigoTeclado.length < 12)
+      else if (_codigoTeclado.length < 14)
         _codigoTeclado += v;
     });
   }
 
   void _buscarCodigo() {
     if (_codigoTeclado.isEmpty) return;
-    final p = _products.firstWhere(
-      (x) =>
-          x['id'].toString() == _codigoTeclado ||
-          (x['codigo_plu'] ?? '').toString() == _codigoTeclado ||
-          (x['codigo_barras'] ?? '').toString() == _codigoTeclado,
-      orElse: () => {},
-    );
-    if (p.isNotEmpty) {
+    final codigoLimpio = _codigoTeclado.trim();
+    Map<String, dynamic>? p;
+    for (var x in _products) {
+      final barras = (x['codigo_barras'] ?? '').toString().trim();
+      final plu = (x['codigo_plu'] ?? '').toString().trim();
+      if (x['id'].toString() == codigoLimpio ||
+          plu == codigoLimpio ||
+          barras == codigoLimpio) {
+        p = x;
+        break;
+      }
+    }
+    if (p != null) {
       _onSelect(p);
       _codigoTeclado = "";
     } else {
@@ -1232,7 +1274,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           onChanged: (text) => _procesarEntradaBuscador(text),
 
                           // 🔥 2. DETECCIÓN POR ENTER (PARA LECTORES CON SUFIJO ENTER)
-                          onSubmitted: (text) => _procesarEntradaBuscador(text),
+                          onSubmitted: (text) =>
+                              _procesarEntradaBuscador(text, inmediato: true),
 
                           decoration: InputDecoration(
                             hintText: "Escanear o buscar...",

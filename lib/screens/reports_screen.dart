@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
+import '../services/permission_service.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -34,6 +35,8 @@ class _ReportsScreenState extends State<ReportsScreen>
   List<Map<String, dynamic>> _topProductos = [];
   List<Map<String, dynamic>> _ventasCategoria = [];
   List<Map<String, dynamic>> _metodosPago = [];
+  List<Map<String, dynamic>> _cajeros = [];
+  int _cajeroIdFiltro = -1; // -1 = todos los cajeros
   bool _cargandoDetalle = true;
 
   @override
@@ -41,6 +44,7 @@ class _ReportsScreenState extends State<ReportsScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _cargarInformeGeneral();
+    _cargarCajeros();
     _aplicarFiltroDetalle("Hoy"); // Carga inicial del detallado
   }
 
@@ -138,6 +142,12 @@ class _ReportsScreenState extends State<ReportsScreen>
     }
   }
 
+  void _cargarCajeros() async {
+    final data = await DBHelper().obtenerCajeros();
+    if (!mounted) return;
+    setState(() => _cajeros = data);
+  }
+
   void _cargarInformeDetallado() async {
     setState(() => _cargandoDetalle = true);
     final db = DBHelper();
@@ -147,7 +157,11 @@ class _ReportsScreenState extends State<ReportsScreen>
     String fStr =
         "${DateFormat('yyyy-MM-dd').format(_fechaFinDetalle)}T23:59:59";
 
-    final finanzas = await db.obtenerReporteFinanciero(iStr, fStr);
+    final finanzas = await db.obtenerReporteFinanciero(
+      iStr,
+      fStr,
+      usuarioId: _cajeroIdFiltro == -1 ? null : _cajeroIdFiltro,
+    );
     final top = await db.obtenerTopProductosPorRango(iStr, fStr);
     final cats = await db.obtenerVentasPorCategoria(iStr, fStr);
     final pagos = await db.obtenerMetodosPagoPorRango(iStr, fStr);
@@ -168,6 +182,17 @@ class _ReportsScreenState extends State<ReportsScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (!PermissionService.can('REPORTES_VER')) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text("Inteligencia de Negocio"),
+          backgroundColor: const Color(0xFF1A1F2B),
+        ),
+        body: const Center(
+          child: Text("No tienes permiso para ver los reportes"),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
       appBar: AppBar(
@@ -366,8 +391,7 @@ class _ReportsScreenState extends State<ReportsScreen>
       children: [
         // Selector de Fechas
         Container(
-          height: 60,
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 6),
           color: Colors.white,
           child: ListView(
             scrollDirection: Axis.horizontal,
@@ -386,6 +410,32 @@ class _ReportsScreenState extends State<ReportsScreen>
                     : Colors.grey[100],
                 onPressed: _seleccionarRangoManual,
               ),
+              if (_cajeros.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: 10),
+                  child: DropdownButton<int>(
+                    value: _cajeroIdFiltro,
+                    isDense: true,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      const DropdownMenuItem<int>(
+                        value: -1,
+                        child: Text("Todos los cajeros"),
+                      ),
+                      ..._cajeros.map(
+                        (u) => DropdownMenuItem<int>(
+                          value: u['id'] as int,
+                          child: Text(u['nombre'] ?? "Cajero"),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _cajeroIdFiltro = v);
+                      _cargarInformeDetallado();
+                    },
+                  ),
+                ),
             ],
           ),
         ),

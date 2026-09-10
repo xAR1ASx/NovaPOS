@@ -46,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
     String hoy = DateTime.now().toIso8601String().substring(0, 10);
 
     final ventasRes = await db.rawQuery(
-      "SELECT SUM(total) as total, COUNT(*) as cantidad FROM ventas WHERE fecha LIKE '$hoy%'",
+      "SELECT SUM(total) as total, COUNT(*) as cantidad FROM ventas WHERE fecha LIKE '$hoy%' AND anulada = 0",
     );
     final stockRes = await db.rawQuery(
       "SELECT COUNT(*) as cantidad FROM productos WHERE stock_actual <= 5 AND esta_activo = 1",
@@ -58,6 +58,78 @@ class _HomeScreenState extends State<HomeScreen> {
       _cantidadVentasHoy = (ventasRes.first['cantidad'] as num?)?.toInt() ?? 0;
       _productosBajosStock = (stockRes.first['cantidad'] as num?)?.toInt() ?? 0;
     });
+  }
+
+  void _cambiarPinPropio() {
+    final pinActual = TextEditingController();
+    final pinNuevo = TextEditingController();
+    final pinConfirmar = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cambiar mi PIN'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: pinActual,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(labelText: 'PIN actual'),
+            ),
+            TextField(
+              controller: pinNuevo,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(labelText: 'PIN nuevo (6 dígitos)'),
+            ),
+            TextField(
+              controller: pinConfirmar,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(labelText: 'Confirmar PIN nuevo'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (pinNuevo.text.length != 6 ||
+                  pinNuevo.text != pinConfirmar.text) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Los PIN nuevos no coinciden o no tienen 6 dígitos'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              final res = await PinAuthService.cambiarPinPropio(
+                pinActual.text,
+                pinNuevo.text,
+              );
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(res['mensaje']?.toString() ?? 'Resultado'),
+                  backgroundColor:
+                      res['exito'] == true ? Colors.green : Colors.red,
+                ),
+              );
+            },
+            child: const Text('GUARDAR'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _cerrarSesion() async {
@@ -110,6 +182,11 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.lock_reset, color: Colors.white, size: 22),
+            tooltip: 'Cambiar mi PIN',
+            onPressed: _cambiarPinPropio,
+          ),
           TextButton.icon(
             icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
             label: const Text(
@@ -259,78 +336,106 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                 ),
-                _menuButton(
-                  "CAJA",
-                  Icons.account_balance_wallet,
-                  Colors.cyan,
-                  () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (c) => const CashControlScreen(),
-                      ),
-                    );
-                    _cargarDatosDashboard();
-                  },
+                PermissionGate(
+                  permission: "CAJA_ABRIR",
+                  child: _menuButton(
+                    "CAJA",
+                    Icons.account_balance_wallet,
+                    Colors.cyan,
+                    () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => const CashControlScreen(),
+                        ),
+                      );
+                      _cargarDatosDashboard();
+                    },
+                  ),
                 ),
-                _menuButton(
-                  "INVENTARIO",
-                  Icons.inventory_2,
-                  Colors.orange,
-                  () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (c) => const InventoryScreen(),
-                      ),
-                    );
-                    _cargarDatosDashboard();
-                  },
+                PermissionGate(
+                  permission: "INVENTARIO_VER",
+                  child: _menuButton(
+                    "INVENTARIO",
+                    Icons.inventory_2,
+                    Colors.orange,
+                    () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => const InventoryScreen(),
+                        ),
+                      );
+                      _cargarDatosDashboard();
+                    },
+                  ),
                 ),
 
                 // Fila 2
-                _menuButton("HISTORIAL", Icons.history, Colors.teal, () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (c) => const SalesHistoryScreen(),
-                    ),
-                  );
-                  _cargarDatosDashboard();
-                }),
-                _menuButton("CLIENTES", Icons.people, Colors.purple, () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (c) => const ClientsScreen()),
-                  );
-                  _cargarDatosDashboard();
-                }),
-                _menuButton(
-                  "INGRESAR\nPEDIDO",
-                  Icons.local_shipping,
-                  Colors.brown,
-                  () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (c) => const PurchasesScreen(),
-                      ),
-                    );
-                    _cargarDatosDashboard();
-                  },
+                PermissionGate(
+                  permission: "VENTAS_VER",
+                  child: _menuButton(
+                    "HISTORIAL",
+                    Icons.history,
+                    Colors.teal,
+                    () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => const SalesHistoryScreen(),
+                        ),
+                      );
+                      _cargarDatosDashboard();
+                    },
+                  ),
+                ),
+                PermissionGate(
+                  permission: "CLIENTES_VER",
+                  child: _menuButton(
+                    "CLIENTES",
+                    Icons.people,
+                    Colors.purple,
+                    () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (c) => const ClientsScreen()),
+                      );
+                      _cargarDatosDashboard();
+                    },
+                  ),
+                ),
+                PermissionGate(
+                  permission: "COMPRAS_CREAR",
+                  child: _menuButton(
+                    "INGRESAR\nPEDIDO",
+                    Icons.local_shipping,
+                    Colors.brown,
+                    () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => const PurchasesScreen(),
+                        ),
+                      );
+                      _cargarDatosDashboard();
+                    },
+                  ),
                 ),
 
                 // Fila 3
-                _menuButton(
-                  "REPORTES",
-                  Icons.bar_chart,
-                  Colors.indigo,
-                  () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (c) => const ReportsScreen()),
-                    );
-                  },
+                PermissionGate(
+                  permission: "REPORTES_VER",
+                  child: _menuButton(
+                    "REPORTES",
+                    Icons.bar_chart,
+                    Colors.indigo,
+                    () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (c) => const ReportsScreen()),
+                      );
+                    },
+                  ),
                 ),
                 PermissionGate(
                   permission: "CONFIGURACION_GENERAL",
@@ -348,8 +453,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                 ),
-                if (SessionService.userRole() == 'ADMIN')
-                  _menuButton(
+                PermissionGate(
+                  permission: "USUARIOS_GESTIONAR",
+                  child: _menuButton(
                     "USUARIOS",
                     Icons.people_alt,
                     Colors.deepPurple,
@@ -362,6 +468,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       );
                     },
                   ),
+                ),
               ],
             ),
           ],

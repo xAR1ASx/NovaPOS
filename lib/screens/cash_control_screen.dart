@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/cash_service.dart';
+import '../services/session_service.dart';
+import 'cierre_history_screen.dart';
 
 class CashControlScreen extends StatefulWidget {
   const CashControlScreen({super.key});
@@ -43,7 +45,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
     final resumen = await db.obtenerResumenCaja();
     final lista = await db.obtenerMovimientosTurnoActual();
 
-    bool estaAbierta = resumen['base']! > 0;
+    bool estaAbierta = await db.verificarCajaAbiertaHoy();
 
     if (!mounted) return;
     setState(() {
@@ -156,11 +158,23 @@ class _CashControlScreenState extends State<CashControlScreen> {
                   );
                   return;
                 }
-                await _cashService.registrarMovimiento(
-                  tipo: tipo,
-                  monto: m,
-                  descripcion: descCtrl.text,
-                );
+                try {
+                  await _cashService.registrarMovimiento(
+                    tipo: tipo,
+                    monto: m,
+                    descripcion: descCtrl.text,
+                  );
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("🚫 ${e.toString()}"),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                  return;
+                }
                 Navigator.pop(ctx);
                 _cargarDatosCaja();
               }
@@ -439,41 +453,62 @@ class _CashControlScreenState extends State<CashControlScreen> {
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    // Ajustes automáticos
-                    if (diferencia > 0) {
-                      await _cashService.registrarMovimiento(
-                        tipo: 'INGRESO',
-                        monto: diferencia,
-                        descripcion: "Ajuste Sobrante Automático",
+                    final dbHelper = DBHelper();
+                    try {
+                      // Ajustes automáticos de sobrantes/faltantes
+                      if (diferencia > 0) {
+                        await _cashService.registrarMovimiento(
+                          tipo: 'INGRESO',
+                          monto: diferencia,
+                          descripcion: "Ajuste Sobrante Automático",
+                        );
+                      } else if (diferencia < 0) {
+                        await _cashService.registrarMovimiento(
+                          tipo: 'GASTO',
+                          monto: diferencia.abs(),
+                          descripcion: "Pérdida / Descuadre Cierre",
+                        );
+                      }
+
+                      String estado = diferencia == 0
+                          ? "OK"
+                          : (diferencia > 0 ? "SOBRA" : "FALTA");
+                      String desc =
+                          "Cierre: Sistema ${_totalEnCajaSistema.toInt()} | Real ${dineroReal.toInt()} | Estado: $estado";
+
+                      // CIERRE TRANSACCIONAL: movimiento CIERRE + registro formal
+                      await dbHelper.cerrarTurno(
+                        base: 0,
+                        realContado: dineroReal,
+                        diferencia: diferencia,
+                        estado: estado,
+                        detalle: desc,
+                        fechaInicio:
+                            await dbHelper.obtenerFechaAperturaActual() ??
+                            DateTime.now().toIso8601String(),
+                        usuarioId: SessionService.userId() ?? 1,
                       );
-                    } else if (diferencia < 0) {
-                      await _cashService.registrarMovimiento(
-                        tipo: 'GASTO',
-                        monto: diferencia.abs(),
-                        descripcion: "Pérdida / Descuadre Cierre",
+
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                      _cargarDatosCaja();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("✅ Turno Cerrado Correctamente"),
+                          backgroundColor: Colors.purple,
+                        ),
                       );
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("🚫 Error al cerrar el turno: $e"),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        _cargarDatosCaja();
+                      }
                     }
-
-                    // AQUI USAMOS LA VARIABLE 'estado' (Solución a la advertencia amarilla)
-                    String estado = diferencia == 0
-                        ? "OK"
-                        : (diferencia > 0 ? "SOBRA" : "FALTA");
-                    String desc =
-                        "Cierre: Sistema ${_totalEnCajaSistema.toInt()} | Real ${dineroReal.toInt()} | Estado: $estado";
-
-                    await _cashService.registrarMovimiento(
-                      tipo: 'CIERRE',
-                      monto: dineroReal,
-                      descripcion: desc,
-                    );
-                    Navigator.pop(context);
-                    _cargarDatosCaja();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("✅ Turno Cerrado Correctamente"),
-                        backgroundColor: Colors.purple,
-                      ),
-                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.purple,
@@ -650,6 +685,28 @@ class _CashControlScreenState extends State<CashControlScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 15),
                           backgroundColor: Colors.purple,
                           foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                if (SessionService.userRole() == 'ADMIN')
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (c) => const CierreHistoryScreen(),
+                          ),
+                        ),
+                        icon: const Icon(Icons.history),
+                        label: const Text("VER HISTORIAL DE CIERRES"),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.indigo[800],
+                          side: BorderSide(color: Colors.indigo[800]!),
                         ),
                       ),
                     ),

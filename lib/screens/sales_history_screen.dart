@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
+import '../services/permission_service.dart';
+import '../services/session_service.dart';
 
 class SalesHistoryScreen extends StatefulWidget {
   const SalesHistoryScreen({super.key});
@@ -191,6 +193,70 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                 ),
               ],
             ),
+            if (PermissionService.can("VENTAS_ANULAR") &&
+                (venta['anulada'] ?? 0) != 1)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.cancel, size: 18),
+                    label: const Text("ANULAR VENTA"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () async {
+                      final confirmar = await showDialog<bool>(
+                        context: context,
+                        builder: (c) => AlertDialog(
+                          title: const Text("Anular Venta"),
+                          content: Text(
+                            "¿Seguro que quieres anular esta venta?\n\n"
+                            "Total: ${formater.format(venta['total'])}",
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(c, false),
+                              child: const Text(
+                                "Cancelar",
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: () => Navigator.pop(c, true),
+                              child: const Text("SÍ, ANULAR"),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmar != true) return;
+
+                      final res = await DBHelper().anularVenta(
+                        venta['id'],
+                        usuarioId: SessionService.userId() ?? 1,
+                      );
+                      if (!mounted) return;
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            res['mensaje']?.toString() ?? "Resultado",
+                          ),
+                          backgroundColor: res['exito'] == true
+                              ? Colors.green
+                              : Colors.red,
+                        ),
+                      );
+                      if (res['exito'] == true) _cargarVentas();
+                    },
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -201,7 +267,15 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   Widget build(BuildContext context) {
     double totalPeriodo = _ventas.fold(
       0,
-      (sum, item) => sum + (item['total'] as num).toDouble(),
+      (sum, item) =>
+          sum +
+          (((item['anulada'] ?? 0) == 1)
+              ? 0
+              : (item['total'] as num).toDouble()),
+    );
+    int ventasValidas = _ventas.fold(
+      0,
+      (c, item) => c + (((item['anulada'] ?? 0) == 1) ? 0 : 1),
     );
 
     return Scaffold(
@@ -243,7 +317,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  "${_ventas.length} Ventas",
+                  "$ventasValidas Ventas",
                   style: TextStyle(
                     color: Colors.teal[800],
                     fontWeight: FontWeight.bold,
@@ -287,13 +361,16 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     itemCount: _ventas.length,
                     itemBuilder: (context, index) {
                       final v = _ventas[index];
+                      bool anulada = (v['anulada'] ?? 0) == 1;
                       IconData iconPago = Icons.attach_money;
                       Color colorPago = Colors.green;
-                      if (v['metodo_pago'] == 'NEQUI') {
+                      if (anulada) {
+                        iconPago = Icons.cancel;
+                        colorPago = Colors.red;
+                      } else if (v['metodo_pago'] == 'NEQUI') {
                         iconPago = Icons.phone_android;
                         colorPago = Colors.purple;
-                      }
-                      if (v['metodo_pago'] == 'CREDITO') {
+                      } else if (v['metodo_pago'] == 'CREDITO') {
                         iconPago = Icons.people;
                         colorPago = Colors.orange;
                       }
@@ -309,12 +386,40 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                             backgroundColor: colorPago.withOpacity(0.1),
                             child: Icon(iconPago, color: colorPago, size: 20),
                           ),
-                          title: Text(
-                            formater.format(v['total']),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
+                          title: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  formater.format(v['total']),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    decoration: anulada
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                              if (anulada)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Text(
+                                    "ANULADA",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                           subtitle: Text(
                             DateFormat(

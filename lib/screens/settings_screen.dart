@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:excel/excel.dart' hide Border;
@@ -8,6 +9,7 @@ import '../database/db_helper.dart';
 import '../services/pin_auth_service.dart';
 import '../services/printer_service.dart';
 import '../services/balanza_service.dart';
+import '../services/ui_mode_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -103,6 +105,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               obscureText: true,
               keyboardType: TextInputType.number,
               maxLength: 6,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
                 labelText: "PIN actual",
                 border: OutlineInputBorder(),
@@ -115,6 +118,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               obscureText: true,
               keyboardType: TextInputType.number,
               maxLength: 6,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
                 labelText: "PIN nuevo (6 digitos)",
                 border: OutlineInputBorder(),
@@ -127,6 +131,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               obscureText: true,
               keyboardType: TextInputType.number,
               maxLength: 6,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
                 labelText: "Confirmar PIN nuevo",
                 border: OutlineInputBorder(),
@@ -441,7 +446,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         }
       }
       String fecha = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
-      await _guardarExcelEnDispositivo(excel, "Fruver_${tipo}_$fecha.xlsx");
+      await _guardarExcelEnDispositivo(excel, "NovaPOS_${tipo}_$fecha.xlsx");
     } catch (e) {
       _mostrarAlerta("Error Exportando", "Detalle: $e");
     } finally {
@@ -477,7 +482,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         rutaBase = ext?.path ?? "";
       }
     }
-    final String folderPath = "$rutaBase/Reportes_Fruver";
+    final String folderPath = "$rutaBase/Reportes_NovaPOS";
     await Directory(folderPath).create(recursive: true);
     String rutaFinal = "$folderPath/$nombreArchivo";
     File(rutaFinal)
@@ -485,7 +490,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       ..writeAsBytesSync(excel.encode()!);
     _mostrarAlerta(
       "Archivo Guardado",
-      "Ubicación: $rutaFinal\n(Carpeta Descargas/Reportes_Fruver)",
+      "Ubicación: $rutaFinal\n(Carpeta Descargas/Reportes_NovaPOS)",
     );
   }
 
@@ -574,6 +579,31 @@ class _SettingsScreenState extends State<SettingsScreen>
                         prefixIcon: Icon(Icons.location_on),
                         border: OutlineInputBorder(),
                       ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      "🖥️ Interfaz",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Divider(),
+                    ValueListenableBuilder<bool>(
+                      valueListenable: UIModeService.tablet,
+                      builder: (context, esTablet, child) {
+                        return SwitchListTile(
+                          title: const Text("Modo tablet (pantalla táctil)"),
+                          subtitle: Text(
+                            esTablet
+                                ? "Botones y textos más grandes para tocar"
+                                : "Interfaz normal para PC (ratón y teclado)",
+                          ),
+                          secondary: const Icon(Icons.tablet),
+                          value: esTablet,
+                          onChanged: (v) => UIModeService.setEsTablet(v),
+                        );
+                      },
                     ),
                   ],
                 ),

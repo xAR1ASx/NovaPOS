@@ -8,6 +8,7 @@ class RolePermissions {
       'INVENTARIO_CREAR',
       'INVENTARIO_EDITAR',
       'INVENTARIO_ELIMINAR',
+      'CAJA_VER',
       'CAJA_ABRIR',
       'CAJA_CERRAR',
       'CAJA_MOVIMIENTOS',

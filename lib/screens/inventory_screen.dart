@@ -334,6 +334,43 @@ class _InventoryScreenState extends State<InventoryScreen>
           double.tryParse(_precioCostoCtrl.text.replaceAll(',', '.')) ?? 0;
       double stock = double.tryParse(_stockCtrl.text.replaceAll(',', '.')) ?? 0;
 
+      if (precioVenta <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ El Precio Venta debe ser mayor a cero'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      if (stock < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ El stock no puede ser negativo'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      if (precioCosto < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ El costo no puede ser negativo'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      if (precioCosto > precioVenta) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ El costo no puede ser mayor que el precio de venta'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       Map<String, dynamic> datos = {
         'nombre': _nombreCtrl.text,
         'precio_venta': precioVenta,

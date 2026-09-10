@@ -462,13 +462,24 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     }
                   }
 
-                  await DBHelper().registrarCompra(
+                  final res = await DBHelper().registrarCompra(
                     _incomingItems,
                     totalFactura,
                     _pagoConCaja,
                     _proveedorCtrl.text,
                     usuarioId: SessionService.userId() ?? 1,
                   );
+                  if (!ctx.mounted) return;
+                  if (res['exito'] != true) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("❌ ${res['mensaje'] ?? 'Error'}"),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
                   Navigator.pop(ctx);
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(

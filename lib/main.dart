@@ -5,6 +5,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
+import 'services/ui_mode_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +17,7 @@ void main() async {
     databaseFactory = databaseFactoryFfi;
   }
 
+  await UIModeService.init();
   await initializeDateFormatting('es_CO', null);
 
   runApp(const NovaPOSApp());
@@ -26,15 +28,31 @@ class NovaPOSApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'NovaPOS',
-      theme: ThemeData(
-        primarySwatch: Colors.green,
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF5F5F5),
-      ),
-      home: const SplashScreen(),
+    return ValueListenableBuilder<bool>(
+      valueListenable: UIModeService.tablet,
+      builder: (context, esTablet, child) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'NovaPOS',
+          theme: ThemeData(
+            primarySwatch: Colors.green,
+            useMaterial3: true,
+            visualDensity: esTablet
+                ? VisualDensity.comfortable
+                : VisualDensity.standard,
+            scaffoldBackgroundColor: const Color(0xFFF5F5F5),
+          ),
+          builder: (context, child) {
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(UIModeService.textScale),
+              ),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+          home: const SplashScreen(),
+        );
+      },
     );
   }
 }

@@ -108,6 +108,10 @@ class BalanzaService {
         _buffer = _buffer.substring(etx + 1);
         return;
       }
+      // Aun no llega el ETX: no emitir pesos intermedios de la trama
+      _buffer = _buffer.substring(stx);
+      if (_buffer.length > 200) _buffer = '';
+      return;
     }
 
     if (_buffer.contains(RegExp(r'\d'))) {

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import '../database/db_helper.dart';
 import '../firebase_options.dart';
 
 class PinAuthService {
@@ -80,6 +81,17 @@ class PinAuthService {
       if (data['esta_activo'] != true) return null;
 
       data['uid'] = doc.id;
+      try {
+        final idLocal = await DBHelper().asegurarUsuarioLocal(
+          uid: doc.id,
+          nombre: data['nombre']?.toString() ?? '',
+          rol: (data['rol'] ?? 'CAJERO').toString(),
+          activo: data['esta_activo'] != false,
+        );
+        data['id'] = idLocal;
+      } catch (e) {
+        data['id'] = null;
+      }
       return data;
     } catch (e) {
       return null;
