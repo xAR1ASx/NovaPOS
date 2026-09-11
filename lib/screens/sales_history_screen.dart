@@ -1,8 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
+import '../services/locale_service.dart';
 import '../services/permission_service.dart';
 import '../services/session_service.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Hoy': 'Today',
+  'Ayer': 'Yesterday',
+  '7 Días': '7 Days',
+  'Venta #': 'Sale #',
+  'TOTAL:': 'TOTAL:',
+  'ANULAR VENTA': 'VOID SALE',
+  'Anular Venta': 'Void Sale',
+  '¿Seguro que quieres anular esta venta?': 'Are you sure you want to void this sale?',
+  'Total:': 'Total:',
+  'Cancelar': 'Cancel',
+  'SÍ, ANULAR': 'YES, VOID',
+  'Resultado': 'Result',
+  'Historial de Ventas': 'Sales History',
+  'Ventas': 'Sales',
+  'No hay ventas en este rango': 'No sales in this range',
+  'ANULADA': 'VOIDED',
+  'Calendario': 'Calendar',
+  'Venta anulada correctamente': 'Sale voided successfully',
+  'La venta ya está anulada': 'The sale is already voided',
+  'Venta no encontrada': 'Sale not found',
+};
 
 class SalesHistoryScreen extends StatefulWidget {
   const SalesHistoryScreen({super.key});
@@ -133,7 +159,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  "Venta #${venta['id']}",
+                  "${_t('Venta #')}${venta['id']}",
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -179,9 +205,9 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  "TOTAL:",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Text(
+                  _t('TOTAL:'),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 Text(
                   formater.format(venta['total']),
@@ -201,7 +227,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.cancel, size: 18),
-                    label: const Text("ANULAR VENTA"),
+                    label: Text(_t('ANULAR VENTA')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
@@ -210,17 +236,17 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                       final confirmar = await showDialog<bool>(
                         context: context,
                         builder: (c) => AlertDialog(
-                          title: const Text("Anular Venta"),
+                          title: Text(_t('Anular Venta')),
                           content: Text(
-                            "¿Seguro que quieres anular esta venta?\n\n"
-                            "Total: ${formater.format(venta['total'])}",
+                            "${_t('¿Seguro que quieres anular esta venta?')}\n\n"
+                            "${_t('Total:')} ${formater.format(venta['total'])}",
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(c, false),
-                              child: const Text(
-                                "Cancelar",
-                                style: TextStyle(color: Colors.grey),
+                              child: Text(
+                                _t('Cancelar'),
+                                style: const TextStyle(color: Colors.grey),
                               ),
                             ),
                             ElevatedButton(
@@ -229,7 +255,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                                 foregroundColor: Colors.white,
                               ),
                               onPressed: () => Navigator.pop(c, true),
-                              child: const Text("SÍ, ANULAR"),
+                              child: Text(_t('SÍ, ANULAR')),
                             ),
                           ],
                         ),
@@ -245,7 +271,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            res['mensaje']?.toString() ?? "Resultado",
+                            _t(res['mensaje']?.toString() ?? "Resultado"),
                           ),
                           backgroundColor: res['exito'] == true
                               ? Colors.green
@@ -280,7 +306,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Historial de Ventas"),
+        title: Text(_t('Historial de Ventas')),
         backgroundColor: Colors.teal[800],
         foregroundColor: Colors.white,
       ),
@@ -302,7 +328,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     Icons.calendar_month,
                     color: _filtroActual == "Rango" ? Colors.teal : Colors.grey,
                   ),
-                  tooltip: "Calendario",
+                  tooltip: _t('Calendario'),
                 ),
               ],
             ),
@@ -317,14 +343,14 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  "$ventasValidas Ventas",
+                  "$ventasValidas ${_t('Ventas')}",
                   style: TextStyle(
                     color: Colors.teal[800],
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 Text(
-                  "Total: ${formater.format(totalPeriodo)}",
+                  "${_t('Total:')} ${formater.format(totalPeriodo)}",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -351,7 +377,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          "No hay ventas en este rango",
+                          _t('No hay ventas en este rango'),
                           style: TextStyle(color: Colors.grey[500]),
                         ),
                       ],
@@ -410,9 +436,9 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                                     color: Colors.red,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
-                                  child: const Text(
-                                    "ANULADA",
-                                    style: TextStyle(
+                                  child: Text(
+                                    _t('ANULADA'),
+                                    style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
@@ -457,7 +483,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
-          label,
+          _t(label),
           style: TextStyle(
             color: isSelected ? Colors.white : Colors.black87,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,

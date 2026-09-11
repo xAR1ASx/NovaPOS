@@ -1,6 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
+import '../services/locale_service.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Compra #': 'Purchase #',
+  'Prov:': 'Supplier:',
+  'Proveedor: General': 'Supplier: General',
+  'Costo Unit:': 'Unit Cost:',
+  'TOTAL PAGADO:': 'TOTAL PAID:',
+  'Historial de Compras': 'Purchase History',
+  'No hay compras registradas aún': 'No purchases registered yet',
+  'SALIDA DE CAJA': 'CASH OUT',
+  'OTRO MEDIO': 'OTHER METHOD',
+};
 
 class PurchaseHistoryScreen extends StatefulWidget {
   const PurchaseHistoryScreen({super.key});
@@ -64,7 +79,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "Compra #${compra['id']}",
+                          "${_t('Compra #')}${compra['id']}",
                           style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
@@ -73,8 +88,8 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                         Text(
                           compra['proveedor'] != null &&
                                   compra['proveedor'].toString().isNotEmpty
-                              ? "Prov: ${compra['proveedor']}"
-                              : "Proveedor: General",
+                              ? "${_t('Prov:')} ${compra['proveedor']}"
+                              : _t('Proveedor: General'),
                           style: TextStyle(color: Colors.grey[600]),
                         ),
                       ],
@@ -117,7 +132,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       subtitle: Text(
-                        "Costo Unit: ${formater.format(d['costo_unitario'])}",
+                        "${_t('Costo Unit:')} ${formater.format(d['costo_unitario'])}",
                       ),
                       trailing: Text(
                         formater.format(d['subtotal']),
@@ -143,9 +158,9 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      "TOTAL PAGADO:",
-                      style: TextStyle(
+                    Text(
+                      _t('TOTAL PAGADO:'),
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
@@ -172,7 +187,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Historial de Compras"),
+        title: Text(_t('Historial de Compras')),
         backgroundColor: Colors.brown[800],
         foregroundColor: Colors.white,
       ),
@@ -189,9 +204,9 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                     color: Colors.grey[300],
                   ),
                   const SizedBox(height: 10),
-                  const Text(
-                    "No hay compras registradas aún",
-                    style: TextStyle(color: Colors.grey),
+                  Text(
+                    _t('No hay compras registradas aún'),
+                    style: const TextStyle(color: Colors.grey),
                   ),
                 ],
               ),
@@ -221,7 +236,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                       child: Icon(Icons.inventory_2, color: Colors.brown[800]),
                     ),
                     title: Text(
-                      "Compra #${c['id']}",
+                      "${_t('Compra #')}${c['id']}",
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Column(
@@ -254,7 +269,9 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                             ),
                           ),
                           child: Text(
-                            pagadoConCaja ? "SALIDA DE CAJA" : "OTRO MEDIO",
+                            pagadoConCaja
+                                ? _t('SALIDA DE CAJA')
+                                : _t('OTRO MEDIO'),
                             style: TextStyle(
                               fontSize: 10,
                               color: pagadoConCaja ? Colors.red : Colors.blue,
@@ -267,7 +284,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                           Padding(
                             padding: const EdgeInsets.only(top: 4.0),
                             child: Text(
-                              "Prov: ${c['proveedor']}",
+                              "${_t('Prov:')} ${c['proveedor']}",
                               style: const TextStyle(fontSize: 12),
                             ),
                           ),

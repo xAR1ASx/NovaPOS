@@ -9,7 +9,16 @@ import '../database/db_helper.dart';
 import '../services/pin_auth_service.dart';
 import '../services/printer_service.dart';
 import '../services/balanza_service.dart';
+import '../services/locale_service.dart';
 import '../services/ui_mode_service.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Idioma / Language': 'Language',
+  'Los textos del sistema en Inglés': 'System texts in English',
+  'Los textos del sistema en Español': 'System texts in Spanish',
+};
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -602,6 +611,25 @@ class _SettingsScreenState extends State<SettingsScreen>
                           secondary: const Icon(Icons.tablet),
                           value: esTablet,
                           onChanged: (v) => UIModeService.setEsTablet(v),
+                        );
+                      },
+                    ),
+                    ListenableBuilder(
+                      listenable: LocaleService(),
+                      builder: (context, child) {
+                        final esIngles = LocaleService().esIngles;
+                        return SwitchListTile(
+                          title: Text(_t("Idioma / Language")),
+                          subtitle: Text(
+                            esIngles
+                                ? _t("Los textos del sistema en Inglés")
+                                : _t("Los textos del sistema en Español"),
+                          ),
+                          secondary: const Icon(Icons.translate),
+                          value: esIngles,
+                          onChanged: (v) => LocaleService().setIdioma(
+                            v ? 'en' : 'es',
+                          ),
                         );
                       },
                     ),

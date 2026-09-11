@@ -1,8 +1,59 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
+import '../services/locale_service.dart';
 import '../services/session_service.dart';
 import 'purchase_history_screen.dart'; // ✅ IMPORTANTE: CONECTA CON EL HISTORIAL
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Ingresar:': 'Enter:',
+  'Stock actual:': 'Current stock:',
+  'Costo:': 'Cost:',
+  '📦 CANTIDADES ENTRANTES': '📦 INCOMING QUANTITIES',
+  'Bultos': 'Bales',
+  'Und x Bulto': 'Units x Bale',
+  'Entran:': 'Incoming:',
+  'Unidades': 'Units',
+  '💰 COSTO DE ESTA FACTURA': '💰 COST OF THIS INVOICE',
+  'Valor Total a Pagar (\$)': 'Total Amount to Pay (\$)',
+  'Costo Unit. Factura:': 'Unit Cost Invoice:',
+  'NUEVO COSTO PROM:': 'NEW AVG COST:',
+  '📈 PRECIO DE VENTA PÚBLICO': '📈 PUBLIC SALE PRICE',
+  '% Gan.': '% Profit',
+  'Precio Final': 'Final Price',
+  'Cancelar': 'Cancel',
+  '⚠️ Revisa los valores (Costo y Precio)': '⚠️ Check the values (Cost and Price)',
+  'AGREGAR': 'ADD',
+  'Finalizar Pedido': 'Finalize Order',
+  'Total Factura:': 'Invoice Total:',
+  'Proveedor (Opcional)': 'Supplier (Optional)',
+  '¿Pagar con Caja?': 'Pay with Cash Register?',
+  'Se restará del efectivo disponible.': 'It will be deducted from the available cash.',
+  '⚠️ Al confirmar, se actualizarán los precios de venta.': '⚠️ On confirmation, sale prices will be updated.',
+  '¡FONDOS INSUFICIENTES!': 'INSUFFICIENT FUNDS!',
+  'En caja solo hay:': 'There is only in cash:',
+  'Faltan:': 'Missing:',
+  '📢 LLAMA AL ENCARGADO PARA QUE TRAIGA DINERO.': '📢 CALL THE MANAGER TO BRING MONEY.',
+  'ENTENDIDO': 'UNDERSTOOD',
+  'Error': 'Error',
+  '✅ Inventario y Precios actualizados': '✅ Inventory and Prices updated',
+  'CONFIRMAR INGRESO': 'CONFIRM ENTRY',
+  'Ingreso de Pedidos': 'Order Entry',
+  'Ver Historial de Facturas': 'View Invoice History',
+  'Buscar producto para ingresar...': 'Search product to enter...',
+  'Stock:': 'Stock:',
+  '📦 Productos a Ingresar (Con nuevos precios)': '📦 Products to Enter (With new prices)',
+  'Carrito de compras vacío': 'Empty shopping cart',
+  'Nuevas:': 'New:',
+  'Nuevo Precio Venta:': 'New Sale Price:',
+  'TOTAL FACTURA:': 'TOTAL INVOICE:',
+  'FINALIZAR': 'FINALIZE',
+  'Compra pagada con caja: debe abrir la caja antes de registrar':
+      'Purchase paid with cash: you must open the cash register before recording',
+  'Cantidad inválida en la compra': 'Invalid quantity in purchase',
+};
 
 class PurchasesScreen extends StatefulWidget {
   const PurchasesScreen({super.key});
@@ -121,12 +172,12 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Ingresar: ${producto['nombre']}",
+                  "${_t('Ingresar:')} ${producto['nombre']}",
                   style: const TextStyle(fontSize: 16),
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  "Stock actual: ${formater.format(stockActualBD)} u | Costo: ${formater.format(costoActualBD)}",
+                  "${_t('Stock actual:')} ${formater.format(stockActualBD)} u | ${_t('Costo:')} ${formater.format(costoActualBD)}",
                   style: const TextStyle(fontSize: 10, color: Colors.grey),
                 ),
               ],
@@ -144,9 +195,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     ),
                     child: Column(
                       children: [
-                        const Text(
-                          "📦 CANTIDADES ENTRANTES",
-                          style: TextStyle(
+                        Text(
+                          _t('📦 CANTIDADES ENTRANTES'),
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Colors.blue,
                             fontSize: 12,
@@ -159,8 +210,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                               child: TextField(
                                 controller: cantidadCajasCtrl,
                                 keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: "Bultos",
+                                decoration: InputDecoration(
+                                  labelText: _t('Bultos'),
                                   isDense: true,
                                   border: OutlineInputBorder(),
                                 ),
@@ -175,8 +226,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                               child: TextField(
                                 controller: unidadesPorCajaCtrl,
                                 keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: "Und x Bulto",
+                                decoration: InputDecoration(
+                                  labelText: _t('Und x Bulto'),
                                   isDense: true,
                                   border: OutlineInputBorder(),
                                 ),
@@ -190,16 +241,16 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                         ),
                         const SizedBox(height: 5),
                         Text(
-                          "Entran: ${cantidadEntrante.toStringAsFixed(1)} Unidades",
+                          "${_t('Entran:')} ${cantidadEntrante.toStringAsFixed(1)} ${_t('Unidades')}",
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 10),
-                  const Text(
-                    "💰 COSTO DE ESTA FACTURA",
-                    style: TextStyle(
+                  Text(
+                    _t('💰 COSTO DE ESTA FACTURA'),
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Colors.green,
                     ),
@@ -207,9 +258,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                   TextField(
                     controller: costoTotalCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: "Valor Total a Pagar (\$)",
-                      prefixIcon: Icon(Icons.attach_money),
+                    decoration: InputDecoration(
+                      labelText: _t('Valor Total a Pagar (\$)'),
+                      prefixIcon: const Icon(Icons.attach_money),
                       isDense: true,
                       border: OutlineInputBorder(),
                     ),
@@ -233,9 +284,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              "Costo Unit. Factura:",
-                              style: TextStyle(fontSize: 11),
+                            Text(
+                              _t('Costo Unit. Factura:'),
+                              style: const TextStyle(fontSize: 11),
                             ),
                             Text(
                               formater.format(costoUnitarioEntrante),
@@ -249,9 +300,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              "NUEVO COSTO PROM:",
-                              style: TextStyle(
+                            Text(
+                              _t('NUEVO COSTO PROM:'),
+                              style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: Colors.black87,
                               ),
@@ -271,9 +322,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                   ),
 
                   const Divider(),
-                  const Text(
-                    "📈 PRECIO DE VENTA PÚBLICO",
-                    style: TextStyle(
+                  Text(
+                    _t('📈 PRECIO DE VENTA PÚBLICO'),
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Colors.orange,
                     ),
@@ -286,8 +337,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                         child: TextField(
                           controller: porcentajeGananciaCtrl,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: "% Gan.",
+                          decoration: InputDecoration(
+                            labelText: _t('% Gan.'),
                             border: OutlineInputBorder(),
                             isDense: true,
                           ),
@@ -300,9 +351,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                         child: TextField(
                           controller: precioVentaFinalCtrl,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: "Precio Final",
-                            prefixIcon: Icon(Icons.sell),
+                          decoration: InputDecoration(
+                            labelText: _t('Precio Final'),
+                            prefixIcon: const Icon(Icons.sell),
                             border: OutlineInputBorder(),
                           ),
                         ),
@@ -315,7 +366,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text("Cancelar"),
+                child: Text(_t('Cancelar')),
               ),
               ElevatedButton(
                 onPressed: () {
@@ -338,8 +389,10 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     Navigator.pop(ctx);
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("⚠️ Revisa los valores (Costo y Precio)"),
+                      SnackBar(
+                        content: Text(
+                          _t('⚠️ Revisa los valores (Costo y Precio)'),
+                        ),
                       ),
                     );
                   }
@@ -348,7 +401,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                   backgroundColor: Colors.blue[900],
                   foregroundColor: Colors.white,
                 ),
-                child: const Text("AGREGAR"),
+                child: Text(_t('AGREGAR')),
               ),
             ],
           );
@@ -388,12 +441,12 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setSt) {
           return AlertDialog(
-            title: const Text("Finalizar Pedido"),
+            title: Text(_t('Finalizar Pedido')),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  "Total Factura: ${formater.format(totalFactura)}",
+                  "${_t('Total Factura:')} ${formater.format(totalFactura)}",
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -403,31 +456,31 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                 const SizedBox(height: 20),
                 TextField(
                   controller: _proveedorCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Proveedor (Opcional)",
-                    prefixIcon: Icon(Icons.local_shipping),
+                  decoration: InputDecoration(
+                    labelText: _t('Proveedor (Opcional)'),
+                    prefixIcon: const Icon(Icons.local_shipping),
                     border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 20),
                 SwitchListTile(
-                  title: const Text("¿Pagar con Caja?"),
-                  subtitle: const Text("Se restará del efectivo disponible."),
+                  title: Text(_t('¿Pagar con Caja?')),
+                  subtitle: Text(_t('Se restará del efectivo disponible.')),
                   value: _pagoConCaja,
                   activeThumbColor: Colors.red,
                   onChanged: (val) => setSt(() => _pagoConCaja = val),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  "⚠️ Al confirmar, se actualizarán los precios de venta.",
-                  style: TextStyle(color: Colors.orange, fontSize: 12),
+                Text(
+                  _t('⚠️ Al confirmar, se actualizarán los precios de venta.'),
+                  style: const TextStyle(color: Colors.orange, fontSize: 12),
                 ),
               ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text("Cancelar"),
+                child: Text(_t('Cancelar')),
               ),
               ElevatedButton.icon(
                 onPressed: () async {
@@ -440,20 +493,20 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                       showDialog(
                         context: context,
                         builder: (c) => AlertDialog(
-                          title: const Row(
+                          title: Row(
                             children: [
-                              Icon(Icons.money_off, color: Colors.red),
-                              SizedBox(width: 10),
-                              Text("¡FONDOS INSUFICIENTES!"),
+                              const Icon(Icons.money_off, color: Colors.red),
+                              const SizedBox(width: 10),
+                              Text(_t('¡FONDOS INSUFICIENTES!')),
                             ],
                           ),
                           content: Text(
-                            "En caja solo hay: ${formater.format(dineroEnCaja)}\n\nFaltan: ${formater.format(totalFactura - dineroEnCaja)}\n\n📢 LLAMA AL ENCARGADO PARA QUE TRAIGA DINERO.",
+                            "${_t('En caja solo hay:')} ${formater.format(dineroEnCaja)}\n\n${_t('Faltan:')} ${formater.format(totalFactura - dineroEnCaja)}\n\n${_t('📢 LLAMA AL ENCARGADO PARA QUE TRAIGA DINERO.')}",
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(c),
-                              child: const Text("ENTENDIDO"),
+                              child: Text(_t('ENTENDIDO')),
                             ),
                           ],
                         ),
@@ -474,7 +527,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text("❌ ${res['mensaje'] ?? 'Error'}"),
+                        content: Text('❌ ${_t(res['mensaje'] ?? 'Error')}'),
                         backgroundColor: Colors.red,
                       ),
                     );
@@ -483,14 +536,16 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                   Navigator.pop(ctx);
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("✅ Inventario y Precios actualizados"),
+                    SnackBar(
+                      content: Text(
+                        _t('✅ Inventario y Precios actualizados'),
+                      ),
                       backgroundColor: Colors.green,
                     ),
                   );
                 },
                 icon: const Icon(Icons.check_circle),
-                label: const Text("CONFIRMAR INGRESO"),
+                label: Text(_t('CONFIRMAR INGRESO')),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green[800],
                   foregroundColor: Colors.white,
@@ -507,14 +562,14 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Ingreso de Pedidos"),
+        title: Text(_t('Ingreso de Pedidos')),
         backgroundColor: Colors.brown[700],
         foregroundColor: Colors.white,
         // ✅ BOTÓN DE HISTORIAL AGREGADO AQUÍ
         actions: [
           IconButton(
             icon: const Icon(Icons.history, size: 30),
-            tooltip: "Ver Historial de Facturas",
+            tooltip: _t('Ver Historial de Facturas'),
             onPressed: () {
               Navigator.push(
                 context,
@@ -534,7 +589,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
               controller: _searchController,
               onChanged: _filtrarProductos,
               decoration: InputDecoration(
-                hintText: "Buscar producto para ingresar...",
+                hintText: _t('Buscar producto para ingresar...'),
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.clear),
@@ -573,7 +628,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     ),
                     subtitle: Text(
                       // 🔥 AQUÍ USAMOS LA VARIABLE costoSeguro QUE DABA ERROR
-                      "Stock: ${prod['stock_actual']} | Costo: ${formater.format(costoSeguro)}",
+                      "${_t('Stock:')} ${prod['stock_actual']} | ${_t('Costo:')} ${formater.format(costoSeguro)}",
                     ),
                     onTap: () {
                       _mostrarDialogoIngreso(prod);
@@ -592,9 +647,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
             padding: const EdgeInsets.all(10),
             color: Colors.brown[50],
             width: double.infinity,
-            child: const Text(
-              "📦 Productos a Ingresar (Con nuevos precios)",
-              style: TextStyle(
+            child: Text(
+              _t('📦 Productos a Ingresar (Con nuevos precios)'),
+              style: const TextStyle(
                 fontWeight: FontWeight.bold,
                 color: Colors.brown,
               ),
@@ -611,7 +666,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                           size: 50,
                           color: Colors.grey[300],
                         ),
-                        const Text("Carrito de compras vacío"),
+                        Text(_t('Carrito de compras vacío')),
                       ],
                     ),
                   )
@@ -630,7 +685,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           subtitle: Text(
-                            "Nuevas: +${item['cantidad']} | Nuevo Precio Venta: ${formater.format(item['nuevo_precio_venta'])}",
+                            "${_t('Nuevas:')} +${item['cantidad']} | ${_t('Nuevo Precio Venta:')} ${formater.format(item['nuevo_precio_venta'])}",
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -676,9 +731,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        "TOTAL FACTURA:",
-                        style: TextStyle(
+                      Text(
+                        _t('TOTAL FACTURA:'),
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                           color: Colors.grey,
@@ -703,7 +758,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                 ElevatedButton.icon(
                   onPressed: _incomingItems.isEmpty ? null : _finalizarIngreso,
                   icon: const Icon(Icons.save_alt),
-                  label: const Text("FINALIZAR"),
+                  label: Text(_t('FINALIZAR')),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.brown[700],
                     foregroundColor: Colors.white,

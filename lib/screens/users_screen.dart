@@ -2,6 +2,43 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/pin_auth_service.dart';
 import '../services/session_service.dart';
+import '../services/locale_service.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Crear usuario': 'Create user',
+  'Nombre completo': 'Full name',
+  'Correo electronico': 'Email',
+  'Ej: juan@gmail.com': 'E.g: juan@gmail.com',
+  'Rol': 'Role',
+  'Cajero': 'Cashier',
+  'Administrador': 'Administrator',
+  'PIN (6 digitos)': 'PIN (6 digits)',
+  'Ej: 123456': 'E.g: 123456',
+  'Cancelar': 'Cancel',
+  'Crear': 'Create',
+  'Recuperar PIN': 'Recover PIN',
+  'Se enviara un enlace a': 'A link will be sent to',
+  'El usuario debera abrirlo, crear un PIN nuevo y luego usarlo para entrar a NovaPOS.':
+      'The user must open it, create a new PIN, and then use it to enter NovaPOS.',
+  'Enviar enlace': 'Send link',
+  'Enlace enviado a': 'Link sent to',
+  'No se pudo enviar el enlace': 'Could not send the link',
+  'Editar': 'Edit',
+  'Guardar': 'Save',
+  'Usuario actualizado': 'User updated',
+  'Error al actualizar': 'Error updating',
+  'Desactivar': 'Deactivate',
+  'Desactivar usuario': 'Deactivate user',
+  'Deseas desactivar a': 'Do you want to deactivate',
+  'Usuario desactivado': 'User deactivated',
+  'Error': 'Error',
+  'Gestionar Usuarios': 'Manage Users',
+  'No hay usuarios': 'No users',
+  'Toca + para crear el primer usuario': 'Tap + to create the first user',
+  'Admin': 'Admin',
+};
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -38,39 +75,45 @@ class _UsersScreenState extends State<UsersScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Crear usuario'),
+        title: Text(_t('Crear usuario')),
         content: StatefulBuilder(
           builder: (ctx, setDialogState) => Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nombreCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre completo',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _t('Nombre completo'),
+                  border: const OutlineInputBorder(),
                 ),
                 textCapitalization: TextCapitalization.words,
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: emailCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Correo electronico',
-                  border: OutlineInputBorder(),
-                  hintText: 'Ej: juan@gmail.com',
+                decoration: InputDecoration(
+                  labelText: _t('Correo electronico'),
+                  border: const OutlineInputBorder(),
+                  hintText: _t('Ej: juan@gmail.com'),
                 ),
                 keyboardType: TextInputType.emailAddress,
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 initialValue: rolSeleccionado,
-                decoration: const InputDecoration(
-                  labelText: 'Rol',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _t('Rol'),
+                  border: const OutlineInputBorder(),
                 ),
-                items: const [
-                  DropdownMenuItem(value: 'CAJERO', child: Text('Cajero')),
-                  DropdownMenuItem(value: 'ADMIN', child: Text('Administrador')),
+                items: [
+                  DropdownMenuItem(
+                    value: 'CAJERO',
+                    child: Text(_t('Cajero')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'ADMIN',
+                    child: Text(_t('Administrador')),
+                  ),
                 ],
                 onChanged: (v) {
                   if (v != null) setDialogState(() => rolSeleccionado = v);
@@ -79,10 +122,10 @@ class _UsersScreenState extends State<UsersScreen> {
               const SizedBox(height: 16),
               TextField(
                 controller: pinCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'PIN (6 digitos)',
-                  border: OutlineInputBorder(),
-                  hintText: 'Ej: 123456',
+                decoration: InputDecoration(
+                  labelText: _t('PIN (6 digitos)'),
+                  border: const OutlineInputBorder(),
+                  hintText: _t('Ej: 123456'),
                 ),
                 keyboardType: TextInputType.number,
                 maxLength: 6,
@@ -95,7 +138,7 @@ class _UsersScreenState extends State<UsersScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
+            child: Text(_t('Cancelar')),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -131,7 +174,7 @@ class _UsersScreenState extends State<UsersScreen> {
               backgroundColor: Colors.green.shade700,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Crear'),
+            child: Text(_t('Crear')),
           ),
         ],
       ),
@@ -142,14 +185,15 @@ class _UsersScreenState extends State<UsersScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Recuperar PIN'),
+        title: Text(_t('Recuperar PIN')),
         content: Text(
-          'Se enviara un enlace a ${usuario['email']}.\n\nEl usuario debera abrirlo, crear un PIN nuevo y luego usarlo para entrar a NovaPOS.',
+          '${_t('Se enviara un enlace a')} ${usuario['email']}.\n\n'
+          '${_t('El usuario debera abrirlo, crear un PIN nuevo y luego usarlo para entrar a NovaPOS.')}',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
+            child: Text(_t('Cancelar')),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -162,14 +206,14 @@ class _UsersScreenState extends State<UsersScreen> {
                 SnackBar(
                   content: Text(
                     ok
-                        ? 'Enlace enviado a ${usuario['email']}'
-                        : 'No se pudo enviar el enlace',
+                        ? '${_t('Enlace enviado a')} ${usuario['email']}'
+                        : _t('No se pudo enviar el enlace'),
                   ),
                   backgroundColor: ok ? Colors.green : Colors.red,
                 ),
               );
             },
-            child: const Text('Enviar enlace'),
+            child: Text(_t('Enviar enlace')),
           ),
         ],
       ),
@@ -183,29 +227,35 @@ class _UsersScreenState extends State<UsersScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Editar - ${usuario['nombre']}'),
+        title: Text('${_t('Editar')} - ${usuario['nombre']}'),
         content: StatefulBuilder(
           builder: (ctx, setDialogState) => Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nombreCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre completo',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _t('Nombre completo'),
+                  border: const OutlineInputBorder(),
                 ),
                 textCapitalization: TextCapitalization.words,
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 initialValue: rolSeleccionado,
-                decoration: const InputDecoration(
-                  labelText: 'Rol',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _t('Rol'),
+                  border: const OutlineInputBorder(),
                 ),
-                items: const [
-                  DropdownMenuItem(value: 'CAJERO', child: Text('Cajero')),
-                  DropdownMenuItem(value: 'ADMIN', child: Text('Administrador')),
+                items: [
+                  DropdownMenuItem(
+                    value: 'CAJERO',
+                    child: Text(_t('Cajero')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'ADMIN',
+                    child: Text(_t('Administrador')),
+                  ),
                 ],
                 onChanged: (v) {
                   if (v != null) setDialogState(() => rolSeleccionado = v);
@@ -217,7 +267,7 @@ class _UsersScreenState extends State<UsersScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
+            child: Text(_t('Cancelar')),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -234,7 +284,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(ok ? 'Usuario actualizado' : 'Error al actualizar'),
+                  content: Text(ok ? _t('Usuario actualizado') : _t('Error al actualizar')),
                   backgroundColor: ok ? Colors.green : Colors.red,
                 ),
               );
@@ -245,7 +295,7 @@ class _UsersScreenState extends State<UsersScreen> {
               backgroundColor: Colors.green.shade700,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Guardar'),
+            child: Text(_t('Guardar')),
           ),
         ],
       ),
@@ -256,12 +306,12 @@ class _UsersScreenState extends State<UsersScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Desactivar usuario'),
-        content: Text('Deseas desactivar a ${usuario['nombre']}?'),
+        title: Text(_t('Desactivar usuario')),
+        content: Text('${_t('Deseas desactivar a')} ${usuario['nombre']}?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
+            child: Text(_t('Cancelar')),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -270,14 +320,14 @@ class _UsersScreenState extends State<UsersScreen> {
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(ok ? 'Usuario desactivado' : 'Error'),
+                  content: Text(ok ? _t('Usuario desactivado') : _t('Error')),
                   backgroundColor: ok ? Colors.orange : Colors.red,
                 ),
               );
               _cargarUsuarios();
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('Desactivar'),
+            child: Text(_t('Desactivar')),
           ),
         ],
       ),
@@ -288,7 +338,7 @@ class _UsersScreenState extends State<UsersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gestionar Usuarios'),
+        title: Text(_t('Gestionar Usuarios')),
         backgroundColor: Colors.green.shade700,
         foregroundColor: Colors.white,
       ),
@@ -307,12 +357,12 @@ class _UsersScreenState extends State<UsersScreen> {
                       Icon(Icons.people_outline, size: 64, color: Colors.grey.shade400),
                       const SizedBox(height: 16),
                       Text(
-                        'No hay usuarios',
+                        _t('No hay usuarios'),
                         style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Toca + para crear el primer usuario',
+                        _t('Toca + para crear el primer usuario'),
                         style: TextStyle(color: Colors.grey.shade500),
                       ),
                     ],
@@ -341,39 +391,39 @@ class _UsersScreenState extends State<UsersScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         subtitle: Text(
-                          '${u['email'] ?? ''}  •  ${esAdmin ? 'Admin' : 'Cajero'}',
+                          '${u['email'] ?? ''}  •  ${esAdmin ? _t('Admin') : _t('Cajero')}',
                           style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                         ),
                         trailing: PopupMenuButton(
                           itemBuilder: (ctx) => [
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'editar',
                               child: Row(
                                 children: [
                                   Icon(Icons.edit, size: 20),
                                   SizedBox(width: 8),
-                                  Text('Editar'),
+                                  Text(_t('Editar')),
                                 ],
                               ),
                             ),
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'recuperar',
                               child: Row(
                                 children: [
                                   Icon(Icons.mail_outline, size: 20),
                                   SizedBox(width: 8),
-                                  Text('Recuperar PIN'),
+                                  Text(_t('Recuperar PIN')),
                                 ],
                               ),
                             ),
                             if (!esAdmin)
-                              const PopupMenuItem(
+                              PopupMenuItem(
                                 value: 'desactivar',
                                 child: Row(
                                   children: [
                                     Icon(Icons.person_off, size: 20, color: Colors.orange),
                                     SizedBox(width: 8),
-                                    Text('Desactivar',
+                                    Text(_t('Desactivar'),
                                         style: TextStyle(color: Colors.orange)),
                                   ],
                                 ),

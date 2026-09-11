@@ -1,6 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../services/locale_service.dart';
 import 'pin_login_screen.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Sistema Point of Sale': 'Point of Sale System',
+};
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -77,8 +84,8 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Sistema Point of Sale',
+              Text(
+                _t('Sistema Point of Sale'),
                 style: TextStyle(
                   fontSize: 15,
                   color: Color(0xFFA9DFBF),

@@ -1,10 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/locale_service.dart';
 import '../services/pin_auth_service.dart';
 import '../services/session_service.dart';
 import '../services/permission_service.dart';
 import '../services/role_permissions.dart';
 import 'home_screen.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Ingresa tu correo electronico': 'Enter your email',
+  'PIN incorrecto': 'Incorrect PIN',
+  'Correo o PIN incorrectos': 'Incorrect email or PIN',
+  'Usuario sin negocio asignado': 'User without an assigned business',
+  'Negocio no encontrado': 'Business not found',
+  'Licencia bloqueada. Contacte al administrador.':
+      'License blocked. Contact the administrator.',
+  'Tu licencia de NovaPOS ha vencido. Renueva para continuar.':
+      'Your NovaPOS license has expired. Renew to continue.',
+  'Error de conexion': 'Connection error',
+  'Usuario desactivado por el administrador':
+      'User disabled by the administrator',
+  'Demasiados intentos fallidos. Espera unos minutos':
+      'Too many failed attempts. Wait a few minutes',
+  'Sin conexion a internet': 'No internet connection',
+  'Cambiar': 'Change',
+  'Intentos agotados': 'Attempts exhausted',
+  'segundos': 'seconds',
+  'Ingresa tu PIN para acceder': 'Enter your PIN to access',
+  'Ingresa tu correo y PIN': 'Enter your email and PIN',
+  'Correo electronico': 'Email',
+  'ENTRAR': 'ENTER',
+};
 
 class PinLoginScreen extends StatefulWidget {
   const PinLoginScreen({super.key});
@@ -272,10 +300,10 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                   ],
                   Text(
                     _bloqueado
-                        ? 'Intentos agotados. Espera $_segundosBloqueo segundos'
+                        ? '${_t('Intentos agotados')}. Espera $_segundosBloqueo ${_t('segundos')}'
                         : _soloPin
-                            ? 'Ingresa tu PIN para acceder'
-                            : 'Ingresa tu correo y PIN',
+                            ? _t('Ingresa tu PIN para acceder')
+                            : _t('Ingresa tu correo y PIN'),
                     style: TextStyle(
                       color: _bloqueado ? Colors.red : Colors.grey.shade600,
                       fontSize: 14,
@@ -286,7 +314,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                     TextField(
                       controller: _emailCtrl,
                       decoration: InputDecoration(
-                        hintText: 'Correo electronico',
+                        hintText: _t('Correo electronico'),
                         prefixIcon: const Icon(Icons.email_outlined),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -307,7 +335,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        _error!,
+                        _t(_error!),
                         style: const TextStyle(color: Colors.red, fontSize: 13),
                       ),
                     ),
@@ -404,7 +432,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
           ),
         ),
         child: Text(
-          tecla,
+          _t(tecla),
           style: TextStyle(
             fontSize: esEntrar ? 16 : 22,
             fontWeight: FontWeight.w700,

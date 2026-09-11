@@ -2,6 +2,47 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/permission_service.dart';
+import '../services/locale_service.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Inteligencia de Negocio': 'Business Intelligence',
+  'No tienes permiso para ver los reportes':
+      "You don't have permission to view reports",
+  'PANORAMA GENERAL': 'GENERAL OVERVIEW',
+  'ANALIZADOR DETALLADO': 'DETAILED ANALYZER',
+  'ESTADO DE RESULTADOS': 'INCOME STATEMENT',
+  'Concepto': 'Concept',
+  'HOY': 'TODAY',
+  'MES': 'MONTH',
+  'AÑO': 'YEAR',
+  'Ventas': 'Sales',
+  '(-) Costos': '(-) Costs',
+  '= Utilidad Bruta': '= Gross Profit',
+  '(-) Gastos': '(-) Expenses',
+  '= UTILIDAD NETA': '= NET PROFIT',
+  'INVENTARIO': 'INVENTORY',
+  'CARTERA': 'RECEIVABLES',
+  'Hoy': 'Today',
+  'Ayer': 'Yesterday',
+  'Esta Semana': 'This Week',
+  'Este Mes': 'This Month',
+  'Este Año': 'This Year',
+  'Rango': 'Range',
+  'Todos los cajeros': 'All cashiers',
+  'Cajero': 'Cashier',
+  'RESULTADOS': 'RESULTS',
+  'Gastos': 'Expenses',
+  'Ganancia Neta': 'Net Profit',
+  '🏆 Productos Más Vendidos': '🏆 Best Selling Products',
+  'Sin ventas en este periodo': 'No sales in this period',
+  'Unds': 'Units',
+  '📦 Ventas por Categoría': '📦 Sales by Category',
+  'Sin datos': 'No data',
+  '💳 Métodos de Pago': '💳 Payment Methods',
+  'No se pudo cargar el informe': 'Could not load the report',
+};
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -183,7 +224,7 @@ class _ReportsScreenState extends State<ReportsScreen>
       if (!mounted) return;
       setState(() {
         _cargandoDetalle = false;
-        _errorDetalle = "No se pudo cargar el informe: $e";
+        _errorDetalle = "${_t('No se pudo cargar el informe')}: $e";
       });
     }
   }
@@ -197,18 +238,18 @@ class _ReportsScreenState extends State<ReportsScreen>
     if (!PermissionService.can('REPORTES_VER')) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text("Inteligencia de Negocio"),
+          title: Text(_t('Inteligencia de Negocio')),
           backgroundColor: const Color(0xFF1A1F2B),
         ),
-        body: const Center(
-          child: Text("No tienes permiso para ver los reportes"),
+        body: Center(
+          child: Text(_t('No tienes permiso para ver los reportes')),
         ),
       );
     }
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
       appBar: AppBar(
-        title: const Text("Inteligencia de Negocio"),
+        title: Text(_t('Inteligencia de Negocio')),
         backgroundColor: const Color(0xFF1A1F2B),
         foregroundColor: Colors.white,
         bottom: TabBar(
@@ -216,9 +257,15 @@ class _ReportsScreenState extends State<ReportsScreen>
           indicatorColor: Colors.orange,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.grey,
-          tabs: const [
-            Tab(icon: Icon(Icons.dashboard), text: "PANORAMA GENERAL"),
-            Tab(icon: Icon(Icons.analytics), text: "ANALIZADOR DETALLADO"),
+          tabs: [
+            Tab(
+              icon: const Icon(Icons.dashboard),
+              text: _t('PANORAMA GENERAL'),
+            ),
+            Tab(
+              icon: const Icon(Icons.analytics),
+              text: _t('ANALIZADOR DETALLADO'),
+            ),
           ],
         ),
       ),
@@ -242,9 +289,9 @@ class _ReportsScreenState extends State<ReportsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "ESTADO DE RESULTADOS",
-            style: TextStyle(
+          Text(
+            _t('ESTADO DE RESULTADOS'),
+            style: const TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 14,
               color: Colors.grey,
@@ -274,7 +321,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                       Expanded(
                         flex: 3,
                         child: Text(
-                          "Concepto",
+                          _t('Concepto'),
                           style: TextStyle(
                             color: Colors.grey[800],
                             fontWeight: FontWeight.bold,
@@ -284,7 +331,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                       Expanded(
                         flex: 2,
                         child: Text(
-                          "HOY",
+                          _t('HOY'),
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             color: Colors.blue[900],
@@ -295,7 +342,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                       Expanded(
                         flex: 2,
                         child: Text(
-                          "MES",
+                          _t('MES'),
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             color: Colors.blue[900],
@@ -306,7 +353,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                       Expanded(
                         flex: 2,
                         child: Text(
-                          "AÑO",
+                          _t('AÑO'),
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             color: Colors.blue[900],
@@ -322,7 +369,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                   child: Column(
                     children: [
                       _filaTabla(
-                        "Ventas",
+                        _t('Ventas'),
                         _hoy['ventas']!,
                         _mes['ventas']!,
                         _anio['ventas']!,
@@ -331,7 +378,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                       ),
                       const Divider(),
                       _filaTabla(
-                        "(-) Costos",
+                        _t('(-) Costos'),
                         _hoy['costos']!,
                         _mes['costos']!,
                         _anio['costos']!,
@@ -339,7 +386,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                       ),
                       const SizedBox(height: 5),
                       _filaTabla(
-                        "= Utilidad Bruta",
+                        _t('= Utilidad Bruta'),
                         _hoy['utilidad_bruta']!,
                         _mes['utilidad_bruta']!,
                         _anio['utilidad_bruta']!,
@@ -348,7 +395,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                       ),
                       const Divider(),
                       _filaTabla(
-                        "(-) Gastos",
+                        _t('(-) Gastos'),
                         _hoy['gastos']!,
                         _mes['gastos']!,
                         _anio['gastos']!,
@@ -356,7 +403,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                       ),
                       const Divider(thickness: 2),
                       _filaTabla(
-                        "= UTILIDAD NETA",
+                        _t('= UTILIDAD NETA'),
                         _hoy['utilidad_neta']!,
                         _mes['utilidad_neta']!,
                         _anio['utilidad_neta']!,
@@ -375,7 +422,7 @@ class _ReportsScreenState extends State<ReportsScreen>
             children: [
               Expanded(
                 child: _kpiCard(
-                  "INVENTARIO",
+                  _t('INVENTARIO'),
                   _inventarioValor,
                   Icons.inventory_2,
                   Colors.purple,
@@ -384,7 +431,7 @@ class _ReportsScreenState extends State<ReportsScreen>
               const SizedBox(width: 10),
               Expanded(
                 child: _kpiCard(
-                  "CARTERA",
+                  _t('CARTERA'),
                   _cartera,
                   Icons.groups,
                   Colors.orange,
@@ -416,7 +463,7 @@ class _ReportsScreenState extends State<ReportsScreen>
               _filtroChip("Este Mes", Icons.calendar_month),
               _filtroChip("Este Año", Icons.event),
               ActionChip(
-                label: const Text("Rango"),
+                label: Text(_t('Rango')),
                 avatar: const Icon(Icons.date_range, size: 16),
                 backgroundColor: _rangoSeleccionado == "Rango"
                     ? Colors.orange[100]
@@ -431,14 +478,14 @@ class _ReportsScreenState extends State<ReportsScreen>
                     isDense: true,
                     underline: const SizedBox.shrink(),
                     items: [
-                      const DropdownMenuItem<int>(
+                      DropdownMenuItem<int>(
                         value: -1,
-                        child: Text("Todos los cajeros"),
+                        child: Text(_t('Todos los cajeros')),
                       ),
                       ..._cajeros.map(
                         (u) => DropdownMenuItem<int>(
                           value: u['id'] as int,
-                          child: Text(u['nombre'] ?? "Cajero"),
+                          child: Text(u['nombre'] ?? _t('Cajero')),
                         ),
                       ),
                     ],
@@ -486,7 +533,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                       child: Column(
                         children: [
                           Text(
-                            "RESULTADOS: $_rangoSeleccionado",
+                            "${_t('RESULTADOS')}: $_rangoSeleccionado",
                             style: const TextStyle(
                               color: Colors.white70,
                               fontWeight: FontWeight.bold,
@@ -497,17 +544,17 @@ class _ReportsScreenState extends State<ReportsScreen>
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               _datoResumenBlanco(
-                                "Ventas",
+                                _t('Ventas'),
                                 _finanzasDetalle['ventas'] ?? 0,
                                 Colors.green,
                               ),
                               _datoResumenBlanco(
-                                "Gastos",
+                                _t('Gastos'),
                                 _finanzasDetalle['gastos'] ?? 0,
                                 Colors.red,
                               ),
                               _datoResumenBlanco(
-                                "Ganancia Neta",
+                                _t('Ganancia Neta'),
                                 _finanzasDetalle['utilidad_neta'] ?? 0,
                                 Colors.white,
                               ),
@@ -520,17 +567,20 @@ class _ReportsScreenState extends State<ReportsScreen>
                   const SizedBox(height: 20),
 
                   // TOP PRODUCTOS
-                  const Text(
-                    "🏆 Productos Más Vendidos",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  Text(
+                    _t('🏆 Productos Más Vendidos'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Card(
                     child: _topProductos.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.all(20),
+                        ? Padding(
+                            padding: const EdgeInsets.all(20),
                             child: Center(
-                              child: Text("Sin ventas en este periodo"),
+                              child: Text(_t('Sin ventas en este periodo')),
                             ),
                           )
                         : ListView.separated(
@@ -559,7 +609,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                subtitle: Text("${p['cantidad_total']} Unds"),
+                                subtitle: Text("${p['cantidad_total']} ${_t('Unds')}"),
                                 trailing: Text(
                                   formater.format(p['dinero_total']),
                                   style: const TextStyle(
@@ -574,16 +624,19 @@ class _ReportsScreenState extends State<ReportsScreen>
                   const SizedBox(height: 20),
 
                   // VENTAS POR CATEGORÍA
-                  const Text(
-                    "📦 Ventas por Categoría",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  Text(
+                    _t('📦 Ventas por Categoría'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Card(
                     child: _ventasCategoria.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.all(20),
-                            child: Center(child: Text("Sin datos")),
+                        ? Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Center(child: Text(_t('Sin datos'))),
                           )
                         : Column(
                             children: _ventasCategoria.map((c) {
@@ -614,9 +667,12 @@ class _ReportsScreenState extends State<ReportsScreen>
                   const SizedBox(height: 20),
 
                   // MÉTODOS DE PAGO
-                  const Text(
-                    "💳 Métodos de Pago",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  Text(
+                    _t('💳 Métodos de Pago'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -677,7 +733,7 @@ class _ReportsScreenState extends State<ReportsScreen>
   Widget _filtroChip(String label, IconData icon) {
     bool selected = _rangoSeleccionado == label;
     return ChoiceChip(
-      label: Text(label),
+      label: Text(_t(label)),
       avatar: Icon(
         icon,
         size: 17,

@@ -10,6 +10,86 @@ import 'dart:io';
 import '../services/permission_service.dart';
 import '../services/sales_service.dart';
 import '../services/balanza_service.dart';
+import '../services/locale_service.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Nueva Categoría': 'New Category',
+  'Nombre (Ej: Helados)': 'Name (e.g.: Ice Cream)',
+  'Cancelar': 'Cancel',
+  'GUARDAR': 'SAVE',
+  '¿Cancelar Venta?': 'Cancel Sale?',
+  'Se borrarán todos los productos de este pedido.': 'All products in this order will be deleted.',
+  'No': 'No',
+  'SÍ, BORRAR': 'YES, DELETE',
+  '¡STOP! CAJA CERRADA 🛑': 'STOP! REGISTER CLOSED 🛑',
+  '⚠️ No puedes vender si no has hecho la Apertura de Caja.\n\nPor favor, registra la base inicial.': '⚠️ You cannot sell if you have not opened the Register.\n\nPlease, register the starting cash.',
+  '🔙 Volver': '🔙 Back',
+  'IR A ABRIR CAJA': 'GO OPEN REGISTER',
+  '🔌 Cajón Abierto': '🔌 Cash Drawer Open',
+  '¿Cómo vas a vender': 'How are you selling',
+  'Unidad Individual': 'Single Unit',
+  'Precio': 'Price',
+  'Contiene': 'Contains',
+  'unds': 'units',
+  'Cantidad': 'Quantity',
+  'Pesando': 'Weighing',
+  'Coloca el producto en la balanza...': 'Place the product on the scale...',
+  'Sin balanza conectada. Usa la simulacion.': 'No scale connected. Use the simulation.',
+  'Esperando peso estable...': 'Waiting for stable weight...',
+  'USAR PESO': 'USE WEIGHT',
+  'ESPERANDO...': 'WAITING...',
+  'SIMULAR PESO (1.5 Kg)': 'SIMULATE WEIGHT (1.5 Kg)',
+  'Devolver': 'Change',
+  'Faltan': 'Missing',
+  'Resumen de Pago': 'Payment Summary',
+  'Efectivo': 'Cash',
+  'Nequi': 'Nequi',
+  'Fiado': 'Credit',
+  'Seleccione Cliente': 'Select Customer',
+  '(Toque Fiado otra vez para buscar)': '(Tap Credit again to search)',
+  'DINERO RECIBIDO': 'CASH RECEIVED',
+  'CAMBIO / VUELTAS': 'CHANGE',
+  'ESTADO': 'STATUS',
+  'CANCELAR': 'CANCEL',
+  'No tienes permiso para realizar ventas.': 'You do not have permission to make sales.',
+  '⚠️ Selecciona un cliente para fiar': '⚠️ Select a customer for credit',
+  '⚠️ Falta dinero para completar el pago': '⚠️ Not enough money to complete the payment',
+  '⚠️ No se pudo registrar la venta': '⚠️ The sale could not be registered',
+  'Error desconocido': 'Unknown error',
+  '✅ VENTA': '✅ SALE',
+  'REGISTRADA': 'RECORDED',
+  '❌ Error al Guardar': '❌ Save Error',
+  'No se pudo registrar la venta.': 'The sale could not be registered.',
+  'Detalle técnico:': 'Technical detail:',
+  'FINALIZAR VENTA': 'COMPLETE SALE',
+  'Seleccionar Cliente': 'Select Customer',
+  'Nuevo Cliente': 'New Customer',
+  '¿Qué es eso? 🤔': 'What is that? 🤔',
+  'El código': 'The code',
+  'no existe': 'does not exist',
+  '¿Quieres registrar este producto? 📦': 'Do you want to register this product? 📦',
+  'SÍ, CREARLO': 'YES, CREATE IT',
+  'x unit': 'per unit',
+  'Escanear o buscar...': 'Scan or search...',
+  'Inventario': 'Inventory',
+  'Cajón': 'Drawer',
+  'Crear Categoría': 'Create Category',
+  'Stock': 'Stock',
+  'Cliente': 'Customer',
+  'Carrito': 'Cart',
+  'Carrito Vacío': 'Empty Cart',
+  'COD:': 'CODE:',
+  'TOTAL:': 'TOTAL:',
+  'COBRAR': 'CHARGE',
+  'OK': 'OK',
+  'Debe abrir la caja antes de vender': 'You must open the register before selling',
+  'Debe seleccionar un cliente válido': 'You must select a valid customer',
+  'El cliente seleccionado ya no existe': 'The selected customer no longer exists',
+  'El cliente está inactivo': 'The customer is inactive',
+  'Excede el cupo de crédito del cliente': 'Exceeds the customer credit limit',
+};
 
 class PosScreen extends StatefulWidget {
   const PosScreen({super.key});
@@ -66,19 +146,19 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text("Nueva Categoría"),
+        title: Text(_t("Nueva Categoría")),
         content: TextField(
           controller: txtCtrl,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(
-            labelText: "Nombre (Ej: Helados)",
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: _t("Nombre (Ej: Helados)"),
+            border: const OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c),
-            child: const Text("Cancelar"),
+            child: Text(_t("Cancelar")),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -88,7 +168,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 Navigator.pop(c);
               }
             },
-            child: const Text("GUARDAR"),
+            child: Text(_t("GUARDAR")),
           ),
         ],
       ),
@@ -137,12 +217,12 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("¿Cancelar Venta?"),
-        content: const Text("Se borrarán todos los productos de este pedido."),
+        title: Text(_t("¿Cancelar Venta?")),
+        content: Text(_t("Se borrarán todos los productos de este pedido.")),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("No"),
+            child: Text(_t("No")),
           ),
           ElevatedButton(
             onPressed: () {
@@ -156,7 +236,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text("SÍ, BORRAR"),
+            child: Text(_t("SÍ, BORRAR")),
           ),
         ],
       ),
@@ -173,24 +253,24 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Column(
+          title: Column(
             children: [
-              Icon(Icons.lock_person, color: Colors.red, size: 60),
-              SizedBox(height: 10),
+              const Icon(Icons.lock_person, color: Colors.red, size: 60),
+              const SizedBox(height: 10),
               Text(
-                "¡STOP! CAJA CERRADA 🛑",
+                _t("¡STOP! CAJA CERRADA 🛑"),
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   color: Colors.red,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
-          content: const Text(
-            "⚠️ No puedes vender si no has hecho la Apertura de Caja.\n\nPor favor, registra la base inicial.",
+          content: Text(
+            _t("⚠️ No puedes vender si no has hecho la Apertura de Caja.\n\nPor favor, registra la base inicial."),
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16),
+            style: const TextStyle(fontSize: 16),
           ),
           actions: [
             TextButton(
@@ -198,9 +278,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 Navigator.pop(c);
                 Navigator.pop(c);
               },
-              child: const Text(
-                "🔙 Volver",
-                style: TextStyle(color: Colors.grey),
+              child: Text(
+                _t("🔙 Volver"),
+                style: const TextStyle(color: Colors.grey),
               ),
             ),
             ElevatedButton.icon(
@@ -212,7 +292,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 );
               },
               icon: const Icon(Icons.key),
-              label: const Text("IR A ABRIR CAJA"),
+              label: Text(_t("IR A ABRIR CAJA")),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue[800],
                 foregroundColor: Colors.white,
@@ -322,16 +402,16 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
   void _abrirCajonMonedero() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Row(
           children: [
-            Icon(Icons.point_of_sale, color: Colors.white),
-            SizedBox(width: 10),
-            Text("🔌 Cajón Abierto"),
+            const Icon(Icons.point_of_sale, color: Colors.white),
+            const SizedBox(width: 10),
+            Text(_t("🔌 Cajón Abierto")),
           ],
         ),
         backgroundColor: Colors.blueGrey,
-        duration: Duration(milliseconds: 500),
+        duration: const Duration(milliseconds: 500),
       ),
     );
   }
@@ -419,14 +499,14 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              "¿Cómo vas a vender ${p['nombre']}?",
+              "${_t('¿Cómo vas a vender')} ${p['nombre']}?",
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             const SizedBox(height: 15),
             ListTile(
               leading: const Icon(Icons.circle, size: 15, color: Colors.blue),
-              title: const Text("Unidad Individual"),
-              subtitle: Text("Precio: ${formater.format(p['precio_venta'])}"),
+              title: Text(_t("Unidad Individual")),
+              subtitle: Text("${_t('Precio')}: ${formater.format(p['precio_venta'])}"),
               onTap: () {
                 Navigator.pop(ctx);
                 _dialogoCantidad(p);
@@ -438,7 +518,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 leading: const Icon(Icons.inventory_2, color: Colors.orange),
                 title: Text(pack['nombre']),
                 subtitle: Text(
-                  "Contiene ${pack['cantidad']} unds | Precio: ${formater.format(pack['precio'])}",
+                  "${_t('Contiene')} ${pack['cantidad']} ${_t('unds')} | ${_t('Precio')}: ${formater.format(pack['precio'])}",
                 ),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -508,7 +588,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
           return AlertDialog(
             backgroundColor: Colors.grey[100],
             title: Text(
-              "Cantidad: ${p['nombre']}",
+              "${_t('Cantidad')}: ${p['nombre']}",
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             content: Column(
@@ -586,7 +666,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
               children: [
                 const Icon(Icons.scale, color: Colors.green),
                 const SizedBox(width: 10),
-                Expanded(child: Text("Pesando: ${p['nombre']}")),
+                Expanded(child: Text("${_t('Pesando')}: ${p['nombre']}")),
               ],
             ),
             content: Column(
@@ -594,8 +674,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
               children: [
                 Text(
                   hayBalanza
-                      ? "Coloca el producto en la balanza..."
-                      : "Sin balanza conectada. Usa la simulacion.",
+                      ? _t("Coloca el producto en la balanza...")
+                      : _t("Sin balanza conectada. Usa la simulacion."),
                   style: const TextStyle(fontStyle: FontStyle.italic),
                 ),
                 const SizedBox(height: 16),
@@ -603,7 +683,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   Text(
                     peso > 0
                         ? "${peso.toStringAsFixed(3)} Kg"
-                        : "Esperando peso estable...",
+                        : _t("Esperando peso estable..."),
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -621,8 +701,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                     icon: const Icon(Icons.check),
                     label: Text(
                       peso > 0
-                          ? "USAR PESO (${peso.toStringAsFixed(3)} Kg)"
-                          : "ESPERANDO...",
+                          ? "${_t('USAR PESO')} (${peso.toStringAsFixed(3)} Kg)"
+                          : _t("ESPERANDO..."),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
@@ -637,7 +717,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                     Navigator.pop(ctx);
                   },
                   icon: const Icon(Icons.download),
-                  label: const Text("SIMULAR PESO (1.5 Kg)"),
+                  label: Text(_t("SIMULAR PESO (1.5 Kg)")),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue[50],
                     foregroundColor: Colors.blue[900],
@@ -675,10 +755,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
           if (dineroEntregado > 0) {
             if (cambio >= 0) {
               colorCambio = Colors.green;
-              textoCambio = "Devolver: ${formater.format(cambio)}";
+              textoCambio = "${_t('Devolver')}: ${formater.format(cambio)}";
             } else {
               colorCambio = Colors.red;
-              textoCambio = "Faltan: ${formater.format(cambio.abs())}";
+              textoCambio = "${_t('Faltan')}: ${formater.format(cambio.abs())}";
             }
           }
 
@@ -688,9 +768,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
             ),
             title: Column(
               children: [
-                const Text(
-                  "Resumen de Pago",
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                Text(
+                  _t("Resumen de Pago"),
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
                 ),
                 const SizedBox(height: 5),
                 Text(
@@ -711,15 +791,15 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                     children: [
                       Expanded(
                         child: ChoiceChip(
-                          label: const Text("Efectivo"),
+                          label: Text(_t("Efectivo")),
                           selected: metodo == "EFECTIVO",
                           onSelected: (v) => st(() => metodo = "EFECTIVO"),
                         ),
                       ),
                       const SizedBox(width: 5),
                       Expanded(
-                        child: ChoiceChip(
-                          label: const Text("Nequi"),
+child: ChoiceChip(
+                          label: Text(_t("Nequi")),
                           selected: metodo == "NEQUI",
                           onSelected: (v) => st(() {
                             metodo = "NEQUI";
@@ -729,8 +809,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                       ),
                       const SizedBox(width: 5),
                       Expanded(
-                        child: ChoiceChip(
-                          label: const Text("Fiado"),
+child: ChoiceChip(
+                          label: Text(_t("Fiado")),
                           selected: metodo == "CREDITO",
                           onSelected: (v) {
                             st(() => metodo = "CREDITO");
@@ -761,16 +841,16 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           Text(
                             _clienteSeleccionadoGlobal != null
                                 ? _clienteSeleccionadoGlobal!['nombre']
-                                : "Seleccione Cliente",
+                                : _t("Seleccione Cliente"),
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 18,
                             ),
                           ),
                           if (_clienteSeleccionadoGlobal == null)
-                            const Text(
-                              "(Toque Fiado otra vez para buscar)",
-                              style: TextStyle(fontSize: 12),
+                            Text(
+                              _t("(Toque Fiado otra vez para buscar)"),
+                              style: const TextStyle(fontSize: 12),
                             ),
                         ],
                       ),
@@ -786,7 +866,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                       ),
                       textAlign: TextAlign.center,
                       decoration: InputDecoration(
-                        labelText: "DINERO RECIBIDO",
+                        labelText: _t("DINERO RECIBIDO"),
                         hintText: "\$ 0",
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(15),
@@ -812,7 +892,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                       child: Column(
                         children: [
                           Text(
-                            cambio >= 0 ? "CAMBIO / VUELTAS" : "ESTADO",
+                            cambio >= 0 ? _t("CAMBIO / VUELTAS") : _t("ESTADO"),
                             style: TextStyle(
                               color: colorCambio,
                               fontWeight: FontWeight.bold,
@@ -837,9 +917,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text(
-                  "CANCELAR",
-                  style: TextStyle(color: Colors.grey),
+                child: Text(
+                  _t("CANCELAR"),
+                  style: const TextStyle(color: Colors.grey),
                 ),
               ),
               ElevatedButton(
@@ -854,10 +934,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 onPressed: () async {
                   if (!PermissionService.can("VENTAS_CREAR")) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          "No tienes permiso para realizar ventas.",
-                        ),
+                      SnackBar(
+                        content: Text(_t("No tienes permiso para realizar ventas.")),
                         backgroundColor: Colors.red,
                       ),
                     );
@@ -867,16 +945,16 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   if (metodo == "CREDITO" &&
                       _clienteSeleccionadoGlobal == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("⚠️ Selecciona un cliente para fiar"),
+                      SnackBar(
+                        content: Text(_t("⚠️ Selecciona un cliente para fiar")),
                       ),
                     );
                     return;
                   }
                   if (metodo == "EFECTIVO" && cambio < 0) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("⚠️ Falta dinero para completar el pago"),
+                      SnackBar(
+                        content: Text(_t("⚠️ Falta dinero para completar el pago")),
                       ),
                     );
                     return;
@@ -897,15 +975,17 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                       showDialog(
                         context: context,
                         builder: (c) => AlertDialog(
-                          title: const Text("⚠️ No se pudo registrar la venta"),
+                          title: Text(_t("⚠️ No se pudo registrar la venta")),
                           content: Text(
-                            resultado['mensaje']?.toString() ??
-                                "Error desconocido",
+                            _t(
+                              resultado['mensaje']?.toString() ??
+                                  "Error desconocido",
+                            ),
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(c),
-                              child: const Text("OK"),
+                              child: Text(_t("OK")),
                             ),
                           ],
                         ),
@@ -936,7 +1016,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text("✅ VENTA #$ventaId REGISTRADA"),
+                          content: Text("${_t('✅ VENTA')} #$ventaId ${_t('REGISTRADA')}"),
                           backgroundColor: Colors.green,
                           duration: const Duration(seconds: 3),
                         ),
@@ -959,23 +1039,23 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                     showDialog(
                       context: context,
                       builder: (c) => AlertDialog(
-                        title: const Text("❌ Error al Guardar"),
+                        title: Text(_t("❌ Error al Guardar")),
                         content: Text(
-                          "No se pudo registrar la venta.\n\nDetalle técnico: $e",
+                          "${_t('No se pudo registrar la venta.')}\n\n${_t('Detalle técnico:')} $e",
                         ),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(c),
-                            child: const Text("OK"),
+                            child: Text(_t("OK")),
                           ),
                         ],
                       ),
                     );
                   }
                 },
-                child: const Text(
-                  "FINALIZAR VENTA",
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                child: Text(
+                  _t("FINALIZAR VENTA"),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
             ],
@@ -990,7 +1070,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Seleccionar Cliente"),
+        title: Text(_t("Seleccionar Cliente")),
         content: SizedBox(
           width: 300,
           height: 300,
@@ -1016,7 +1096,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 MaterialPageRoute(builder: (c) => const ClientsScreen()),
               );
             },
-            child: const Text("Nuevo Cliente"),
+            child: Text(_t("Nuevo Cliente")),
           ),
         ],
       ),
@@ -1063,20 +1143,20 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.help_outline, color: Colors.orange, size: 30),
-              SizedBox(width: 10),
-              Text("¿Qué es eso? 🤔"),
+              const Icon(Icons.help_outline, color: Colors.orange, size: 30),
+              const SizedBox(width: 10),
+              Text(_t("¿Qué es eso? 🤔")),
             ],
           ),
           content: Text(
-            "El código '$_codigoTeclado' no existe.\n\n¿Quieres registrar este producto? 📦",
+            "${_t('El código')} '$_codigoTeclado' ${_t('no existe')}.\n\n${_t('¿Quieres registrar este producto? 📦')}",
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text("Cancelar"),
+              child: Text(_t("Cancelar")),
             ),
             ElevatedButton.icon(
               onPressed: () {
@@ -1091,7 +1171,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 setState(() => _codigoTeclado = "");
               },
               icon: const Icon(Icons.add),
-              label: const Text("SÍ, CREARLO"),
+              label: Text(_t("SÍ, CREARLO")),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
@@ -1163,7 +1243,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  "${formater.format(item['precio'])} x unit",
+                  "${formater.format(item['precio'])} ${_t('x unit')}",
                   style: TextStyle(color: Colors.grey[600], fontSize: 11),
                 ),
               ],
@@ -1278,7 +1358,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                               _procesarEntradaBuscador(text, inmediato: true),
 
                           decoration: InputDecoration(
-                            hintText: "Escanear o buscar...",
+                            hintText: _t("Escanear o buscar..."),
                             isDense: true,
                             prefixIcon: const Icon(
                               Icons.qr_code_scanner,
@@ -1316,7 +1396,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           Icons.inventory_2_outlined,
                           color: Colors.orange,
                         ),
-                        tooltip: "Inventario",
+                        tooltip: _t("Inventario"),
                       ),
                       IconButton(
                         onPressed: () => _abrirCajonMonedero(),
@@ -1324,7 +1404,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           Icons.point_of_sale_outlined,
                           color: Colors.blueGrey,
                         ),
-                        tooltip: "Cajón",
+                        tooltip: _t("Cajón"),
                       ),
                     ],
                   ),
@@ -1351,7 +1431,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                               Icons.add_circle_outline,
                               color: Colors.blue,
                             ),
-                            tooltip: "Crear Categoría",
+                            tooltip: _t("Crear Categoría"),
                             onPressed: _agregarNuevaCategoria,
                           ),
                         );
@@ -1514,7 +1594,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
-                                  "Stock: $stockTexto",
+                                  "${_t('Stock')}: $stockTexto",
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
@@ -1645,7 +1725,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                     color: Colors.green[50],
                     width: double.infinity,
                     child: Text(
-                      "🛒 Carrito (Cliente ${_currentSessionIndex + 1})",
+                      "🛒 ${_t('Carrito')} (${_t('Cliente')} ${_currentSessionIndex + 1})",
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
@@ -1665,9 +1745,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                   size: 50,
                                   color: Colors.grey[300],
                                 ),
-                                const Text(
-                                  "Carrito Vacío",
-                                  style: TextStyle(color: Colors.grey),
+                                Text(
+                                  _t("Carrito Vacío"),
+                                  style: const TextStyle(color: Colors.grey),
                                 ),
                               ],
                             ),
@@ -1709,9 +1789,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
-                                "COD:",
-                                style: TextStyle(
+                              Text(
+                                _t("COD:"),
+                                style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: Colors.grey,
                                 ),
@@ -1833,9 +1913,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              "TOTAL:",
-                              style: TextStyle(
+                            Text(
+                              _t("TOTAL:"),
+                              style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
                               ),
@@ -1893,9 +1973,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                   elevation: 5,
                                   shadowColor: Colors.black45,
                                 ),
-                                child: const Text(
-                                  "COBRAR",
-                                  style: TextStyle(
+                                child: Text(
+                                  _t("COBRAR"),
+                                  style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 1,

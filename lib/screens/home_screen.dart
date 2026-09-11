@@ -16,6 +16,39 @@ import '../services/permission_service.dart';
 import '../services/pin_auth_service.dart';
 import 'pin_login_screen.dart';
 import 'users_screen.dart';
+import '../services/locale_service.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Cambiar mi PIN': 'Change my PIN',
+  'PIN actual': 'Current PIN',
+  'PIN nuevo (6 dígitos)': 'New PIN (6 digits)',
+  'Confirmar PIN nuevo': 'Confirm new PIN',
+  'Cancelar': 'Cancel',
+  'GUARDAR': 'SAVE',
+  'Los PIN nuevos no coinciden o no tienen 6 dígitos':
+      'New PINs do not match or are not 6 digits',
+  'Resultado': 'Result',
+  'Cerrar sesion': 'Log out',
+  'Deseas cerrar sesion?': 'Do you want to log out?',
+  'Salir': 'Exit',
+  'Bienvenido': 'Welcome',
+  'Panel de Control': 'Control Panel',
+  'Ventas Hoy': "Today's Sales",
+  'Movimientos': 'Movements',
+  'Stock Bajo': 'Low Stock',
+  'ACCESOS DIRECTOS': 'QUICK ACCESS',
+  'NUEVA VENTA': 'NEW SALE',
+  'CAJA': 'CASH',
+  'INVENTARIO': 'INVENTORY',
+  'HISTORIAL': 'HISTORY',
+  'CLIENTES': 'CUSTOMERS',
+  'INGRESAR\nPEDIDO': 'ADD\nORDER',
+  'REPORTES': 'REPORTS',
+  'CONFIGURACIÓN': 'SETTINGS',
+  'USUARIOS': 'USERS',
+};
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -67,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cambiar mi PIN'),
+        title: Text(_t('Cambiar mi PIN')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -76,36 +109,36 @@ class _HomeScreenState extends State<HomeScreen> {
               obscureText: true,
               keyboardType: TextInputType.number,
               maxLength: 6,
-              decoration: const InputDecoration(labelText: 'PIN actual'),
+              decoration: InputDecoration(labelText: _t('PIN actual')),
             ),
             TextField(
               controller: pinNuevo,
               obscureText: true,
               keyboardType: TextInputType.number,
               maxLength: 6,
-              decoration: const InputDecoration(labelText: 'PIN nuevo (6 dígitos)'),
+              decoration: InputDecoration(labelText: _t('PIN nuevo (6 dígitos)')),
             ),
             TextField(
               controller: pinConfirmar,
               obscureText: true,
               keyboardType: TextInputType.number,
               maxLength: 6,
-              decoration: const InputDecoration(labelText: 'Confirmar PIN nuevo'),
+              decoration: InputDecoration(labelText: _t('Confirmar PIN nuevo')),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            child: Text(_t('Cancelar'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () async {
               if (pinNuevo.text.length != 6 ||
                   pinNuevo.text != pinConfirmar.text) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Los PIN nuevos no coinciden o no tienen 6 dígitos'),
+                  SnackBar(
+                    content: Text(_t('Los PIN nuevos no coinciden o no tienen 6 dígitos')),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -119,13 +152,13 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(res['mensaje']?.toString() ?? 'Resultado'),
+                  content: Text(res['mensaje']?.toString() ?? _t('Resultado')),
                   backgroundColor:
                       res['exito'] == true ? Colors.green : Colors.red,
                 ),
               );
             },
-            child: const Text('GUARDAR'),
+            child: Text(_t('GUARDAR')),
           ),
         ],
       ),
@@ -136,17 +169,17 @@ class _HomeScreenState extends State<HomeScreen> {
     bool? confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cerrar sesion'),
-        content: const Text('Deseas cerrar sesion?'),
+        title: Text(_t('Cerrar sesion')),
+        content: Text(_t('Deseas cerrar sesion?')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(_t('Cancelar')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Cerrar sesion', style: TextStyle(color: Colors.white)),
+            child: Text(_t('Cerrar sesion'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -184,14 +217,14 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.lock_reset, color: Colors.white, size: 22),
-            tooltip: 'Cambiar mi PIN',
+            tooltip: _t('Cambiar mi PIN'),
             onPressed: _cambiarPinPropio,
           ),
           TextButton.icon(
             icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
-            label: const Text(
-              'Salir',
-              style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+            label: Text(
+              _t('Salir'),
+              style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
             ),
             onPressed: _cerrarSesion,
           ),
@@ -211,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Bienvenido ${SessionService.userName()}",
+                      "${_t('Bienvenido')} ${SessionService.userName()}",
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.grey[600],
@@ -221,9 +254,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     const SizedBox(height: 6),
 
-                    const Text(
-                      "Panel de Control",
-                      style: TextStyle(
+                    Text(
+                      _t('Panel de Control'),
+                      style: const TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF1A1F2B),
@@ -275,21 +308,21 @@ class _HomeScreenState extends State<HomeScreen> {
             Row(
               children: [
                 _kpiCard(
-                  "Ventas Hoy",
+                  _t('Ventas Hoy'),
                   formater.format(_ventasHoy),
                   Icons.attach_money,
                   Colors.green,
                 ),
                 const SizedBox(width: 15),
                 _kpiCard(
-                  "Movimientos",
+                  _t('Movimientos'),
                   _cantidadVentasHoy.toString(),
                   Icons.receipt_long,
                   Colors.blue,
                 ),
                 const SizedBox(width: 15),
                 _kpiCard(
-                  "Stock Bajo",
+                  _t('Stock Bajo'),
                   _productosBajosStock.toString(),
                   Icons.warning_amber_rounded,
                   Colors.orange,
@@ -300,9 +333,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 30),
 
-            const Text(
-              "ACCESOS DIRECTOS",
-              style: TextStyle(
+            Text(
+              _t('ACCESOS DIRECTOS'),
+              style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
                 color: Colors.grey,
@@ -324,7 +357,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 PermissionGate(
                   permission: "VENTAS_CREAR",
                   child: _menuButton(
-                    "NUEVA VENTA",
+                    _t('NUEVA VENTA'),
                     Icons.point_of_sale,
                     Colors.green,
                     () async {
@@ -339,7 +372,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 PermissionGate(
                   permission: "CAJA_ABRIR",
                   child: _menuButton(
-                    "CAJA",
+                    _t('CAJA'),
                     Icons.account_balance_wallet,
                     Colors.cyan,
                     () async {
@@ -356,7 +389,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 PermissionGate(
                   permission: "INVENTARIO_VER",
                   child: _menuButton(
-                    "INVENTARIO",
+                    _t('INVENTARIO'),
                     Icons.inventory_2,
                     Colors.orange,
                     () async {
@@ -375,7 +408,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 PermissionGate(
                   permission: "VENTAS_VER",
                   child: _menuButton(
-                    "HISTORIAL",
+                    _t('HISTORIAL'),
                     Icons.history,
                     Colors.teal,
                     () async {
@@ -392,7 +425,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 PermissionGate(
                   permission: "CLIENTES_VER",
                   child: _menuButton(
-                    "CLIENTES",
+                    _t('CLIENTES'),
                     Icons.people,
                     Colors.purple,
                     () async {
@@ -407,7 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 PermissionGate(
                   permission: "COMPRAS_CREAR",
                   child: _menuButton(
-                    "INGRESAR\nPEDIDO",
+                    _t('INGRESAR\nPEDIDO'),
                     Icons.local_shipping,
                     Colors.brown,
                     () async {
@@ -426,7 +459,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 PermissionGate(
                   permission: "REPORTES_VER",
                   child: _menuButton(
-                    "REPORTES",
+                    _t('REPORTES'),
                     Icons.bar_chart,
                     Colors.indigo,
                     () async {
@@ -440,7 +473,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 PermissionGate(
                   permission: "CONFIGURACION_GENERAL",
                   child: _menuButton(
-                    "CONFIGURACIÓN",
+                    _t('CONFIGURACIÓN'),
                     Icons.settings,
                     Colors.blueGrey,
                     () {
@@ -456,7 +489,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 PermissionGate(
                   permission: "USUARIOS_GESTIONAR",
                   child: _menuButton(
-                    "USUARIOS",
+                    _t('USUARIOS'),
                     Icons.people_alt,
                     Colors.deepPurple,
                     () {

@@ -2,6 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/session_service.dart';
+import '../services/locale_service.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Nuevo Cliente': 'New Client',
+  'Nombre': 'Name',
+  'Teléfono': 'Phone',
+  'Dirección': 'Address',
+  'Guardar': 'Save',
+  'Editar Cupo de Crédito': 'Edit Credit Limit',
+  'Cupo': 'Credit Limit',
+  'Cancelar': 'Cancel',
+  'Cupo inválido': 'Invalid credit limit',
+  '✅ Cupo actualizado': '✅ Credit limit updated',
+  '❌ No se pudo actualizar': '❌ Could not be updated',
+  'GUARDAR': 'SAVE',
+  'Deuda': 'Debt',
+  'Monto a Abonar': 'Amount to Pay',
+  'Monto inválido': 'Invalid amount',
+  'Resultado': 'Result',
+  'REGISTRAR ABONO': 'REGISTER PAYMENT',
+  'Clientes': 'Clients',
+  'El monto del abono debe ser mayor a cero': 'The payment amount must be greater than zero',
+  'El abono excede la deuda actual del cliente': 'The payment exceeds the client\'s current debt',
+  'Abono registrado': 'Payment recorded',
+};
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({super.key});
@@ -37,21 +64,21 @@ class _ClientsScreenState extends State<ClientsScreen> {
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text("Nuevo Cliente"),
+        title: Text(_t("Nuevo Cliente")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: n,
-              decoration: const InputDecoration(labelText: "Nombre"),
+              decoration: InputDecoration(labelText: _t("Nombre")),
             ),
             TextField(
               controller: t,
-              decoration: const InputDecoration(labelText: "Teléfono"),
+              decoration: InputDecoration(labelText: _t("Teléfono")),
             ),
             TextField(
               controller: d,
-              decoration: const InputDecoration(labelText: "Dirección"),
+              decoration: InputDecoration(labelText: _t("Dirección")),
             ),
           ],
         ),
@@ -70,7 +97,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 _cargarClientes();
               }
             },
-            child: const Text("Guardar"),
+            child: Text(_t("Guardar")),
           ),
         ],
       ),
@@ -84,27 +111,27 @@ class _ClientsScreenState extends State<ClientsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Editar Cupo de Crédito"),
+        title: Text(_t("Editar Cupo de Crédito")),
         content: TextField(
           controller: ctrl,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: "Cupo",
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: _t("Cupo"),
+            border: const OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancelar", style: TextStyle(color: Colors.grey)),
+            child: Text(_t("Cancelar"), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () async {
               double? cupo = double.tryParse(ctrl.text.replaceAll(',', '.'));
               if (cupo == null || cupo < 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Cupo inválido"),
+                  SnackBar(
+                    content: Text(_t("Cupo inválido")),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -115,12 +142,12 @@ class _ClientsScreenState extends State<ClientsScreen> {
               _cargarClientes();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(ok ? "✅ Cupo actualizado" : "❌ No se pudo actualizar"),
+                  content: Text(ok ? _t("✅ Cupo actualizado") : _t("❌ No se pudo actualizar")),
                   backgroundColor: ok ? Colors.green : Colors.red,
                 ),
               );
             },
-            child: const Text("GUARDAR"),
+            child: Text(_t("GUARDAR")),
           ),
         ],
       ),
@@ -142,7 +169,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              "Deuda: ${formater.format(c['deuda_actual'])}",
+              "${_t('Deuda')}: ${formater.format(c['deuda_actual'])}",
               style: const TextStyle(fontSize: 20, color: Colors.red),
             ),
             const SizedBox(height: 5),
@@ -150,7 +177,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  "Cupo: ${formater.format(c['cupo_credito'] ?? 0)}",
+                  "${_t('Cupo')}: ${formater.format(c['cupo_credito'] ?? 0)}",
                   style: const TextStyle(fontSize: 15, color: Colors.grey),
                 ),
                 const SizedBox(width: 8),
@@ -164,7 +191,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
             TextField(
               controller: a,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Monto a Abonar"),
+              decoration: InputDecoration(labelText: _t("Monto a Abonar")),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -174,8 +201,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
                       (c['deuda_actual'] as num?)?.toDouble() ?? 0;
                   if (m <= 0 || m > deudaActual) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("Monto inválido"),
+                      SnackBar(
+                        content: Text(_t("Monto inválido")),
                         backgroundColor: Colors.red,
                       ),
                     );
@@ -192,14 +219,14 @@ class _ClientsScreenState extends State<ClientsScreen> {
                   _cargarClientes();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(res['mensaje']?.toString() ?? "Resultado"),
+                      content: Text(_t(res['mensaje']?.toString() ?? "Resultado")),
                       backgroundColor:
                           res['exito'] == true ? Colors.green : Colors.red,
                     ),
                   );
                 }
               },
-              child: const Text("REGISTRAR ABONO"),
+              child: Text(_t("REGISTRAR ABONO")),
             ),
           ],
         ),
@@ -211,7 +238,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Clientes"),
+        title: Text(_t("Clientes")),
         backgroundColor: Colors.purple[800],
       ),
       floatingActionButton: FloatingActionButton(

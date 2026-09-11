@@ -7,6 +7,68 @@ import 'package:image_picker/image_picker.dart'; // Para abrir el explorador
 import 'package:path_provider/path_provider.dart'; // Para guardar la copia
 import 'package:path/path.dart' as path;
 import '../services/inventory_service.dart';
+import '../services/locale_service.dart';
+
+String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
+
+const Map<String, String> _mapEn = {
+  'Nueva Categoría': 'New Category',
+  'Nombre de la categoría': 'Category name',
+  'Cancelar': 'Cancel',
+  'Crear': 'Create',
+  'Imagen cargada correctamente 🖼️': 'Image uploaded successfully 🖼️',
+  'Packs de': 'Packs of',
+  "Ej: Agrega 'Cubeta' que trae 30 unds.":
+      "E.g.: Add 'Cubeta' that brings 30 units.",
+  'No hay presentaciones extra.': 'No extra presentations.',
+  'Trae': 'Contains',
+  'Venta': 'Sale',
+  'AGREGAR PACK': 'ADD PACK',
+  'CERRAR': 'CLOSE',
+  'Nuevo Pack / Caja': 'New Pack / Box',
+  'Nombre (Ej: Cubeta)': 'Name (E.g.: Cubeta)',
+  'Unidades que trae': 'Units it contains',
+  'Precio Venta Pack': 'Pack Sale Price',
+  'GUARDAR': 'SAVE',
+  '⚠️ Nombre y Precio Venta son obligatorios':
+      '⚠️ Name and Sale Price are required',
+  '⚠️ El Precio Venta debe ser mayor a cero':
+      '⚠️ The Sale Price must be greater than zero',
+  '⚠️ El stock no puede ser negativo': '⚠️ Stock cannot be negative',
+  '⚠️ El costo no puede ser negativo': '⚠️ Cost cannot be negative',
+  '⚠️ El costo no puede ser mayor que el precio de venta':
+      '⚠️ Cost cannot be greater than the sale price',
+  '✅ Producto Creado': '✅ Product Created',
+  '🔄 Producto Actualizado': '🔄 Product Updated',
+  '❌ Error: Revise números': '❌ Error: Check numbers',
+  '🗑️ Producto eliminado': '🗑️ Product deleted',
+  'No hay productos': 'No products',
+  '¿Borrar producto?': 'Delete product?',
+  '¿Seguro deseas eliminar': 'Are you sure you want to delete',
+  'ELIMINAR': 'DELETE',
+  'NUEVO PRODUCTO': 'NEW PRODUCT',
+  'EDITAR PRODUCTO': 'EDIT PRODUCT',
+  'Imagen del Producto:': 'Product Image:',
+  'Explorar Archivos...': 'Browse Files...',
+  'Quitar foto': 'Remove photo',
+  'Soporta: JPG, PNG': 'Supports: JPG, PNG',
+  'Cód. PLU': 'Code PLU',
+  'Cód. Barras': 'Barcode Code',
+  'Nombre': 'Name',
+  'Categoría': 'Category',
+  'Precio Venta': 'Sale Price',
+  'Costo': 'Cost',
+  'Stock': 'Stock',
+  '¿Se vende por Peso?': 'Sold by Weight?',
+  'Activar para balanza (Kg)': 'Enable for scale (Kg)',
+  'GUARDAR DATOS': 'SAVE DATA',
+  'Gestión de Inventario': 'Inventory Management',
+  'LISTA': 'LIST',
+  'CREAR / EDITAR': 'CREATE / EDIT',
+  'Buscar por nombre, PLU o barras...': 'Search by name, PLU or barcode...',
+  'Crear nueva categoría': 'Create new category',
+  'Nueva categoría': 'New category',
+};
 
 class InventoryScreen extends StatefulWidget {
   final String? codigoPrellenado;
@@ -40,17 +102,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   String? _imagenPathActual; // 🔥 Variable para la ruta de la foto
 
   // CATEGORÍAS
-  final List<String> _categorias = [
-    "Frutas",
-    "Verduras",
-    "Abarrotes",
-    "Carnes",
-    "Lácteos",
-    "Bebidas",
-    "Dulces",
-    "Aseo",
-    "Otros",
-  ];
+  List<String> _categorias = [];
   String _categoriaSeleccionada = "Otros";
 
   // VARIABLES LISTA
@@ -63,6 +115,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _cargarProductos();
+    _cargarCategorias();
     if (widget.codigoPrellenado != null) {
       _pluCtrl.text = widget.codigoPrellenado!;
       _tabController.animateTo(1);
@@ -83,6 +136,58 @@ class _InventoryScreenState extends State<InventoryScreen>
   }
 
   // --- 📥 CARGA DE DATOS ---
+  void _cargarCategorias() async {
+    final cats = await DBHelper().obtenerCategorias();
+    if (!mounted) return;
+    setState(() {
+      if (!cats.contains(_categoriaSeleccionada)) {
+        cats.add(_categoriaSeleccionada);
+      }
+      _categorias = cats;
+    });
+  }
+
+  Future<void> _crearNuevaCategoria() async {
+    final controlador = TextEditingController();
+    final nombre = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_t("Nueva Categoría")),
+        content: TextField(
+          controller: controlador,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(
+            labelText: _t("Nombre de la categoría"),
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.category_outlined),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_t("Cancelar")),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controlador.text.trim()),
+            child: Text(_t("Crear")),
+          ),
+        ],
+      ),
+    );
+    if (nombre == null || nombre.isEmpty) return;
+    await DBHelper().guardarNuevaCategoria(nombre);
+    final cats = await DBHelper().obtenerCategorias();
+    if (!mounted) return;
+    setState(() {
+      if (!cats.contains(_categoriaSeleccionada)) {
+        cats.add(_categoriaSeleccionada);
+      }
+      _categorias = cats;
+      _categoriaSeleccionada = cats.contains(nombre) ? nombre : _categoriaSeleccionada;
+    });
+  }
+
   void _cargarProductos() async {
     setState(() => _isLoading = true);
     final data = await DBHelper().getProducts();
@@ -149,7 +254,7 @@ class _InventoryScreenState extends State<InventoryScreen>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Imagen cargada correctamente 🖼️")),
+          SnackBar(content: Text(_t("Imagen cargada correctamente 🖼️"))),
         );
       }
     }
@@ -169,7 +274,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               }
               final packs = snapshot.data!;
               return AlertDialog(
-                title: Text("Packs de: ${producto['nombre']}"),
+                title: Text("${_t('Packs de')}: ${producto['nombre']}"),
                 content: SizedBox(
                   width: double.maxFinite,
                   child: Column(
@@ -181,16 +286,16 @@ class _InventoryScreenState extends State<InventoryScreen>
                           color: Colors.blue[50],
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Text(
-                          "Ej: Agrega 'Cubeta' que trae 30 unds.",
-                          style: TextStyle(fontSize: 12, color: Colors.blue),
+                        child: Text(
+                          _t("Ej: Agrega 'Cubeta' que trae 30 unds."),
+                          style: const TextStyle(fontSize: 12, color: Colors.blue),
                         ),
                       ),
                       const SizedBox(height: 10),
                       if (packs.isEmpty)
-                        const Text(
-                          "No hay presentaciones extra.",
-                          style: TextStyle(fontStyle: FontStyle.italic),
+                        Text(
+                          _t("No hay presentaciones extra."),
+                          style: const TextStyle(fontStyle: FontStyle.italic),
                         ),
                       ListView.builder(
                         shrinkWrap: true,
@@ -210,7 +315,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                               ),
                             ),
                             subtitle: Text(
-                              "Trae: ${p['cantidad']} | Venta: ${formater.format(p['precio'])}",
+                              "${_t('Trae')}: ${p['cantidad']} | ${_t('Venta')}: ${formater.format(p['precio'])}",
                             ),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
@@ -225,7 +330,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                       const Divider(),
                       ElevatedButton.icon(
                         icon: const Icon(Icons.add),
-                        label: const Text("AGREGAR PACK"),
+                        label: Text(_t("AGREGAR PACK")),
                         onPressed: () =>
                             _dialogoAgregarPack(context, producto, setSt),
                       ),
@@ -235,7 +340,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(ctx),
-                    child: const Text("CERRAR"),
+                    child: Text(_t("CERRAR")),
                   ),
                 ],
               );
@@ -257,34 +362,34 @@ class _InventoryScreenState extends State<InventoryScreen>
     showDialog(
       context: ctx,
       builder: (c) => AlertDialog(
-        title: const Text("Nuevo Pack / Caja"),
+        title: Text(_t("Nuevo Pack / Caja")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameCtrl,
-              decoration: const InputDecoration(
-                labelText: "Nombre (Ej: Cubeta)",
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: _t("Nombre (Ej: Cubeta)"),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: qtyCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: "Unidades que trae",
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: _t("Unidades que trae"),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: priceCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: "Precio Venta Pack",
-                prefixIcon: Icon(Icons.attach_money),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: _t("Precio Venta Pack"),
+                prefixIcon: const Icon(Icons.attach_money),
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
@@ -292,7 +397,7 @@ class _InventoryScreenState extends State<InventoryScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c),
-            child: const Text("Cancelar"),
+            child: Text(_t("Cancelar")),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -309,7 +414,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                 parentSetState(() {});
               }
             },
-            child: const Text("GUARDAR"),
+            child: Text(_t("GUARDAR")),
           ),
         ],
       ),
@@ -320,8 +425,8 @@ class _InventoryScreenState extends State<InventoryScreen>
   void _guardar() async {
     if (_nombreCtrl.text.isEmpty || _precioVentaCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ Nombre y Precio Venta son obligatorios'),
+        SnackBar(
+          content: Text(_t('⚠️ Nombre y Precio Venta son obligatorios')),
         ),
       );
       return;
@@ -336,8 +441,8 @@ class _InventoryScreenState extends State<InventoryScreen>
 
       if (precioVenta <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ El Precio Venta debe ser mayor a cero'),
+          SnackBar(
+            content: Text(_t('⚠️ El Precio Venta debe ser mayor a cero')),
             backgroundColor: Colors.red,
           ),
         );
@@ -345,8 +450,8 @@ class _InventoryScreenState extends State<InventoryScreen>
       }
       if (stock < 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ El stock no puede ser negativo'),
+          SnackBar(
+            content: Text(_t('⚠️ El stock no puede ser negativo')),
             backgroundColor: Colors.red,
           ),
         );
@@ -354,8 +459,8 @@ class _InventoryScreenState extends State<InventoryScreen>
       }
       if (precioCosto < 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ El costo no puede ser negativo'),
+          SnackBar(
+            content: Text(_t('⚠️ El costo no puede ser negativo')),
             backgroundColor: Colors.red,
           ),
         );
@@ -363,8 +468,8 @@ class _InventoryScreenState extends State<InventoryScreen>
       }
       if (precioCosto > precioVenta) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ El costo no puede ser mayor que el precio de venta'),
+          SnackBar(
+            content: Text(_t('⚠️ El costo no puede ser mayor que el precio de venta')),
             backgroundColor: Colors.red,
           ),
         );
@@ -388,8 +493,8 @@ class _InventoryScreenState extends State<InventoryScreen>
         await _inventoryService.crearProducto(datos);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Producto Creado'),
+            SnackBar(
+              content: Text(_t('✅ Producto Creado')),
               backgroundColor: Colors.green,
             ),
           );
@@ -398,8 +503,8 @@ class _InventoryScreenState extends State<InventoryScreen>
         await _inventoryService.actualizarProducto(_idEdicion!, datos);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('🔄 Producto Actualizado'),
+            SnackBar(
+              content: Text(_t('🔄 Producto Actualizado')),
               backgroundColor: Colors.blue,
             ),
           );
@@ -411,7 +516,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Error: Revise números ($e)'),
+          content: Text('${_t('❌ Error: Revise números')} ($e)'),
           backgroundColor: Colors.red,
         ),
       );
@@ -440,7 +545,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     if (mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('🗑️ Producto eliminado')));
+      ).showSnackBar(SnackBar(content: Text(_t('🗑️ Producto eliminado'))));
     }
   }
 
@@ -469,7 +574,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   Widget _buildProductList() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_productosFiltrados.isEmpty) {
-      return const Center(child: Text("No hay productos"));
+      return Center(child: Text(_t("No hay productos")));
     }
 
     return ListView.separated(
@@ -525,12 +630,12 @@ class _InventoryScreenState extends State<InventoryScreen>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("¿Borrar producto?"),
-        content: Text("¿Seguro deseas eliminar '${p['nombre']}'?"),
+        title: Text(_t("¿Borrar producto?")),
+        content: Text("${_t('¿Seguro deseas eliminar')} '${p['nombre']}'?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancelar"),
+            child: Text(_t("Cancelar")),
           ),
           ElevatedButton(
             onPressed: () {
@@ -541,7 +646,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text("ELIMINAR"),
+            child: Text(_t("ELIMINAR")),
           ),
         ],
       ),
@@ -562,7 +667,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              _idEdicion == null ? "NUEVO PRODUCTO" : "EDITAR PRODUCTO",
+              _idEdicion == null ? _t("NUEVO PRODUCTO") : _t("EDITAR PRODUCTO"),
               style: TextStyle(
                 color: Colors.blue[900],
                 fontWeight: FontWeight.bold,
@@ -606,15 +711,15 @@ class _InventoryScreenState extends State<InventoryScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      "Imagen del Producto:",
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    Text(
+                      _t("Imagen del Producto:"),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 5),
                     ElevatedButton.icon(
                       onPressed: _subirImagen,
                       icon: const Icon(Icons.folder_open),
-                      label: const Text("Explorar Archivos..."),
+                      label: Text(_t("Explorar Archivos...")),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.indigo,
                         foregroundColor: Colors.white,
@@ -629,14 +734,14 @@ class _InventoryScreenState extends State<InventoryScreen>
                           size: 16,
                           color: Colors.red,
                         ),
-                        label: const Text(
-                          "Quitar foto",
-                          style: TextStyle(color: Colors.red),
+                        label: Text(
+                          _t("Quitar foto"),
+                          style: const TextStyle(color: Colors.red),
                         ),
                       ),
-                    const Text(
-                      "Soporta: JPG, PNG",
-                      style: TextStyle(fontSize: 10, color: Colors.grey),
+                    Text(
+                      _t("Soporta: JPG, PNG"),
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -652,7 +757,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                 child: TextField(
                   controller: _pluCtrl,
                   decoration: InputDecoration(
-                    labelText: "Cód. PLU",
+                    labelText: _t("Cód. PLU"),
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       icon: const Icon(Icons.shuffle),
@@ -665,10 +770,10 @@ class _InventoryScreenState extends State<InventoryScreen>
               Expanded(
                 child: TextField(
                   controller: _barrasCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Cód. Barras",
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.qr_code),
+                  decoration: InputDecoration(
+                    labelText: _t("Cód. Barras"),
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.qr_code),
                   ),
                 ),
               ),
@@ -677,23 +782,43 @@ class _InventoryScreenState extends State<InventoryScreen>
           const SizedBox(height: 15),
           TextField(
             controller: _nombreCtrl,
-            decoration: const InputDecoration(
-              labelText: "Nombre",
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.label),
+            decoration: InputDecoration(
+              labelText: _t("Nombre"),
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.label),
             ),
           ),
           const SizedBox(height: 15),
-          DropdownButtonFormField<String>(
-            initialValue: _categoriaSeleccionada,
-            decoration: const InputDecoration(
-              labelText: "Categoría",
-              border: OutlineInputBorder(),
-            ),
-            items: _categorias
-                .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                .toList(),
-            onChanged: (val) => setState(() => _categoriaSeleccionada = val!),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: _categorias.contains(_categoriaSeleccionada)
+                      ? _categoriaSeleccionada
+                      : _categorias.isNotEmpty
+                      ? _categorias.first
+                      : "Otros",
+                  decoration: InputDecoration(
+                    labelText: _t("Categoría"),
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: _categorias
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                      .toList(),
+                  onChanged: (val) => setState(() => _categoriaSeleccionada = val!),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: _t("Crear nueva categoría"),
+                child: IconButton.filledTonal(
+                  onPressed: _crearNuevaCategoria,
+                  icon: const Icon(Icons.add),
+                  tooltip: _t("Nueva categoría"),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 15),
           Row(
@@ -702,10 +827,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                 child: TextField(
                   controller: _precioVentaCtrl,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: "Precio Venta",
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.attach_money),
+                  decoration: InputDecoration(
+                    labelText: _t("Precio Venta"),
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.attach_money),
                   ),
                 ),
               ),
@@ -714,10 +839,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                 child: TextField(
                   controller: _precioCostoCtrl,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: "Costo",
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.attach_money),
+                  decoration: InputDecoration(
+                    labelText: _t("Costo"),
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.attach_money),
                   ),
                 ),
               ),
@@ -727,16 +852,16 @@ class _InventoryScreenState extends State<InventoryScreen>
           TextField(
             controller: _stockCtrl,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: "Stock",
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.warehouse),
+            decoration: InputDecoration(
+              labelText: _t("Stock"),
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.warehouse),
             ),
           ),
           const SizedBox(height: 15),
           SwitchListTile(
-            title: const Text("¿Se vende por Peso?"),
-            subtitle: const Text("Activar para balanza (Kg)"),
+            title: Text(_t("¿Se vende por Peso?")),
+            subtitle: Text(_t("Activar para balanza (Kg)")),
             value: _esPesable,
             activeThumbColor: Colors.green,
             secondary: const Icon(Icons.scale),
@@ -750,7 +875,7 @@ class _InventoryScreenState extends State<InventoryScreen>
             child: ElevatedButton.icon(
               onPressed: _guardar,
               icon: const Icon(Icons.save),
-              label: const Text("GUARDAR DATOS"),
+              label: Text(_t("GUARDAR DATOS")),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green[700],
                 foregroundColor: Colors.white,
@@ -767,7 +892,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Gestión de Inventario"),
+        title: Text(_t("Gestión de Inventario")),
         backgroundColor: Colors.orange[800],
         foregroundColor: Colors.white,
         bottom: TabBar(
@@ -775,9 +900,12 @@ class _InventoryScreenState extends State<InventoryScreen>
           indicatorColor: Colors.white,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
-          tabs: const [
-            Tab(icon: Icon(Icons.list), text: "LISTA"),
-            Tab(icon: Icon(Icons.add_circle), text: "CREAR / EDITAR"),
+          tabs: [
+            Tab(icon: const Icon(Icons.list), text: _t("LISTA")),
+            Tab(
+              icon: const Icon(Icons.add_circle),
+              text: _t("CREAR / EDITAR"),
+            ),
           ],
         ),
       ),
@@ -793,7 +921,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                   controller: _searchCtrl,
                   onChanged: _filtrarProductos,
                   decoration: InputDecoration(
-                    hintText: "Buscar por nombre, PLU o barras...",
+                    hintText: _t("Buscar por nombre, PLU o barras..."),
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchCtrl.text.isNotEmpty
                         ? IconButton(
