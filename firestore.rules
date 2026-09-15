@@ -2,55 +2,45 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: obtiene el documento del usuario autenticado
-    function usuarioAuth(uid) {
-      return get(/databases/$(database)/documents/usuarios/$(uid));
+    function autenticado() {
+      return request.auth != null;
     }
 
-    // Helper: true si el usuario autenticado pertenece al negocio dado
-    function esMiembro(negocioId) {
-      return request.auth != null &&
-        exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
-        usuarioAuth(request.auth.uid).data.negocio_id == negocioId;
+    function miNegocio() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.negocio_id;
     }
 
-    // Helper: true si el usuario autenticado es ADMIN del negocio dado
-    function esAdmin(negocioId) {
-      return esMiembro(negocioId) &&
-        usuarioAuth(request.auth.uid).data.rol == 'ADMIN';
+    // Solo acceso a los datos del negocio propio.
+    function esDelNegocio(negocioId) {
+      return autenticado() && miNegocio() == negocioId;
     }
 
-    // ─────────────────────────────────────────────
-    // NEGOCIOS
-    // Solo lectura para miembros. Escritura solo desde consola/panel admin.
-    // ─────────────────────────────────────────────
-    match /negocios/{negocioId} {
-      allow read: if esMiembro(negocioId);
-      allow write: if false;
-    }
-
-    // ─────────────────────────────────────────────
-    // USUARIOS
-    // Lectura: del propio documento o de miembros del mismo negocio.
-    // Crear/Editar/Desactivar: solo ADMIN del mismo negocio (no a si mismo).
-    // Las cuentas se crean en Firebase Auth; el pin NO se guarda aqui.
-    // ─────────────────────────────────────────────
+    // Usuarios: lectura restringida al mismo negocio; solo un ADMIN de tu
+    // negocio puede crear/editar a sus compañeros; nadie puede borrar.
     match /usuarios/{uid} {
-      allow read: if request.auth != null &&
-        (request.auth.uid == uid ||
-          (exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
-            usuarioAuth(request.auth.uid).data.negocio_id == resource.data.negocio_id));
+      allow read: if autenticado() && (
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.negocio_id == resource.data.negocio_id
+      );
 
-      allow create: if request.auth != null &&
-        request.resource.data.negocio_id is string &&
-        esAdmin(request.resource.data.negocio_id);
+      allow create: if autenticado() &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'ADMIN' &&
+        miNegocio() == request.resource.data.negocio_id;
 
-      allow update: if request.auth != null &&
-        request.auth.uid != uid &&
-        resource.data.negocio_id is string &&
-        esAdmin(resource.data.negocio_id);
+      allow update: if autenticado() &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'ADMIN' &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.negocio_id == resource.data.negocio_id &&
+        request.resource.data.negocio_id == resource.data.negocio_id;
 
       allow delete: if false;
+    }
+
+    // Datos del negocio: productos, stock_ops, ventas, compras, clientes, cartera
+    match /negocios/{negocioId} {
+      allow read, write: if esDelNegocio(negocioId);
+
+      match /{documento=**} {
+        allow read, write: if esDelNegocio(negocioId);
+      }
     }
   }
 }

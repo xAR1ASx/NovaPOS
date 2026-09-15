@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/locale_service.dart';
@@ -5,6 +6,8 @@ import '../services/pin_auth_service.dart';
 import '../services/session_service.dart';
 import '../services/permission_service.dart';
 import '../services/role_permissions.dart';
+import '../services/sync_service.dart';
+import '../services/license_monitor.dart';
 import 'home_screen.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
@@ -162,6 +165,9 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
         return;
       }
 
+      // Conteo local de días disponibles (sirve de respaldo sin internet)
+      await LicenseMonitor.instance.guardarCacheLocal(negocioId);
+
       await SessionService.login(usuario, negocioId: negocioId);
 
       String rol = usuario['rol'] ?? '';
@@ -172,6 +178,17 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
       }
 
       if (!mounted) return;
+
+      unawaited(
+        SyncService()
+            .iniciar(
+              negocioId: negocioId,
+              usuarioUid: (usuario['uid'] ?? '').toString(),
+            )
+            .catchError((e) {}),
+      );
+
+      unawaited(LicenseMonitor.instance.iniciar(negocioId));
 
       Navigator.pushReplacement(
         context,

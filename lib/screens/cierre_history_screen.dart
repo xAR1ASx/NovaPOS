@@ -12,6 +12,7 @@ const Map<String, String> _mapEn = {
   'Estado': 'Status',
   'Base': 'Base',
   'Ventas turno': 'Shift Sales',
+  'Ventas globales turno': 'Shift Sales Global',
   'Ingresos turno': 'Shift Income',
   'Gastos turno': 'Shift Expenses',
   'Total sistema': 'System Total',
@@ -83,6 +84,10 @@ class _CierreHistoryScreenState extends State<CierreHistoryScreen> {
             _filaDetalle(
               _t("Ventas turno"),
               formater.format(c['ventas_turno'] ?? 0),
+            ),
+            _filaDetalle(
+              _t("Ventas globales turno"),
+              formater.format(c['ventas_turno_global'] ?? 0),
             ),
             _filaDetalle(
               _t("Ingresos turno"),

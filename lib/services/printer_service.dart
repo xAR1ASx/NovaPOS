@@ -224,6 +224,7 @@ class PrinterService {
               pw.Divider(),
               _filaArqueo("Base", (cierre['base'] ?? 0)),
               _filaArqueo("Ventas turno", (cierre['ventas_turno'] ?? 0)),
+              _filaArqueo("Ventas global", (cierre['ventas_turno_global'] ?? 0)),
               _filaArqueo("Ingresos", (cierre['ingresos_turno'] ?? 0)),
               _filaArqueo("Gastos", (cierre['gastos_turno'] ?? 0)),
               _filaArqueo("Total sistema", (cierre['total_sistema'] ?? 0)),

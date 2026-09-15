@@ -1,0 +1,15 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function esDelNegocio(negocioId) {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.negocio_id == negocioId;
+    }
+
+    // Imágenes de productos: solo el negocio dueño puede leer y subir.
+    match /negocios/{negocioId}/productos/{archivo} {
+      allow read, write: if esDelNegocio(negocioId);
+    }
+  }
+}

@@ -7,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'services/locale_service.dart';
+import 'services/license_monitor.dart';
 import 'services/ui_mode_service.dart';
 
 void main() async {
@@ -40,6 +41,7 @@ class NovaPOSApp extends StatelessWidget {
           builder: (context, child) {
             final idioma = LocaleService().idioma;
             return MaterialApp(
+              navigatorKey: appNavigatorKey,
               debugShowCheckedModeBanner: false,
               title: 'NovaPOS',
               locale: Locale(idioma),

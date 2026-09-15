@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,7 @@ import '../services/printer_service.dart';
 import '../services/balanza_service.dart';
 import '../services/locale_service.dart';
 import '../services/ui_mode_service.dart';
+import '../services/sync_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -18,6 +20,14 @@ const Map<String, String> _mapEn = {
   'Idioma / Language': 'Language',
   'Los textos del sistema en Inglés': 'System texts in English',
   'Los textos del sistema en Español': 'System texts in Spanish',
+  'Sincronización entre cajas': 'Sync between cash registers',
+  'Comparte productos, ventas y clientes entre varias cajas en tiempo real':
+      'Share products, sales and customers between cash registers in real time',
+  'Sincronización activa': 'Sync active',
+  'Pendientes por subir': 'Pending to upload',
+  'Sincronizando...': 'Syncing...',
+  'Sincronización apagada': 'Sync off',
+  'Sincronizar': 'Sync',
 };
 
 class SettingsScreen extends StatefulWidget {
@@ -42,6 +52,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _balanzaConectada = false;
   String _estadoBalanza = "";
   bool _procesando = false;
+  bool _syncActivo = true;
 
   @override
   void initState() {
@@ -70,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _impresionDirecta = config['impresion_directa'] == '1';
       _balanzaPuerto = config['balanza_puerto'] ?? "COM1";
       _balanzaVelocidad = config['balanza_velocidad'] ?? "9600";
+      _syncActivo = config['sync_activo'] != '0';
     });
   }
 
@@ -630,6 +642,64 @@ class _SettingsScreenState extends State<SettingsScreen>
                           onChanged: (v) => LocaleService().setIdioma(
                             v ? 'en' : 'es',
                           ),
+                        );
+                      },
+                    ),
+                    SwitchListTile(
+                      title: Text(_t("Sincronización entre cajas")),
+                      subtitle: Text(
+                        _t("Comparte productos, ventas y clientes entre varias cajas en tiempo real"),
+                      ),
+                      secondary: const Icon(Icons.cloud_sync),
+                      value: _syncActivo,
+                      onChanged: (v) async {
+                        setState(() => _syncActivo = v);
+                        await DBHelper().guardarConfiguracion(
+                          'sync_activo',
+                          v ? '1' : '0',
+                        );
+                        if (v) {
+                          final cfg = await DBHelper().obtenerConfiguracion();
+                          final nid = cfg['sync_negocio_id'] ?? '';
+                          final uid = cfg['sync_usuario_uid'] ?? '';
+                          if (nid.isNotEmpty) {
+                            unawaited(SyncService()
+                                .iniciar(
+                                  negocioId: nid,
+                                  usuarioUid: uid,
+                                )
+                                .catchError((e) {}));
+                          }
+                        } else {
+                          await SyncService().detener();
+                        }
+                      },
+                    ),
+                    ValueListenableBuilder<SyncEstado>(
+                      valueListenable: SyncService().estado,
+                      builder: (context, st, child) {
+                        final activa = _syncActivo && st.activo;
+                        final linea = activa
+                            ? st.pendientes > 0
+                                ? "${_t('Sincronizando...')} (${st.pendientes} ${_t('Pendientes por subir')})"
+                                : _t("Sincronización activa")
+                            : _t("Sincronización apagada");
+                        return ListTile(
+                          dense: true,
+                          leading: Icon(
+                            activa ? Icons.cloud_done : Icons.cloud_off,
+                            color: activa ? Colors.green : Colors.grey,
+                          ),
+                          title: Text(linea),
+                          trailing: activa
+                              ? IconButton(
+                                  tooltip: _t("Sincronizar"),
+                                  icon: const Icon(Icons.refresh),
+                                  onPressed: () {
+                                    SyncService().sincronizarAhora();
+                                  },
+                                )
+                              : null,
                         );
                       },
                     ),

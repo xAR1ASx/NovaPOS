@@ -41,6 +41,9 @@ const Map<String, String> _mapEn = {
   'TURNO CERRADO': 'SHIFT CLOSED',
   'Base': 'Base',
   'Ventas': 'Sales',
+  'Ventas caja': 'This register Sales',
+  'Ventas globales (todas las cajas)': 'Global Sales (all registers)',
+  'Global (todas las cajas)': 'Global (all registers)',
   'Gastos': 'Expenses',
   'ABRIR': 'OPEN',
   'GASTO': 'EXPENSE',
@@ -72,6 +75,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
   // Variables de Estado
   double _base = 0;
   double _ventas = 0;
+  double _ventasGlobal = 0;
   double _gastos = 0;
   double _totalEnCajaSistema = 0;
 
@@ -101,6 +105,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
     setState(() {
       _base = resumen['base']!;
       _ventas = resumen['ventas_efectivo']!;
+      _ventasGlobal = resumen['ventas_global']!;
       _gastos = resumen['gastos']!;
       _totalEnCajaSistema = resumen['total_en_caja']!;
       _movimientos = lista;
@@ -341,6 +346,33 @@ child: Text(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.indigo[50],
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _t("Ventas globales (todas las cajas)"),
+                              style: TextStyle(
+                                color: Colors.indigo[800],
+                                fontSize: 12,
+                              ),
+                            ),
+                            Text(
+                              formater.format(_ventasGlobal),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.indigo,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -524,7 +556,7 @@ child: Text(
                           ? "OK"
                           : (diferencia > 0 ? "SOBRA" : "FALTA");
                       String desc =
-                          "Cierre: Sistema ${_totalEnCajaSistema.toInt()} | Real ${dineroReal.toInt()} | Estado: $estado";
+                          "Cierre: Sistema ${_totalEnCajaSistema.toInt()} | Real ${dineroReal.toInt()} | Global ${_ventasGlobal.toInt()} | Estado: $estado";
 
                       // CIERRE TRANSACCIONAL: movimiento CIERRE + registro formal
                       await dbHelper.cerrarTurno(
@@ -676,8 +708,16 @@ child: Text(
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            _miniResumen(_t("Base"), _base, Colors.blueAccent),
-                            _miniResumen(_t("Ventas"), _ventas, Colors.greenAccent),
+                            _miniResumen(
+                              _t("Base"),
+                              _base,
+                              Colors.blueAccent,
+                            ),
+                            _miniResumen(
+                              _t("Ventas caja"),
+                              _ventas,
+                              Colors.greenAccent,
+                            ),
                             _miniResumen(
                               _t("Gastos"),
                               _gastos,
@@ -685,6 +725,17 @@ child: Text(
                             ),
                           ],
                         ),
+                      if (_cajaAbierta) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          '${_t("Global (todas las cajas)")}: '
+                          '${formater.format(_ventasGlobal)}',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

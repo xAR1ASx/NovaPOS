@@ -46,3 +46,8 @@ app.*.map.json
 
 # Instalador compilado (se genera con ISCC)
 /installer/output/
+
+# Configuracion de Firebase (claves publicas del proyecto; NO se comparten)
+android/app/google-services.json
+firebase.json
+lib/firebase_options.dart

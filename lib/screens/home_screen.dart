@@ -14,6 +14,7 @@ import '../services/session_service.dart';
 import '../widgets/permission_gate.dart';
 import '../services/permission_service.dart';
 import '../services/pin_auth_service.dart';
+import '../services/license_monitor.dart';
 import 'pin_login_screen.dart';
 import 'users_screen.dart';
 import '../services/locale_service.dart';
@@ -190,6 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await SessionService.logout();
     await PermissionService.clear();
     await PinAuthService.cerrarSesion();
+    await LicenseMonitor.instance.detener();
 
     if (!mounted) return;
 
@@ -303,6 +305,55 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             const SizedBox(height: 25),
+
+            // 1b. AVISO DE VENCIMIENTO DE LICENCIA
+            ValueListenableBuilder<LicenciaResult?>(
+              valueListenable: LicenseMonitor.instance.info,
+              builder: (context, li, _) {
+                if (li == null ||
+                    !li.valida ||
+                    li.indefinida ||
+                    li.diasRestantes > 15) {
+                  return const SizedBox.shrink();
+                }
+                final urgente = li.diasRestantes <= 3;
+                final color = urgente ? const Color(0xFFB71C1C) : const Color(0xFFE65100);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 20),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.event_available, color: Colors.white),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            li.diasRestantes == 0
+                                ? 'Tu licencia vence HOY. Renueva para continuar.'
+                                : 'Tu licencia vence en ${li.diasRestantes} días. Renueva antes de que venza.',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
 
             // 2. TARJETAS DE RESUMEN (KPIs)
             Row(

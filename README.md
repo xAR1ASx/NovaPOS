@@ -56,18 +56,14 @@ flutter pub get
 
 ### 2. Configurar Firebase
 
-El proyecto ya incluye `lib/firebase_options.dart` apuntando al proyecto
-`novapos-bc9d3`. Si necesitas regenerarlo:
+El proyecto ya incluye la configuración de Firebase necesaria
+(`lib/firebase_options.dart` y `android/app/google-services.json`). No se
+necesita hacer nada más para compilar y ejecutar la app.
 
-```bash
-dart pub global activate flutterfire_cli
-flutterfire configure --project=novapos-bc9d3
-```
+### 3. Servidor
 
-### 3. Reglas de Firestore
-
-Las reglas de seguridad deben estar publicadas (`firestore.rules`, en la raíz
-del proyecto). Se suben desde Firebase Console en **Firestore → Reglas**.
+La seguridad y los datos del lado servidor los administra el proveedor del
+sistema. El usuario final no necesita configurar nada.
 
 ### 4. Compilar y ejecutar
 
@@ -113,24 +109,9 @@ texto plano ni en la base local.
 
 ### Crear el primer administrador (una sola vez)
 
-> La app crea los usuarios comunes desde el menú *Usuarios*. Solo el **primer
-> administrador** se crea de forma manual en Firebase Console:
-
-1. **Authentication → Users → Add user**, con la contraseña = PIN del admin
-   (ej. `123456`).
-2. En **Firestore** crea el documento del negocio en la colección `negocios`
-   (al menos: `nombre`, `estado: "activa"`, `created_at`).
-3. Crea en la colección `usuarios` un documento con **ID = UID del usuario**:
-   ```js
-   {
-     "email": "admin@tienda.com",
-     "nombre": "Nombre del Admin",
-     "rol": "ADMIN",
-     "negocio_id": "<ID del documento de negocios>",
-     "esta_activo": true,
-     "created_at": <Timestamp>
-   }
-   ```
+> Las cuentas de administrador y de la empresa las crea el **proveedor del
+> sistema** cuando instala y habilita el software. El usuario final no necesita
+> crear cuentas desde ninguna consola externa.
 
 ### Crear empleados (en la app)
 
