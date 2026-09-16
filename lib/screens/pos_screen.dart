@@ -8,6 +8,7 @@ import 'cash_control_screen.dart';
 import 'clients_screen.dart';
 import 'dart:io';
 import '../services/permission_service.dart';
+import '../utils/numero.dart';
 import '../services/sales_service.dart';
 import '../services/balanza_service.dart';
 import '../services/locale_service.dart';
@@ -746,7 +747,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, st) {
           double dineroEntregado =
-              double.tryParse(pagoCtrl.text.replaceAll(',', '.')) ?? 0;
+              parseNumero(pagoCtrl.text) ?? 0;
           double cambio = dineroEntregado - total;
 
           Color colorCambio = Colors.grey;

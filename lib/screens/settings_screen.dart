@@ -10,6 +10,7 @@ import '../database/db_helper.dart';
 import '../services/pin_auth_service.dart';
 import '../services/printer_service.dart';
 import '../services/balanza_service.dart';
+import '../utils/numero.dart';
 import '../services/locale_service.dart';
 import '../services/ui_mode_service.dart';
 import '../services/sync_service.dart';
@@ -482,7 +483,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   double _getDoubleValue(Data? cell) {
     if (cell == null || cell.value == null) return 0;
     try {
-      return double.parse(cell.value.toString());
+      return parseNumero(cell.value.toString()) ?? 0;
     } catch (e) {
       return 0;
     }

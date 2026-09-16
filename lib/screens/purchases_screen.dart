@@ -4,6 +4,7 @@ import '../database/db_helper.dart';
 import '../services/locale_service.dart';
 import '../services/session_service.dart';
 import 'purchase_history_screen.dart'; // ✅ IMPORTANTE: CONECTA CON EL HISTORIAL
+import '../utils/numero.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -132,11 +133,11 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setStateModal) {
           // 2. DATOS DE LA ENTRADA
-          double cajas = double.tryParse(cantidadCajasCtrl.text) ?? 0;
-          double unids = double.tryParse(unidadesPorCajaCtrl.text) ?? 1;
+          double cajas = parseNumero(cantidadCajasCtrl.text) ?? 0;
+          double unids = parseNumero(unidadesPorCajaCtrl.text) ?? 1;
           double cantidadEntrante = cajas * unids;
           double costoTotalFactura =
-              double.tryParse(costoTotalCtrl.text.replaceAll(',', '.')) ?? 0;
+              parseNumero(costoTotalCtrl.text) ?? 0;
 
           // 3. 🔥 CÁLCULO DE COSTO PROMEDIO PONDERADO 🔥
           double costoUnitarioEntrante = cantidadEntrante > 0
@@ -159,7 +160,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
           // Función para sugerir precio basado en el NUEVO costo promedio
           void calcularPrecioVenta() {
             double porcentaje =
-                double.tryParse(porcentajeGananciaCtrl.text) ?? 0;
+                parseNumero(porcentajeGananciaCtrl.text) ?? 0;
             double precioSugerido =
                 costoPromedioPonderado * (1 + (porcentaje / 100));
             // Redondeo a la cincuentena más cercana (ej: 1230 -> 1250)
@@ -371,10 +372,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
               ElevatedButton(
                 onPressed: () {
                   double precioVentaFinal =
-                      double.tryParse(
-                        precioVentaFinalCtrl.text.replaceAll(',', '.'),
-                      ) ??
-                      0;
+                      parseNumero(precioVentaFinalCtrl.text) ?? 0;
                   if (cantidadEntrante > 0 &&
                       costoTotalFactura > 0 &&
                       precioVentaFinal > 0) {

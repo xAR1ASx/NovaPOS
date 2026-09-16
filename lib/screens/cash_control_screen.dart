@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/cash_service.dart';
 import '../services/session_service.dart';
+import '../utils/numero.dart';
 import '../services/locale_service.dart';
 import 'cierre_history_screen.dart';
 
@@ -199,9 +200,8 @@ child: Text(
           ),
           ElevatedButton(
             onPressed: () async {
-              // Limpiamos comas y puntos para evitar errores numéricos
-              String montoLimpio = montoCtrl.text.replaceAll(',', '.');
-              double? m = double.tryParse(montoLimpio);
+              // Aceptamos punto de miles y coma decimal (formato colombiano)
+              double? m = parseNumero(montoCtrl.text);
 
               if (m != null && m > 0) {
                 if (!esApertura && m > _totalEnCajaSistema) {
@@ -260,8 +260,7 @@ child: Text(
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             // Cálculos
-            double dineroReal =
-                double.tryParse(realController.text.replaceAll(',', '.')) ?? 0;
+            double dineroReal = parseNumero(realController.text) ?? 0;
             double diferencia = dineroReal - _totalEnCajaSistema;
 
             // Sub-función para registrar gasto olvidado
@@ -298,9 +297,7 @@ child: Text(
                   actions: [
                     ElevatedButton(
                       onPressed: () async {
-                        double? m = double.tryParse(
-                          montoCtrl.text.replaceAll(',', '.'),
-                        );
+                        double? m = parseNumero(montoCtrl.text);
                         if (m != null) {
                           await _cashService.registrarMovimiento(
                             tipo: 'GASTO',

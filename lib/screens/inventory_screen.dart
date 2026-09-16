@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart'; // Para guardar la copia
 import 'package:path/path.dart' as path;
 import '../services/inventory_service.dart';
 import '../services/locale_service.dart';
+import '../utils/numero.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -41,6 +42,7 @@ const Map<String, String> _mapEn = {
   '✅ Producto Creado': '✅ Product Created',
   '🔄 Producto Actualizado': '🔄 Product Updated',
   '❌ Error: Revise números': '❌ Error: Check numbers',
+  '⚠️ Revisa los valores (Cantidad y Precio)': '⚠️ Check the values (Quantity and Price)',
   '🗑️ Producto eliminado': '🗑️ Product deleted',
   'No hay productos': 'No products',
   '¿Borrar producto?': 'Delete product?',
@@ -401,17 +403,27 @@ class _InventoryScreenState extends State<InventoryScreen>
           ),
           ElevatedButton(
             onPressed: () async {
+              final qty = parseNumero(qtyCtrl.text);
+              final price = parseNumero(priceCtrl.text);
               if (nameCtrl.text.isNotEmpty &&
-                  qtyCtrl.text.isNotEmpty &&
-                  priceCtrl.text.isNotEmpty) {
+                  qty != null &&
+                  price != null &&
+                  price > 0) {
                 await DBHelper().agregarPresentacion(
                   prod['id'],
                   nameCtrl.text,
-                  double.parse(qtyCtrl.text.replaceAll(',', '.')),
-                  double.parse(priceCtrl.text.replaceAll(',', '.')),
+                  qty,
+                  price,
                 );
                 Navigator.pop(c);
                 parentSetState(() {});
+              } else {
+                ScaffoldMessenger.of(c).showSnackBar(
+                  SnackBar(
+                    content: Text(_t('⚠️ Revisa los valores (Cantidad y Precio)')),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               }
             },
             child: Text(_t("GUARDAR")),
@@ -423,7 +435,7 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   // --- 💾 LÓGICA DE GUARDADO ---
   void _guardar() async {
-    if (_nombreCtrl.text.isEmpty || _precioVentaCtrl.text.isEmpty) {
+    if (_nombreCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_t('⚠️ Nombre y Precio Venta son obligatorios')),
@@ -432,12 +444,17 @@ class _InventoryScreenState extends State<InventoryScreen>
       return;
     }
     try {
-      double precioVenta = double.parse(
-        _precioVentaCtrl.text.replaceAll(',', '.'),
-      );
-      double precioCosto =
-          double.tryParse(_precioCostoCtrl.text.replaceAll(',', '.')) ?? 0;
-      double stock = double.tryParse(_stockCtrl.text.replaceAll(',', '.')) ?? 0;
+      double? precioVenta = parseNumero(_precioVentaCtrl.text);
+      if (precioVenta == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_t('⚠️ Nombre y Precio Venta son obligatorios')),
+          ),
+        );
+        return;
+      }
+      double precioCosto = parseNumero(_precioCostoCtrl.text) ?? 0;
+      double stock = parseNumero(_stockCtrl.text) ?? 0;
 
       if (precioVenta <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -34,7 +34,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -45,7 +45,7 @@ class DBHelper {
       'CREATE TABLE usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT UNIQUE, password_hash TEXT, rol TEXT, nombre_completo TEXT, esta_activo INTEGER DEFAULT 1, auth_uid TEXT UNIQUE)',
     );
     await db.execute(
-      'CREATE TABLE productos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, codigo_barras TEXT, codigo_plu TEXT, categoria TEXT, precio_costo REAL, precio_venta REAL, stock_actual REAL, es_pesable INTEGER DEFAULT 0, esta_activo INTEGER DEFAULT 1, imagen_path TEXT, uuid TEXT)',
+      'CREATE TABLE productos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, codigo_barras TEXT, codigo_plu TEXT, categoria TEXT, precio_costo REAL, precio_venta REAL, stock_actual REAL, es_pesable INTEGER DEFAULT 0, esta_activo INTEGER DEFAULT 1, imagen_path TEXT, uuid TEXT, dispositivo_uuid TEXT)',
     );
     await db.execute(
       'CREATE TABLE configuracion (clave TEXT PRIMARY KEY, valor TEXT)',
@@ -60,7 +60,7 @@ class DBHelper {
       'CREATE TABLE detalle_ventas (id INTEGER PRIMARY KEY AUTOINCREMENT, venta_id INTEGER, producto_id INTEGER, nombre_producto TEXT, cantidad REAL, cantidad_descontada REAL, precio_unitario REAL, subtotal REAL, costo_unitario REAL DEFAULT 0)',
     );
     await db.execute(
-      'CREATE TABLE compras (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, total REAL, metodo_pago TEXT, proveedor TEXT, uuid TEXT)',
+      'CREATE TABLE compras (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, total REAL, metodo_pago TEXT, proveedor TEXT, uuid TEXT, usuario_id INTEGER)',
     );
     await db.execute(
       'CREATE TABLE detalle_compras (id INTEGER PRIMARY KEY AUTOINCREMENT, compra_id INTEGER, producto_id INTEGER, nombre_producto TEXT, cantidad REAL, costo_unitario REAL, subtotal REAL)',
@@ -1170,6 +1170,7 @@ CREATE TABLE roles_permisos(
           'metodo_pago': pagoConCaja ? 'CAJA' : 'CREDITO/BANCO',
           'proveedor': proveedor.isEmpty ? 'General' : proveedor,
           'uuid': compraUuid,
+          'usuario_id': usuarioId,
         });
         for (var item in agrupados.values) {
           final id = (item['id'] as num).toInt();
@@ -2220,6 +2221,99 @@ CREATE TABLE roles_permisos(
         await db.execute(
           'ALTER TABLE cierres_caja ADD COLUMN ventas_turno_global REAL DEFAULT 0',
         );
+      }
+    }
+    if (oldVersion < 7) {
+      // Corrige bases existentes que nunca recibieron las columnas o tablas
+      // agregadas en versiones posteriores (misma clase de error: el esquema
+      // nuevo está incompleto en bases viejas).
+      final colsProd = await db.rawQuery('PRAGMA table_info(productos)');
+      if (!colsProd.any((c) => c['name'] == 'uuid')) {
+        await db.execute('ALTER TABLE productos ADD COLUMN uuid TEXT');
+      }
+      if (!colsProd.any((c) => c['name'] == 'dispositivo_uuid')) {
+        await db.execute(
+          'ALTER TABLE productos ADD COLUMN dispositivo_uuid TEXT',
+        );
+      }
+      if (!colsProd.any((c) => c['name'] == 'imagen_path')) {
+        await db.execute('ALTER TABLE productos ADD COLUMN imagen_path TEXT');
+      }
+
+      final colsCom = await db.rawQuery('PRAGMA table_info(compras)');
+      if (!colsCom.any((c) => c['name'] == 'usuario_id')) {
+        await db.execute('ALTER TABLE compras ADD COLUMN usuario_id INTEGER');
+      }
+
+      await db.execute(
+        'CREATE TABLE IF NOT EXISTS presentaciones (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, nombre TEXT, cantidad REAL, precio REAL, codigo_barras TEXT)',
+      );
+      await db.execute(
+        'CREATE TABLE IF NOT EXISTS roles (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL UNIQUE, descripcion TEXT)',
+      );
+      await db.execute(
+        'CREATE TABLE IF NOT EXISTS permisos (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT NOT NULL UNIQUE, descripcion TEXT)',
+      );
+      await db.execute(
+        'CREATE TABLE IF NOT EXISTS roles_permisos (id INTEGER PRIMARY KEY AUTOINCREMENT, rol_id INTEGER NOT NULL, permiso_id INTEGER NOT NULL)',
+      );
+
+      final rolesExistentes = await db.query('roles');
+      if (rolesExistentes.isEmpty) {
+        await db.insert('roles', {
+          'nombre': 'ADMIN',
+          'descripcion': 'Administrador del sistema',
+        });
+        await db.insert('roles', {'nombre': 'CAJERO', 'descripcion': 'Cajero'});
+      }
+
+      final permisosExistentes = await db.query('permisos');
+      if (permisosExistentes.isEmpty) {
+        const listaPermisos = [
+          'VENTAS_VER', 'VENTAS_CREAR', 'VENTAS_EDITAR', 'VENTAS_ANULAR',
+          'CAJA_VER', 'CAJA_ABRIR', 'CAJA_CERRAR', 'CAJA_MOVIMIENTOS',
+          'INVENTARIO_VER', 'INVENTARIO_CREAR', 'INVENTARIO_EDITAR',
+          'INVENTARIO_ELIMINAR', 'COMPRAS_VER', 'COMPRAS_CREAR',
+          'COMPRAS_EDITAR', 'COMPRAS_ELIMINAR', 'REPORTES_VER',
+          'USUARIOS_VER', 'USUARIOS_CREAR', 'USUARIOS_EDITAR',
+          'USUARIOS_ELIMINAR', 'CONFIGURACION_GENERAL',
+        ];
+        for (final codigo in listaPermisos) {
+          await db.insert('permisos', {
+            'codigo': codigo,
+            'descripcion': codigo,
+          });
+        }
+      }
+
+      final rp = await db.query('roles_permisos');
+      if (rp.isEmpty && permisosExistentes.isNotEmpty) {
+        final admin = await db.query('roles',
+            where: 'nombre = ?', whereArgs: ['ADMIN'], limit: 1);
+        final cajero = await db.query('roles',
+            where: 'nombre = ?', whereArgs: ['CAJERO'], limit: 1);
+        final permisosTodos = await db.query('permisos');
+        if (admin.isNotEmpty) {
+          for (final permiso in permisosTodos) {
+            await db.insert('roles_permisos', {
+              'rol_id': admin.first['id'],
+              'permiso_id': permiso['id'],
+            });
+          }
+        }
+        if (cajero.isNotEmpty) {
+          const cajeroCodes = {
+            'VENTAS_VER', 'VENTAS_CREAR', 'CAJA_VER', 'CAJA_ABRIR', 'CAJA_CERRAR',
+          };
+          for (final permiso in permisosTodos) {
+            if (cajeroCodes.contains(permiso['codigo'])) {
+              await db.insert('roles_permisos', {
+                'rol_id': cajero.first['id'],
+                'permiso_id': permiso['id'],
+              });
+            }
+          }
+        }
       }
     }
   }

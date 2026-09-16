@@ -45,10 +45,7 @@ class NovaPOSApp extends StatelessWidget {
               debugShowCheckedModeBanner: false,
               title: 'NovaPOS',
               locale: Locale(idioma),
-              supportedLocales: const [
-                Locale('es'),
-                Locale('en'),
-              ],
+              supportedLocales: const [Locale('es'), Locale('en')],
               localizationsDelegates: const [
                 GlobalMaterialLocalizations.delegate,
                 GlobalWidgetsLocalizations.delegate,

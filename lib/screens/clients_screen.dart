@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/session_service.dart';
 import '../services/locale_service.dart';
+import '../utils/numero.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -127,7 +128,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              double? cupo = double.tryParse(ctrl.text.replaceAll(',', '.'));
+              double? cupo = parseNumero(ctrl.text);
               if (cupo == null || cupo < 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
