@@ -108,17 +108,41 @@ El sistema se encuentra en su versión **1.1.0**, completamente funcional, blind
 
 ## 💻 Guía de Despliegue para Prueba Piloto
 
-### Instalación en el Computador del Fruver:
-1. Copia el archivo `NovaPOS-Setup-1.1.0.exe` (ubicado en `installer/output/`) a una memoria USB.
-2. Ejecuta el instalador en el equipo del fruver; el asistente instalará la aplicación en *Archivos de Programa* y creará el acceso directo en el Escritorio.
-3. Abre la aplicación: el **Catálogo Maestro de ~120 referencias con fotos** se precargará de inmediato.
-4. Ingresa con la cuenta de administrador.
+Los instaladores listos para producción se encuentran en la carpeta `installer/output/`:
+* **PC Windows**: `NovaPOS-Setup-1.1.0.exe` (~22 MB)
+* **Tablet Android**: `NovaPOS-Tablet-1.1.0.apk` (~71 MB)
+
+---
+
+### 🖥️ Caja 1: Instalación en el Computador Principal (Windows)
+1. Copia `NovaPOS-Setup-1.1.0.exe` a una memoria USB y conéctala al PC del fruver.
+2. Ejecuta el instalador: el asistente instalará la aplicación en *Archivos de Programa* y creará el acceso directo en el Escritorio.
+3. Abre NovaPOS: el **Catálogo Maestro de ~120 referencias con fotos** se precargará de inmediato.
+4. Inicia sesión con la cuenta de administrador.
 5. Ve a **Ajustes**:
-   * Escribe el Nombre comercial del negocio, NIT, Ciudad, Dirección y Teléfono.
-   * En **Impresora**, selecciona la impresora instalada y pulsa *"Imprimir Ticket de Prueba"*.
-   * En **Balanza**, selecciona el puerto COM de la báscula y valida el peso en vivo.
-6. En **Gestión de Usuarios**, crea los cajeros asignándoles su nombre y PIN de acceso.
-7. ¡Listo para iniciar turnos y comenzar a facturar!
+   * Configura Nombre comercial, NIT, Ciudad, Dirección y Teléfono (aparecerán en el encabezado del ticket).
+   * En **Impresora**: selecciona la impresora térmica instalada y pulsa *"Imprimir Ticket de Prueba"*.
+   * En **Balanza**: selecciona el puerto COM de la báscula y valida el peso en vivo.
+6. En **Gestión de Usuarios**: crea el cajero principal asignándole su nombre y PIN de acceso.
+
+---
+
+### 📱 Caja 2: Instalación en la Tablet (Android)
+1. Copia `NovaPOS-Tablet-1.1.0.apk` a la tablet (vía cable USB, WhatsApp Web, Google Drive o tarjeta microSD).
+2. Abre el archivo en el explorador de la tablet y pulsa **Instalar** (permite *"Instalar aplicaciones de orígenes desconocidos"* si el sistema lo solicita).
+3. Abre NovaPOS e inicia sesión con el **mismo correo del negocio** que se usó en el PC.
+4. En **Gestión de Usuarios**: crea el cajero para la tablet con su propio PIN de 4 dígitos.
+5. ¡Listo! La interfaz táctil con la barra superior de 12 favoritos está optimizada para venta táctil ultra rápida en orientación horizontal.
+
+---
+
+### ⚡ Sincronización Multi-Caja en Tiempo Real (PC ↔ Tablet)
+NovaPOS opera con una arquitectura **Offline-First + Cloud Realtime**:
+* **En vivo y automático**: Cuando una caja vende (ej. 2 kg de Tomate), la operación de stock viaja a Firestore y la otra caja descuenta el inventario y refresca sus tarjetas en pantalla en cuestión de milisegundos.
+* **Catálogo unificado**: Cualquier cambio de precio o producto nuevo se replica automáticamente en ambos dispositivos.
+* **Ventas y reportes consolidados**: El historial y las exportaciones a Excel consolidan las ventas de ambas cajas.
+* **Arqueo independiente**: Por diseño de seguridad, cada caja física maneja su propio cajón monedero, base de apertura y cierre de turno individual.
+* **Tolerancia a fallos**: Si la conexión a Internet se cae momentáneamente, ambas cajas continúan vendiendo en local sobre SQLite sin detenerse; al reconectar, se sincronizan solas.
 
 ---
 
@@ -154,8 +178,11 @@ flutter analyze
 # Compilar ejecutable Release para Windows
 flutter build windows --release
 
-# Compilar instalador final (PowerShell con Inno Setup 6)
+# Compilar instalador final para Windows (PowerShell con Inno Setup 6)
 & "C:\Users\jhona\AppData\Local\Programs\Inno Setup 6\ISCC.exe" .\installer\NovaPOS_setup.iss
+
+# Compilar paquete APK Release para Tablet Android
+flutter build apk --release
 ```
 
 ---
