@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/permission_service.dart';
 import '../services/locale_service.dart';
+import '../services/excel_export_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -21,6 +22,7 @@ const Map<String, String> _mapEn = {
   '(-) Costos': '(-) Costs',
   '= Utilidad Bruta': '= Gross Profit',
   '(-) Gastos': '(-) Expenses',
+  '(-) Mermas': '(-) Waste / Shrinkage',
   '= UTILIDAD NETA': '= NET PROFIT',
   'INVENTARIO': 'INVENTORY',
   'CARTERA': 'RECEIVABLES',
@@ -252,6 +254,23 @@ class _ReportsScreenState extends State<ReportsScreen>
         title: Text(_t('Inteligencia de Negocio')),
         backgroundColor: const Color(0xFF1A1F2B),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.table_chart_outlined),
+            tooltip: "Exportar Reportes a Excel",
+            onPressed: () {
+              ExcelExportService().mostrarModalExportacion(
+                context,
+                hoy: _hoy,
+                mes: _mes,
+                anio: _anio,
+                inventarioValor: _inventarioValor,
+                cartera: _cartera,
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.orange,
@@ -400,6 +419,14 @@ class _ReportsScreenState extends State<ReportsScreen>
                         _mes['gastos']!,
                         _anio['gastos']!,
                         color: Colors.orange[800],
+                      ),
+                      const SizedBox(height: 5),
+                      _filaTabla(
+                        _t('(-) Mermas'),
+                        _hoy['mermas'] ?? 0,
+                        _mes['mermas'] ?? 0,
+                        _anio['mermas'] ?? 0,
+                        color: Colors.purple[700],
                       ),
                       const Divider(thickness: 2),
                       _filaTabla(

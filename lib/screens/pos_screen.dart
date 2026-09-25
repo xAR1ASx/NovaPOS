@@ -1,5 +1,6 @@
 import '../services/printer_service.dart'; // 🔥 Importamos el servicio de impresión
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
@@ -101,6 +102,8 @@ class PosScreen extends StatefulWidget {
 class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _filteredProducts = [];
+  List<Map<String, dynamic>> _favoritos = [];
+  bool _mostrarBarraFavoritos = true;
   final List<List<Map<String, dynamic>>> _sessions = [[]];
   int _currentSessionIndex = 0;
 
@@ -119,7 +122,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   double _pesoActualBalanza = 0;
 
   // Categorías
-  List<String> _categorias = ["TODO"];
+  List<String> _categorias = ["TODO", "⭐ FAVORITOS"];
   String _categoriaActual = "TODO";
 
   @override
@@ -137,7 +140,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     final cats = await DBHelper().obtenerCategorias();
     if (mounted) {
       setState(() {
-        _categorias = ["TODO", ...cats];
+        _categorias = ["TODO", "⭐ FAVORITOS", ...cats];
       });
     }
   }
@@ -311,10 +314,21 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
   void _cargarProductos() async {
     final data = await DBHelper().getProducts();
-    setState(() {
-      _products = data;
-      _filteredProducts = data;
-    });
+    final favs = await DBHelper().obtenerProductosFavoritos(limit: 12);
+    if (mounted) {
+      setState(() {
+        _products = data;
+        _favoritos = favs;
+        if (_categoriaActual == "⭐ FAVORITOS") {
+          _filteredProducts = favs;
+        } else if (_categoriaActual == "TODO") {
+          _filteredProducts = data;
+        } else {
+          _filteredProducts =
+              data.where((p) => p['categoria'] == _categoriaActual).toList();
+        }
+      });
+    }
   }
 
   String _limpiarTexto(String input) {
@@ -367,11 +381,13 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
   void _filtrar(String q) {
     setState(() {
-      _filteredProducts = _products.where((p) {
+      final base = (_categoriaActual == "⭐ FAVORITOS") ? _favoritos : _products;
+      _filteredProducts = base.where((p) {
         String textoBusqueda = _limpiarTexto(q);
         String nombreProd = _limpiarTexto(p['nombre'].toString());
 
         bool matchTexto =
+            textoBusqueda.isEmpty ||
             nombreProd.contains(textoBusqueda) ||
             p['id'].toString() == textoBusqueda ||
             (p['codigo_plu'] ?? '').toString() == textoBusqueda ||
@@ -379,6 +395,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
         bool matchCategoria =
             _categoriaActual == "TODO" ||
+            _categoriaActual == "⭐ FAVORITOS" ||
             (p['categoria'] ?? 'Otros') == _categoriaActual;
 
         return matchTexto && matchCategoria;
@@ -735,10 +752,61 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     });
   }
 
+  void _seleccionarCliente(StateSetter st) async {
+    final clientes = await DBHelper().obtenerClientes();
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Text(_t("Seleccionar Cliente")),
+        content: SizedBox(
+          width: 320,
+          height: 320,
+          child: clientes.isEmpty
+              ? Center(child: Text(_t("No hay clientes registrados")))
+              : ListView.builder(
+                  itemCount: clientes.length,
+                  itemBuilder: (c, i) {
+                    return ListTile(
+                      leading: const Icon(Icons.person),
+                      title: Text(clientes[i]['nombre'] ?? ''),
+                      subtitle: Text(clientes[i]['telefono'] ?? ''),
+                      onTap: () {
+                        Navigator.pop(ctx, clientes[i]);
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (c) => const ClientsScreen()),
+              );
+            },
+            child: Text(_t("Nuevo Cliente")),
+          ),
+        ],
+      ),
+    ).then((val) {
+      if (val != null) {
+        _clienteSeleccionadoGlobal = val;
+        st(() {});
+      }
+    });
+  }
+
   void _mostrarPago() {
-    double total = _calcularTotalPagar();
+    final double total = _calcularTotalPagar();
     final pagoCtrl = TextEditingController();
+    final pagoMixtoEfectivoCtrl = TextEditingController();
+    final pagoMixtoDigitalCtrl = TextEditingController();
     String metodo = "EFECTIVO";
+    String tipoDigitalMixto = "NEQUI";
     _clienteSeleccionadoGlobal = null;
 
     showDialog(
@@ -746,9 +814,18 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, st) {
-          double dineroEntregado =
-              parseNumero(pagoCtrl.text) ?? 0;
-          double cambio = dineroEntregado - total;
+          double dineroEntregado = 0;
+          double cambio = 0;
+
+          if (metodo == "EFECTIVO") {
+            dineroEntregado = parseNumero(pagoCtrl.text) ?? 0;
+            cambio = dineroEntregado - total;
+          } else if (metodo == "MIXTO") {
+            final ef = parseNumero(pagoMixtoEfectivoCtrl.text) ?? 0;
+            final dig = parseNumero(pagoMixtoDigitalCtrl.text) ?? 0;
+            dineroEntregado = ef + dig;
+            cambio = dineroEntregado - total;
+          }
 
           Color colorCambio = Colors.grey;
           String textoCambio = "---";
@@ -785,32 +862,51 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
               ],
             ),
             content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ChoiceChip(
+              child: SizedBox(
+                width: 480,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        ChoiceChip(
+                          avatar: const Icon(Icons.attach_money, size: 18),
                           label: Text(_t("Efectivo")),
                           selected: metodo == "EFECTIVO",
                           onSelected: (v) => st(() => metodo = "EFECTIVO"),
                         ),
-                      ),
-                      const SizedBox(width: 5),
-                      Expanded(
-child: ChoiceChip(
-                          label: Text(_t("Nequi")),
+                        ChoiceChip(
+                          avatar: const Icon(Icons.phone_android, size: 18),
+                          label: const Text("Nequi"),
                           selected: metodo == "NEQUI",
                           onSelected: (v) => st(() {
                             metodo = "NEQUI";
                             pagoCtrl.text = total.toInt().toString();
                           }),
                         ),
-                      ),
-                      const SizedBox(width: 5),
-                      Expanded(
-child: ChoiceChip(
+                        ChoiceChip(
+                          avatar: const Icon(Icons.account_balance_wallet, size: 18),
+                          label: const Text("Daviplata"),
+                          selected: metodo == "DAVIPLATA",
+                          onSelected: (v) => st(() {
+                            metodo = "DAVIPLATA";
+                            pagoCtrl.text = total.toInt().toString();
+                          }),
+                        ),
+                        ChoiceChip(
+                          avatar: const Icon(Icons.credit_card, size: 18),
+                          label: const Text("Tarjeta / Datáfono"),
+                          selected: metodo == "TARJETA",
+                          onSelected: (v) => st(() {
+                            metodo = "TARJETA";
+                            pagoCtrl.text = total.toInt().toString();
+                          }),
+                        ),
+                        ChoiceChip(
+                          avatar: const Icon(Icons.assignment_ind, size: 18),
                           label: Text(_t("Fiado")),
                           selected: metodo == "CREDITO",
                           onSelected: (v) {
@@ -818,119 +914,276 @@ child: ChoiceChip(
                             _seleccionarCliente(st);
                           },
                         ),
+                        ChoiceChip(
+                          avatar: const Icon(Icons.call_split, size: 18),
+                          label: const Text("Pago Mixto"),
+                          selected: metodo == "MIXTO",
+                          onSelected: (v) => st(() {
+                            metodo = "MIXTO";
+                            pagoMixtoEfectivoCtrl.clear();
+                            pagoMixtoDigitalCtrl.text = total.toInt().toString();
+                          }),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+
+                    // CUERPO SEGÚN MÉTODO DE PAGO
+                    if (metodo == "CREDITO")
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[50],
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.person, size: 44, color: Colors.orange),
+                            const SizedBox(height: 6),
+                            Text(
+                              _clienteSeleccionadoGlobal != null
+                                  ? _clienteSeleccionadoGlobal!['nombre']
+                                  : _t("Seleccione Cliente"),
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                            ),
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              onPressed: () => _seleccionarCliente(st),
+                              icon: const Icon(Icons.search, size: 18),
+                              label: Text(_clienteSeleccionadoGlobal != null ? _t("Cambiar Cliente") : _t("Buscar Cliente")),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (metodo == "MIXTO")
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blueGrey[50],
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Text("Método digital:", style: TextStyle(fontWeight: FontWeight.w600)),
+                                const SizedBox(width: 10),
+                                DropdownButton<String>(
+                                  value: tipoDigitalMixto,
+                                  isDense: true,
+                                  items: const [
+                                    DropdownMenuItem(value: "NEQUI", child: Text("Nequi")),
+                                    DropdownMenuItem(value: "DAVIPLATA", child: Text("Daviplata")),
+                                    DropdownMenuItem(value: "TARJETA", child: Text("Tarjeta / Datáfono")),
+                                    DropdownMenuItem(value: "TRANSFERENCIA", child: Text("Transferencia Bancaria")),
+                                  ],
+                                  onChanged: (val) {
+                                    if (val != null) st(() => tipoDigitalMixto = val);
+                                  },
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: pagoMixtoEfectivoCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                labelText: "Efectivo Recibido",
+                                prefixIcon: const Icon(Icons.attach_money, color: Colors.green),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                filled: true,
+                                fillColor: Colors.white,
+                              ),
+                              onChanged: (val) {
+                                final ef = parseNumero(val) ?? 0;
+                                final resto = (total - ef).clamp(0, total);
+                                pagoMixtoDigitalCtrl.text = resto > 0 ? resto.toInt().toString() : '0';
+                                st(() {});
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: pagoMixtoDigitalCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                labelText: "Monto $tipoDigitalMixto",
+                                prefixIcon: const Icon(Icons.phone_android, color: Colors.blue),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                filled: true,
+                                fillColor: Colors.white,
+                              ),
+                              onChanged: (val) => st(() {}),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: colorCambio.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: colorCambio, width: 1.5),
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    cambio >= 0 ? _t("CAMBIO / VUELTAS") : _t("ESTADO"),
+                                    style: TextStyle(color: colorCambio, fontWeight: FontWeight.bold, letterSpacing: 1.1),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    textoCambio,
+                                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: colorCambio),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (metodo == "NEQUI" || metodo == "DAVIPLATA" || metodo == "TARJETA")
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              metodo == "TARJETA" ? Icons.credit_card : Icons.phone_android,
+                              size: 44,
+                              color: Colors.blue[800],
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              "Cobro por $metodo",
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blue[900]),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              "Verifique en su celular o terminal el ingreso de ${formater.format(total)} antes de finalizar la venta.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 13, color: Colors.blue[800]),
+                            ),
+                          ],
+                        ),
+                      )
+                    else ...[
+                      // EFECTIVO
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        alignment: WrapAlignment.center,
+                        children: [
+                          ActionChip(
+                            label: const Text("Exacto"),
+                            backgroundColor: Colors.green[50],
+                            onPressed: () {
+                              pagoCtrl.text = total.toInt().toString();
+                              st(() {});
+                            },
+                          ),
+                          ActionChip(
+                            label: const Text("\$10.000"),
+                            onPressed: () {
+                              pagoCtrl.text = "10000";
+                              st(() {});
+                            },
+                          ),
+                          ActionChip(
+                            label: const Text("\$20.000"),
+                            onPressed: () {
+                              pagoCtrl.text = "20000";
+                              st(() {});
+                            },
+                          ),
+                          ActionChip(
+                            label: const Text("\$50.000"),
+                            onPressed: () {
+                              pagoCtrl.text = "50000";
+                              st(() {});
+                            },
+                          ),
+                          ActionChip(
+                            label: const Text("\$100.000"),
+                            onPressed: () {
+                              pagoCtrl.text = "100000";
+                              st(() {});
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: pagoCtrl,
+                        keyboardType: TextInputType.number,
+                        autofocus: true,
+                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                        decoration: InputDecoration(
+                          labelText: _t("DINERO RECIBIDO"),
+                          hintText: "\$ 0",
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                          prefixIcon: const Icon(Icons.attach_money),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        onChanged: (val) => st(() {}),
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(
+                          color: colorCambio.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: colorCambio, width: 2),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              cambio >= 0 ? _t("CAMBIO / VUELTAS") : _t("ESTADO"),
+                              style: TextStyle(
+                                color: colorCambio,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              textoCambio,
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: colorCambio,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  if (metodo == "CREDITO")
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.orange[50],
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Column(
-                        children: [
-                          const Icon(
-                            Icons.person,
-                            size: 40,
-                            color: Colors.orange,
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            _clienteSeleccionadoGlobal != null
-                                ? _clienteSeleccionadoGlobal!['nombre']
-                                : _t("Seleccione Cliente"),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                          if (_clienteSeleccionadoGlobal == null)
-                            Text(
-                              _t("(Toque Fiado otra vez para buscar)"),
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                        ],
-                      ),
-                    )
-                  else
-                    TextField(
-                      controller: pagoCtrl,
-                      keyboardType: TextInputType.number,
-                      autofocus: true,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        labelText: _t("DINERO RECIBIDO"),
-                        hintText: "\$ 0",
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        prefixIcon: const Icon(Icons.attach_money),
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                      ),
-                      onChanged: (val) => st(() {}),
-                    ),
-
-                  const SizedBox(height: 20),
-
-                  if (metodo == "EFECTIVO")
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(15),
-                      decoration: BoxDecoration(
-                        color: colorCambio.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(color: colorCambio, width: 2),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            cambio >= 0 ? _t("CAMBIO / VUELTAS") : _t("ESTADO"),
-                            style: TextStyle(
-                              color: colorCambio,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            textoCambio,
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: colorCambio,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: Text(
-                  _t("CANCELAR"),
-                  style: const TextStyle(color: Colors.grey),
-                ),
+                child: Text(_t("CANCELAR"), style: const TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green[800],
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 30,
-                    vertical: 15,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                 ),
                 onPressed: () async {
                   if (!PermissionService.can("VENTAS_CREAR")) {
@@ -943,11 +1196,11 @@ child: ChoiceChip(
                     return;
                   }
 
-                  if (metodo == "CREDITO" &&
-                      _clienteSeleccionadoGlobal == null) {
+                  if (metodo == "CREDITO" && _clienteSeleccionadoGlobal == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(_t("⚠️ Selecciona un cliente para fiar")),
+                        backgroundColor: Colors.orange[800],
                       ),
                     );
                     return;
@@ -956,13 +1209,37 @@ child: ChoiceChip(
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(_t("⚠️ Falta dinero para completar el pago")),
+                        backgroundColor: Colors.red[800],
                       ),
                     );
                     return;
                   }
 
+                  String? detalleJson;
+                  double efectivoCajon = 0;
+                  if (metodo == "MIXTO") {
+                    final ef = parseNumero(pagoMixtoEfectivoCtrl.text) ?? 0;
+                    final dig = parseNumero(pagoMixtoDigitalCtrl.text) ?? 0;
+                    if ((ef + dig) < total) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(_t("⚠️ La suma de efectivo y digital no cubre el total de la venta")),
+                          backgroundColor: Colors.red[800],
+                        ),
+                      );
+                      return;
+                    }
+                    efectivoCajon = ef;
+                    detalleJson = jsonEncode({
+                      'efectivo': ef,
+                      'digital': dig,
+                      'metodo_digital': tipoDigitalMixto,
+                    });
+                  } else if (metodo == "EFECTIVO") {
+                    efectivoCajon = total;
+                  }
+
                   try {
-                    // 🔥 1. GUARDAMOS Y OBTENEMOS EL ID (Tu BD debe devolver 'int')
                     final resultado = await _salesService.registrarVenta(
                       total: total,
                       metodoPago: metodo,
@@ -970,18 +1247,17 @@ child: ChoiceChip(
                       clienteId: _clienteSeleccionadoGlobal != null
                           ? _clienteSeleccionadoGlobal!['id']
                           : 0,
+                      metodoPagoDetalle: detalleJson,
                     );
 
                     if (resultado['exito'] != true) {
+                      if (!ctx.mounted) return;
                       showDialog(
                         context: context,
                         builder: (c) => AlertDialog(
                           title: Text(_t("⚠️ No se pudo registrar la venta")),
                           content: Text(
-                            _t(
-                              resultado['mensaje']?.toString() ??
-                                  "Error desconocido",
-                            ),
+                            resultado['mensaje']?.toString() ?? "Error desconocido",
                           ),
                           actions: [
                             TextButton(
@@ -996,24 +1272,24 @@ child: ChoiceChip(
 
                     int ventaId = resultado['venta_id'] as int;
 
-                    // 2. PREPARAR DATOS PARA EL TICKET
                     Map<String, dynamic> datosVenta = {
                       'id': ventaId,
                       'total': total,
                       'metodo_pago': metodo,
+                      'metodo_pago_detalle': detalleJson,
                     };
-                    List<Map<String, dynamic>> itemsImpresion = List.from(
-                      _currentCart,
-                    );
+                    List<Map<String, dynamic>> itemsImpresion = List.from(_currentCart);
 
-                    if (metodo != "CREDITO") _abrirCajonMonedero();
+                    if (metodo == "EFECTIVO" || (metodo == "MIXTO" && efectivoCajon > 0)) {
+                      _abrirCajonMonedero();
+                    }
 
                     if (mounted) {
                       setState(() {
                         _currentCart.clear();
                         _codigoTeclado = "";
                       });
-                      Navigator.pop(ctx); // Cierra el modal de pago
+                      Navigator.pop(ctx);
 
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -1026,17 +1302,14 @@ child: ChoiceChip(
                       _cargarProductos();
                       _searchFocusNode.requestFocus();
 
-                      // 🔥 3. IMPRIMIR AUTOMÁTICAMENTE
                       try {
-                        await PrinterService().imprimirTicket(
-                          datosVenta,
-                          itemsImpresion,
-                        );
+                        await PrinterService().imprimirTicket(datosVenta, itemsImpresion);
                       } catch (e) {
                         debugPrint("Error imprimiendo: $e");
                       }
                     }
                   } catch (e) {
+                    if (!mounted) return;
                     showDialog(
                       context: context,
                       builder: (c) => AlertDialog(
@@ -1066,57 +1339,15 @@ child: ChoiceChip(
     ).then((_) => _searchFocusNode.requestFocus());
   }
 
-  void _seleccionarCliente(StateSetter st) async {
-    final clientes = await DBHelper().obtenerClientes();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(_t("Seleccionar Cliente")),
-        content: SizedBox(
-          width: 300,
-          height: 300,
-          child: ListView.builder(
-            itemCount: clientes.length,
-            itemBuilder: (c, i) {
-              return ListTile(
-                leading: const Icon(Icons.person),
-                title: Text(clientes[i]['nombre']),
-                onTap: () {
-                  Navigator.pop(ctx, clientes[i]);
-                },
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (c) => const ClientsScreen()),
-              );
-            },
-            child: Text(_t("Nuevo Cliente")),
-          ),
-        ],
-      ),
-    ).then((val) {
-      if (val != null) {
-        _clienteSeleccionadoGlobal = val;
-        st(() {});
-      }
-    });
-  }
-
   void _onTeclado(String v) {
     setState(() {
       if (v == 'C' && _codigoTeclado.isNotEmpty) {
         _codigoTeclado = _codigoTeclado.substring(0, _codigoTeclado.length - 1);
-      } else if (v == 'ENTER')
+      } else if (v == 'ENTER') {
         _buscarCodigo();
-      else if (_codigoTeclado.length < 14)
+      } else if (_codigoTeclado.length < 14) {
         _codigoTeclado += v;
+      }
     });
   }
 
@@ -1312,6 +1543,230 @@ child: ChoiceChip(
     );
   }
 
+  // ⭐ BARRA DE ACCESO RÁPIDO (TOP 12 FAVORITOS)
+  Widget _buildBarraFavoritos() {
+    if (_favoritos.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.amber.shade300, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.amber.withOpacity(0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Título y toggle de la barra
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            child: Row(
+              children: [
+                const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+                const SizedBox(width: 6),
+                const Text(
+                  "FAVORITOS DE ACCESO RÁPIDO (TOP 12)",
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.4,
+                    color: Color(0xFF1A1F2B),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  "${_favoritos.length} productos",
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      _mostrarBarraFavoritos = !_mostrarBarraFavoritos;
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(2.0),
+                    child: Icon(
+                      _mostrarBarraFavoritos
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                      size: 20,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          if (_mostrarBarraFavoritos) ...[
+            const Divider(height: 1, thickness: 0.8),
+            SizedBox(
+              height: 98,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                itemCount: _favoritos.length,
+                itemBuilder: (ctx, idx) {
+                  final p = _favoritos[idx];
+                  final imgPath = (p['imagen_path'] ?? '').toString();
+                  final bool esAsset = imgPath.startsWith('assets/');
+                  final bool tieneFoto = imgPath.isNotEmpty &&
+                      (esAsset || File(imgPath).existsSync());
+                  final double precio =
+                      (p['precio_venta'] as num?)?.toDouble() ?? 0.0;
+                  final bool esPesable = (p['es_pesable'] == 1);
+
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => _onSelect(p),
+                        onLongPress: () => _mostrarMenuFavorito(p),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: 88,
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFFDF5),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.amber.shade200,
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.shade50,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(25),
+                                  child: tieneFoto
+                                      ? (esAsset
+                                          ? Image.asset(
+                                              imgPath,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  const Icon(Icons.star,
+                                                      size: 18,
+                                                      color: Colors.amber),
+                                            )
+                                          : Image.file(
+                                              File(imgPath),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  const Icon(Icons.star,
+                                                      size: 18,
+                                                      color: Colors.amber),
+                                            ))
+                                      : Icon(
+                                          esPesable
+                                              ? Icons.scale
+                                              : Icons.shopping_basket,
+                                          size: 18,
+                                          color: Colors.amber.shade800,
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                p['nombre'] ?? '',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                  color: Color(0xFF1A1F2B),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                              ),
+                              Text(
+                                "${formater.format(precio)}${esPesable ? '/Kg' : ''}",
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green.shade800,
+                                ),
+                                maxLines: 1,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _mostrarMenuFavorito(Map<String, dynamic> p) {
+    final esFav = (p['es_favorito'] == 1);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(esFav ? Icons.star : Icons.star_border, color: Colors.amber),
+            const SizedBox(width: 8),
+            Expanded(child: Text(p['nombre'] ?? '')),
+          ],
+        ),
+        content: Text(esFav
+            ? "¿Deseas quitar este producto de tus Favoritos rápidos?"
+            : "¿Deseas agregar este producto a tus Favoritos (Top 12)?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("CANCELAR"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: esFav ? Colors.red : Colors.amber.shade800,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await DBHelper().toggleFavorito(p['id'], !esFav);
+              _cargarProductos();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(!esFav
+                        ? "⭐ '${p['nombre']}' marcado como favorito."
+                        : "'${p['nombre']}' quitado de favoritos."),
+                  ),
+                );
+              }
+            },
+            child: Text(esFav ? "QUITAR DE FAVORITOS" : "MARCAR FAVORITO"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     double totalPagar = _calcularTotalPagar();
@@ -1411,6 +1866,9 @@ child: ChoiceChip(
                   ),
                 ),
 
+                // ⭐ BARRA DE ACCESO RÁPIDO (TOP 12 FAVORITOS)
+                _buildBarraFavoritos(),
+
                 // BARRA DE CATEGORÍAS
                 Container(
                   height: 50,
@@ -1439,6 +1897,18 @@ child: ChoiceChip(
                       }
                       final cat = _categorias[index];
                       bool isSelected = _categoriaActual == cat;
+                      bool isFav = cat == "⭐ FAVORITOS";
+
+                      Color fondoColor = isSelected
+                          ? (isFav ? Colors.amber.shade800 : const Color(0xFF1A1F2B))
+                          : (isFav ? Colors.amber.shade50 : (Colors.grey[100] ?? Colors.grey));
+                      Color bordeColor = isSelected
+                          ? Colors.transparent
+                          : (isFav ? Colors.amber.shade300 : (Colors.grey[300] ?? Colors.grey));
+                      Color textoColor = isSelected
+                          ? Colors.white
+                          : (isFav ? Colors.amber.shade900 : Colors.black87);
+
                       return Padding(
                         padding: const EdgeInsets.only(right: 8.0),
                         child: InkWell(
@@ -1451,23 +1921,18 @@ child: ChoiceChip(
                               vertical: 5,
                             ),
                             decoration: BoxDecoration(
-                              color: isSelected
-                                  ? const Color(0xFF1A1F2B)
-                                  : Colors.grey[100],
+                              color: fondoColor,
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: isSelected
-                                    ? Colors.transparent
-                                    : Colors.grey[300]!,
+                                color: bordeColor,
+                                width: isFav ? 1.4 : 1,
                               ),
                             ),
                             child: Center(
                               child: Text(
                                 cat,
                                 style: TextStyle(
-                                  color: isSelected
-                                      ? Colors.white
-                                      : Colors.black87,
+                                  color: textoColor,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 13,
                                 ),
@@ -1500,12 +1965,14 @@ child: ChoiceChip(
                       String stockTexto = stock % 1 == 0
                           ? stock.toInt().toString()
                           : stock.toString();
-                      bool tieneFoto =
-                          p['imagen_path'] != null &&
-                          File(p['imagen_path']).existsSync();
+                      final imgPath = (p['imagen_path'] ?? '').toString();
+                      final bool esAsset = imgPath.startsWith('assets/');
+                      final bool tieneFoto = imgPath.isNotEmpty &&
+                          (esAsset || File(imgPath).existsSync());
 
                       return InkWell(
                         onTap: () => _onSelect(p),
+                        onLongPress: () => _mostrarMenuFavorito(p),
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
                           decoration: BoxDecoration(
@@ -1542,19 +2009,33 @@ child: ChoiceChip(
                                 child: tieneFoto
                                     ? ClipRRect(
                                         borderRadius: BorderRadius.circular(50),
-                                        child: Image.file(
-                                          File(p['imagen_path']),
-                                          fit: BoxFit.cover,
-                                          cacheWidth: 150,
-                                          errorBuilder:
-                                              (context, error, stackTrace) {
-                                                return const Icon(
-                                                  Icons.broken_image,
-                                                  size: 20,
-                                                  color: Colors.grey,
-                                                );
-                                              },
-                                        ),
+                                        child: esAsset
+                                            ? Image.asset(
+                                                imgPath,
+                                                fit: BoxFit.cover,
+                                                cacheWidth: 150,
+                                                errorBuilder:
+                                                    (context, error, stackTrace) {
+                                                  return const Icon(
+                                                    Icons.broken_image,
+                                                    size: 20,
+                                                    color: Colors.grey,
+                                                  );
+                                                },
+                                              )
+                                            : Image.file(
+                                                File(imgPath),
+                                                fit: BoxFit.cover,
+                                                cacheWidth: 150,
+                                                errorBuilder:
+                                                    (context, error, stackTrace) {
+                                                  return const Icon(
+                                                    Icons.broken_image,
+                                                    size: 20,
+                                                    color: Colors.grey,
+                                                  );
+                                                },
+                                              ),
                                       )
                                     : Icon(
                                         p['es_pesable'] == 1
@@ -1571,15 +2052,31 @@ child: ChoiceChip(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 5,
                                 ),
-                                child: Text(
-                                  p['nombre'],
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (p['es_favorito'] == 1) ...[
+                                      const Icon(
+                                        Icons.star,
+                                        size: 13,
+                                        color: Colors.amber,
+                                      ),
+                                      const SizedBox(width: 2),
+                                    ],
+                                    Flexible(
+                                      child: Text(
+                                        p['nombre'],
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               const SizedBox(height: 4),

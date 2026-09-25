@@ -1,59 +1,56 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/locale_service.dart';
 import '../services/session_service.dart';
-import 'purchase_history_screen.dart'; // ✅ IMPORTANTE: CONECTA CON EL HISTORIAL
+import 'purchase_history_screen.dart';
 import '../utils/numero.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
 const Map<String, String> _mapEn = {
-  'Ingresar:': 'Enter:',
-  'Stock actual:': 'Current stock:',
-  'Costo:': 'Cost:',
-  '📦 CANTIDADES ENTRANTES': '📦 INCOMING QUANTITIES',
-  'Bultos': 'Bales',
-  'Und x Bulto': 'Units x Bale',
-  'Entran:': 'Incoming:',
-  'Unidades': 'Units',
-  '💰 COSTO DE ESTA FACTURA': '💰 COST OF THIS INVOICE',
-  'Valor Total a Pagar (\$)': 'Total Amount to Pay (\$)',
-  'Costo Unit. Factura:': 'Unit Cost Invoice:',
-  'NUEVO COSTO PROM:': 'NEW AVG COST:',
-  '📈 PRECIO DE VENTA PÚBLICO': '📈 PUBLIC SALE PRICE',
-  '% Gan.': '% Profit',
-  'Precio Final': 'Final Price',
+  'Ingreso de Pedidos (Factura de Compra)': 'Order Entry (Purchase Invoice)',
+  'Ver Historial de Facturas': 'View Invoice History',
+  'Proveedor (ej: Corabastos, Mayorista...)': 'Supplier (e.g. Wholesale...)',
+  'Total Factura en Papel (\$)': 'Invoice Total on Paper (\$)',
+  'Buscar producto por nombre o código PLU (ej: 101)...': 'Search product by name or PLU (e.g. 101)...',
+  'Stock:': 'Stock:',
+  'Costo actual:': 'Current cost:',
+  '📦 Productos en esta Factura': '📦 Products in this Invoice',
+  'Aún no has agregado productos a esta factura.': 'You have not added products to this invoice yet.',
+  'Usa el buscador arriba para agregar el primer producto del pedido.': 'Use the search bar above to add the first product of the order.',
+  '¿Pagar con dinero de Caja?': 'Pay with cash register money?',
+  'Se restará del efectivo del turno actual en caja': 'It will be deducted from the current shift cash',
+  'Se registra como crédito de proveedor o pago bancario': 'Recorded as supplier credit or bank payment',
+  'TOTAL FACTURA:': 'INVOICE TOTAL:',
+  'FINALIZAR FACTURA': 'FINALIZE INVOICE',
+  'Editar Ítem:': 'Edit Item:',
+  'Ingresar a Factura:': 'Enter to Invoice:',
+  'Costo actual en BD:': 'Current DB cost:',
+  '📦 CANTIDAD ENTRANTE': '📦 INCOMING QUANTITY',
+  'Bultos / Cajas / Paquetes': 'Bales / Boxes / Packages',
+  'Kilos o Unds por Bulto (1 si es directo)': 'Kg or Units per Bale (1 if direct)',
+  'Total Entrante:': 'Total Incoming:',
+  '💰 COSTO DE ESTE PRODUCTO EN LA FACTURA': '💰 COST OF THIS PRODUCT IN INVOICE',
+  'Total a Pagar por esta línea (\$)': 'Total to Pay for this line (\$)',
+  'Costo Unitario Factura (\$)': 'Invoice Unit Cost (\$)',
+  'NUEVO COSTO PROM. PONDERADO:': 'NEW WEIGHTED AVG COST:',
+  '📈 PRECIO DE VENTA Y MARGEN': '📈 SALE PRICE AND MARGIN',
+  '% Ganancia sugerido': '% Suggested profit',
+  'Nuevo Precio de Venta Público': 'New Public Sale Price',
   'Cancelar': 'Cancel',
-  '⚠️ Revisa los valores (Costo y Precio)': '⚠️ Check the values (Cost and Price)',
-  'AGREGAR': 'ADD',
-  'Finalizar Pedido': 'Finalize Order',
-  'Total Factura:': 'Invoice Total:',
-  'Proveedor (Opcional)': 'Supplier (Optional)',
-  '¿Pagar con Caja?': 'Pay with Cash Register?',
-  'Se restará del efectivo disponible.': 'It will be deducted from the available cash.',
-  '⚠️ Al confirmar, se actualizarán los precios de venta.': '⚠️ On confirmation, sale prices will be updated.',
+  'ACTUALIZAR ÍTEM': 'UPDATE ITEM',
+  'AGREGAR A FACTURA': 'ADD TO INVOICE',
   '¡FONDOS INSUFICIENTES!': 'INSUFFICIENT FUNDS!',
   'En caja solo hay:': 'There is only in cash:',
   'Faltan:': 'Missing:',
   '📢 LLAMA AL ENCARGADO PARA QUE TRAIGA DINERO.': '📢 CALL THE MANAGER TO BRING MONEY.',
   'ENTENDIDO': 'UNDERSTOOD',
-  'Error': 'Error',
-  '✅ Inventario y Precios actualizados': '✅ Inventory and Prices updated',
-  'CONFIRMAR INGRESO': 'CONFIRM ENTRY',
-  'Ingreso de Pedidos': 'Order Entry',
-  'Ver Historial de Facturas': 'View Invoice History',
-  'Buscar producto para ingresar...': 'Search product to enter...',
-  'Stock:': 'Stock:',
-  '📦 Productos a Ingresar (Con nuevos precios)': '📦 Products to Enter (With new prices)',
-  'Carrito de compras vacío': 'Empty shopping cart',
-  'Nuevas:': 'New:',
-  'Nuevo Precio Venta:': 'New Sale Price:',
-  'TOTAL FACTURA:': 'TOTAL INVOICE:',
-  'FINALIZAR': 'FINALIZE',
-  'Compra pagada con caja: debe abrir la caja antes de registrar':
-      'Purchase paid with cash: you must open the cash register before recording',
-  'Cantidad inválida en la compra': 'Invalid quantity in purchase',
+  '✅ Factura registrada con éxito': '✅ Invoice successfully registered',
+  '⚠️ Diferencia con el Papel': '⚠️ Difference with Paper Invoice',
+  '¿Deseas finalizar la factura de todas formas?': 'Do you want to finalize the invoice anyway?',
+  'CONTINUAR Y GUARDAR': 'CONTINUE AND SAVE',
 };
 
 class PurchasesScreen extends StatefulWidget {
@@ -76,6 +73,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
 
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _proveedorCtrl = TextEditingController();
+  final TextEditingController _totalFacturaPapelCtrl = TextEditingController();
   bool _pagoConCaja = true;
 
   @override
@@ -84,8 +82,17 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     _cargarProductos();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _proveedorCtrl.dispose();
+    _totalFacturaPapelCtrl.dispose();
+    super.dispose();
+  }
+
   void _cargarProductos() async {
     final data = await DBHelper().getProducts();
+    if (!mounted) return;
     setState(() {
       _products = data;
       _filteredProducts = [];
@@ -97,383 +104,407 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       setState(() => _filteredProducts = []);
       return;
     }
+    final q = query.toLowerCase().trim();
     setState(() {
       _filteredProducts = _products.where((p) {
-        return p['nombre'].toString().toLowerCase().contains(
-              query.toLowerCase(),
-            ) ||
-            (p['codigo_barras'] ?? '').toString().contains(query);
+        final nombre = p['nombre'].toString().toLowerCase();
+        final plu = (p['codigo_plu'] ?? '').toString().toLowerCase();
+        final barras = (p['codigo_barras'] ?? '').toString().toLowerCase();
+        final cat = (p['categoria'] ?? '').toString().toLowerCase();
+        return nombre.contains(q) || plu.contains(q) || barras.contains(q) || cat.contains(q);
       }).toList();
     });
   }
 
-  // --- REEMPLAZA TU FUNCIÓN _mostrarDialogoIngreso CON ESTA LÓGICA CONTABLE ---
-  void _mostrarDialogoIngreso(Map<String, dynamic> producto) {
-    final cantidadCajasCtrl = TextEditingController(text: "1");
-    final unidadesPorCajaCtrl = TextEditingController(text: "1");
-    final costoTotalCtrl = TextEditingController();
+  double get _sumaSubtotales => _incomingItems.fold(
+        0.0,
+        (sum, item) => sum + (item['subtotal_compra'] as num).toDouble(),
+      );
 
-    final porcentajeGananciaCtrl = TextEditingController(text: "30");
-    final precioVentaFinalCtrl = TextEditingController();
+  // --- 📝 MODAL DE INGRESO Y EDICIÓN DE CADA PRODUCTO EN LA FACTURA ---
+  void _mostrarDialogoIngreso(
+    Map<String, dynamic> producto, {
+    int? indiceEdicion,
+  }) {
+    final bool esEdicion = indiceEdicion != null;
+    final itemExistente = esEdicion ? _incomingItems[indiceEdicion] : null;
 
-    // 1. DATOS ACTUALES DEL INVENTARIO
-    double costoActualBD =
-        (producto['precio_costo'] as num?)?.toDouble() ?? 0.0;
-    double stockActualBD =
-        (producto['stock_actual'] as num?)?.toDouble() ?? 0.0;
-    // Si el stock es negativo (por ventas sin stock), lo tratamos como 0 para el promedio
+    final cantidadCajasCtrl = TextEditingController(
+      text: itemExistente != null
+          ? (itemExistente['bultos'] ?? itemExistente['cantidad']).toString()
+          : "1",
+    );
+    final unidadesPorCajaCtrl = TextEditingController(
+      text: itemExistente != null
+          ? (itemExistente['unidades_por_bulto'] ?? 1).toString()
+          : "1",
+    );
+    final costoTotalCtrl = TextEditingController(
+      text: itemExistente != null
+          ? (itemExistente['subtotal_compra'] as num).toInt().toString()
+          : "",
+    );
+    final costoUnitarioCtrl = TextEditingController(
+      text: itemExistente != null
+          ? (itemExistente['costo_unitario_factura'] as num).toInt().toString()
+          : "",
+    );
+    final porcentajeGananciaCtrl = TextEditingController(
+      text: itemExistente != null
+          ? (itemExistente['porcentaje_ganancia'] ?? 30).toString()
+          : "30",
+    );
+    final precioVentaFinalCtrl = TextEditingController(
+      text: itemExistente != null
+          ? (itemExistente['nuevo_precio_venta'] as num).toInt().toString()
+          : (producto['precio_venta'] as num?)?.toInt().toString() ?? "",
+    );
+
+    double costoActualBD = (producto['precio_costo'] as num?)?.toDouble() ?? 0.0;
+    double stockActualBD = (producto['stock_actual'] as num?)?.toDouble() ?? 0.0;
     if (stockActualBD < 0) stockActualBD = 0;
-
-    double precioVentaActualBD =
-        (producto['precio_venta'] as num?)?.toDouble() ?? 0.0;
-    precioVentaFinalCtrl.text = precioVentaActualBD.toInt().toString();
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setStateModal) {
-          // 2. DATOS DE LA ENTRADA
           double cajas = parseNumero(cantidadCajasCtrl.text) ?? 0;
           double unids = parseNumero(unidadesPorCajaCtrl.text) ?? 1;
           double cantidadEntrante = cajas * unids;
-          double costoTotalFactura =
-              parseNumero(costoTotalCtrl.text) ?? 0;
+          double costoTotalFactura = parseNumero(costoTotalCtrl.text) ?? 0;
 
-          // 3. 🔥 CÁLCULO DE COSTO PROMEDIO PONDERADO 🔥
+          // Cálculo del costo unitario entrante
           double costoUnitarioEntrante = cantidadEntrante > 0
               ? costoTotalFactura / cantidadEntrante
-              : 0;
+              : (parseNumero(costoUnitarioCtrl.text) ?? 0);
 
-          double costoPromedioPonderado = 0;
+          // Cálculo del Costo Promedio Ponderado
           double totalUnidadesFinal = stockActualBD + cantidadEntrante;
-
+          double costoPromedioPonderado = 0;
           if (totalUnidadesFinal > 0) {
             double valorInventarioActual = stockActualBD * costoActualBD;
-            double valorEntrada =
-                costoTotalFactura; // (cantidadEntrante * costoUnitarioEntrante)
+            double valorEntrada = costoTotalFactura;
             costoPromedioPonderado =
                 (valorInventarioActual + valorEntrada) / totalUnidadesFinal;
           } else {
-            costoPromedioPonderado = costoActualBD;
+            costoPromedioPonderado = costoActualBD > 0 ? costoActualBD : costoUnitarioEntrante;
           }
 
-          // Función para sugerir precio basado en el NUEVO costo promedio
-          void calcularPrecioVenta() {
-            double porcentaje =
-                parseNumero(porcentajeGananciaCtrl.text) ?? 0;
-            double precioSugerido =
-                costoPromedioPonderado * (1 + (porcentaje / 100));
-            // Redondeo a la cincuentena más cercana (ej: 1230 -> 1250)
-            double precioRedondeado = (precioSugerido / 50).ceil() * 50;
-            precioVentaFinalCtrl.text = precioRedondeado.toInt().toString();
+          // Sugerir precio de venta con el margen
+          void recalcularPrecioPorMargen([double? margenNuevo]) {
+            if (margenNuevo != null) {
+              porcentajeGananciaCtrl.text = margenNuevo.toStringAsFixed(0);
+            }
+            double pct = parseNumero(porcentajeGananciaCtrl.text) ?? 30;
+            double baseCosto = costoPromedioPonderado > 0 ? costoPromedioPonderado : costoUnitarioEntrante;
+            double sugerido = baseCosto * (1 + (pct / 100));
+            double redondeado = (sugerido / 50).ceil() * 50;
+            if (redondeado <= 0) redondeado = sugerido;
+            precioVentaFinalCtrl.text = redondeado.toInt().toString();
+            setStateModal(() {});
+          }
+
+          // Si el usuario escribe directamente el precio final, ajustar margen
+          void onPrecioFinalModificado(String val) {
+            double pFinal = parseNumero(val) ?? 0;
+            double baseCosto = costoPromedioPonderado > 0 ? costoPromedioPonderado : costoUnitarioEntrante;
+            if (baseCosto > 0 && pFinal > 0) {
+              double pct = ((pFinal - baseCosto) / baseCosto) * 100;
+              porcentajeGananciaCtrl.text = pct.toStringAsFixed(0);
+            }
+            setStateModal(() {});
           }
 
           return AlertDialog(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            contentPadding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+            title: Row(
               children: [
-                Text(
-                  "${_t('Ingresar:')} ${producto['nombre']}",
-                  style: const TextStyle(fontSize: 16),
+                CircleAvatar(
+                  backgroundColor: (producto['es_pesable'] == 1 ? Colors.green : Colors.orange).withOpacity(0.15),
+                  child: Icon(
+                    producto['es_pesable'] == 1 ? Icons.scale : Icons.shopping_basket,
+                    color: producto['es_pesable'] == 1 ? Colors.green[800] : Colors.orange[800],
+                  ),
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  "${_t('Stock actual:')} ${formater.format(stockActualBD)} u | ${_t('Costo:')} ${formater.format(costoActualBD)}",
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          _t('📦 CANTIDADES ENTRANTES'),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: cantidadCajasCtrl,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: _t('Bultos'),
-                                  isDense: true,
-                                  border: OutlineInputBorder(),
-                                ),
-                                onChanged: (v) {
-                                  setStateModal(() {});
-                                  calcularPrecioVenta();
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 5),
-                            Expanded(
-                              child: TextField(
-                                controller: unidadesPorCajaCtrl,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: _t('Und x Bulto'),
-                                  isDense: true,
-                                  border: OutlineInputBorder(),
-                                ),
-                                onChanged: (v) {
-                                  setStateModal(() {});
-                                  calcularPrecioVenta();
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          "${_t('Entran:')} ${cantidadEntrante.toStringAsFixed(1)} ${_t('Unidades')}",
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _t('💰 COSTO DE ESTA FACTURA'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                  TextField(
-                    controller: costoTotalCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: _t('Valor Total a Pagar (\$)'),
-                      prefixIcon: const Icon(Icons.attach_money),
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (v) {
-                      setStateModal(() {});
-                      calcularPrecioVenta();
-                    },
-                  ),
-
-                  // RESUMEN DE CAMBIO DE COSTO
-                  Container(
-                    margin: const EdgeInsets.symmetric(vertical: 10),
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green.withOpacity(0.3)),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _t('Costo Unit. Factura:'),
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                            Text(
-                              formater.format(costoUnitarioEntrante),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 10),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _t('NUEVO COSTO PROM:'),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            Text(
-                              formater.format(costoPromedioPonderado),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const Divider(),
-                  Text(
-                    _t('📈 PRECIO DE VENTA PÚBLICO'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(
-                        width: 80,
-                        child: TextField(
-                          controller: porcentajeGananciaCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            labelText: _t('% Gan.'),
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          onChanged: (v) =>
-                              setStateModal(() => calcularPrecioVenta()),
-                        ),
+                      Text(
+                        esEdicion
+                            ? "${_t('Editar Ítem:')} ${producto['nombre']}"
+                            : "${_t('Ingresar a Factura:')} ${producto['nombre']}",
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: precioVentaFinalCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            labelText: _t('Precio Final'),
-                            prefixIcon: const Icon(Icons.sell),
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
+                      Text(
+                        "${_t('Stock:')} ${stockActualBD.toStringAsFixed(1)} | ${_t('Costo actual en BD:')} ${formater.format(costoActualBD)}",
+                        style: const TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(_t('Cancelar')),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  double precioVentaFinal =
-                      parseNumero(precioVentaFinalCtrl.text) ?? 0;
-                  if (cantidadEntrante > 0 &&
-                      costoTotalFactura > 0 &&
-                      precioVentaFinal > 0) {
-                    // AQUÍ ENVIAMOS EL COSTO PROMEDIO YA CALCULADO
-                    _agregarALista(
-                      producto,
-                      cantidadEntrante,
-                      costoPromedioPonderado,
-                      costoTotalFactura,
-                      precioVentaFinal,
-                    );
-                    Navigator.pop(ctx);
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          _t('⚠️ Revisa los valores (Costo y Precio)'),
-                        ),
-                      ),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue[900],
-                  foregroundColor: Colors.white,
-                ),
-                child: Text(_t('AGREGAR')),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  void _agregarALista(
-    Map<String, dynamic> producto,
-    double cantidad,
-    double costoUnitario,
-    double costoTotal,
-    double nuevoPrecioVenta,
-  ) {
-    setState(() {
-      _incomingItems.add({
-        'id': producto['id'],
-        'nombre': producto['nombre'],
-        'cantidad': cantidad,
-        'nuevo_costo': costoUnitario,
-        'nuevo_precio_venta': nuevoPrecioVenta,
-        'subtotal_compra': costoTotal,
-      });
-    });
-  }
-
-  void _finalizarIngreso() {
-    if (_incomingItems.isEmpty) return;
-    double totalFactura = _incomingItems.fold(
-      0,
-      (sum, item) => sum + item['subtotal_compra'],
-    );
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setSt) {
-          return AlertDialog(
-            title: Text(_t('Finalizar Pedido')),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "${_t('Total Factura:')} ${formater.format(totalFactura)}",
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _proveedorCtrl,
-                  decoration: InputDecoration(
-                    labelText: _t('Proveedor (Opcional)'),
-                    prefixIcon: const Icon(Icons.local_shipping),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SwitchListTile(
-                  title: Text(_t('¿Pagar con Caja?')),
-                  subtitle: Text(_t('Se restará del efectivo disponible.')),
-                  value: _pagoConCaja,
-                  activeThumbColor: Colors.red,
-                  onChanged: (val) => setSt(() => _pagoConCaja = val),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  _t('⚠️ Al confirmar, se actualizarán los precios de venta.'),
-                  style: const TextStyle(color: Colors.orange, fontSize: 12),
                 ),
               ],
+            ),
+            content: SizedBox(
+              width: 500,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Divider(),
+                    // 1. CANTIDADES
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.blue.shade100),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.all_inbox, size: 16, color: Colors.blue),
+                              const SizedBox(width: 6),
+                              Text(
+                                _t('📦 CANTIDAD ENTRANTE'),
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: TextField(
+                                  controller: cantidadCajasCtrl,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: InputDecoration(
+                                    labelText: _t('Bultos / Cajas'),
+                                    hintText: 'Ej: 2',
+                                    isDense: true,
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                  onChanged: (_) {
+                                    setStateModal(() {});
+                                    recalcularPrecioPorMargen();
+                                  },
+                                ),
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 8),
+                                child: Text("×", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              ),
+                              Expanded(
+                                flex: 4,
+                                child: TextField(
+                                  controller: unidadesPorCajaCtrl,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: InputDecoration(
+                                    labelText: _t('Kg / Und x Bulto'),
+                                    hintText: '1 si es directo',
+                                    isDense: true,
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                  onChanged: (_) {
+                                    setStateModal(() {});
+                                    recalcularPrecioPorMargen();
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              "${_t('Total Entrante:')} ${cantidadEntrante.toStringAsFixed(1)} ${producto['es_pesable'] == 1 ? 'Kg' : 'Unds'}",
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // 2. COSTO EN FACTURA
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.receipt_long, size: 16, color: Colors.green),
+                              const SizedBox(width: 6),
+                              Text(
+                                _t('💰 COSTO DE ESTE PRODUCTO EN LA FACTURA'),
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.green[900]),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 6,
+                                child: TextField(
+                                  controller: costoTotalCtrl,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: InputDecoration(
+                                    labelText: _t('Total a Pagar por esta línea (\$)'),
+                                    prefixIcon: const Icon(Icons.attach_money),
+                                    isDense: true,
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                  onChanged: (v) {
+                                    double tot = parseNumero(v) ?? 0;
+                                    if (cantidadEntrante > 0) {
+                                      costoUnitarioCtrl.text = (tot / cantidadEntrante).toStringAsFixed(0);
+                                    }
+                                    setStateModal(() {});
+                                    recalcularPrecioPorMargen();
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                flex: 5,
+                                child: TextField(
+                                  controller: costoUnitarioCtrl,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: InputDecoration(
+                                    labelText: _t('Costo Unitario (\$)'),
+                                    isDense: true,
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                  onChanged: (v) {
+                                    double unit = parseNumero(v) ?? 0;
+                                    costoTotalCtrl.text = (unit * cantidadEntrante).toStringAsFixed(0);
+                                    setStateModal(() {});
+                                    recalcularPrecioPorMargen();
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(_t('NUEVO COSTO PROM. PONDERADO:'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                Text(
+                                  formater.format(costoPromedioPonderado),
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.green[800]),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // 3. MARGEN Y PRECIO DE VENTA
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.trending_up, size: 16, color: Colors.orange),
+                              const SizedBox(width: 6),
+                              Text(
+                                _t('📈 PRECIO DE VENTA Y MARGEN'),
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.orange[900]),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          // Botones rápidos de margen
+                          Wrap(
+                            spacing: 6,
+                            children: [20, 25, 30, 35, 40, 50].map((p) {
+                              return InkWell(
+                                onTap: () => recalcularPrecioPorMargen(p.toDouble()),
+                                child: Chip(
+                                  labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  label: Text("+$p%", style: const TextStyle(fontSize: 11)),
+                                  backgroundColor: porcentajeGananciaCtrl.text == p.toString()
+                                      ? Colors.orange[200]
+                                      : Colors.white,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 90,
+                                child: TextField(
+                                  controller: porcentajeGananciaCtrl,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: InputDecoration(
+                                    labelText: _t('% Gan.'),
+                                    suffixText: '%',
+                                    isDense: true,
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                  onChanged: (_) => recalcularPrecioPorMargen(),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: TextField(
+                                  controller: precioVentaFinalCtrl,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: InputDecoration(
+                                    labelText: _t('Nuevo Precio de Venta Público'),
+                                    prefixIcon: const Icon(Icons.sell),
+                                    isDense: true,
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                  onChanged: onPrecioFinalModificado,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
             actions: [
               TextButton(
@@ -481,73 +512,67 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                 child: Text(_t('Cancelar')),
               ),
               ElevatedButton.icon(
-                onPressed: () async {
-                  // 🛑 VERIFICACIÓN DE FONDOS 🛑
-                  if (_pagoConCaja) {
-                    final resumen = await DBHelper().obtenerResumenCaja();
-                    double dineroEnCaja = resumen['total_en_caja'] ?? 0;
+                onPressed: () {
+                  double precioVentaFinal = parseNumero(precioVentaFinalCtrl.text) ?? 0;
+                  if (cantidadEntrante > 0 && costoTotalFactura > 0 && precioVentaFinal > 0) {
+                    final itemData = {
+                      'id': producto['id'],
+                      'nombre': producto['nombre'],
+                      'cantidad': cantidadEntrante,
+                      'nuevo_costo': costoPromedioPonderado,
+                      'nuevo_precio_venta': precioVentaFinal,
+                      'subtotal_compra': costoTotalFactura,
+                      'bultos': cajas,
+                      'unidades_por_bulto': unids,
+                      'porcentaje_ganancia': parseNumero(porcentajeGananciaCtrl.text) ?? 30,
+                      'costo_unitario_factura': costoUnitarioEntrante,
+                      'categoria': producto['categoria'] ?? 'General',
+                      'imagen_path': producto['imagen_path'],
+                      'es_pesable': producto['es_pesable'] ?? 0,
+                    };
 
-                    if (totalFactura > dineroEnCaja) {
-                      showDialog(
-                        context: context,
-                        builder: (c) => AlertDialog(
-                          title: Row(
-                            children: [
-                              const Icon(Icons.money_off, color: Colors.red),
-                              const SizedBox(width: 10),
-                              Text(_t('¡FONDOS INSUFICIENTES!')),
-                            ],
-                          ),
-                          content: Text(
-                            "${_t('En caja solo hay:')} ${formater.format(dineroEnCaja)}\n\n${_t('Faltan:')} ${formater.format(totalFactura - dineroEnCaja)}\n\n${_t('📢 LLAMA AL ENCARGADO PARA QUE TRAIGA DINERO.')}",
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(c),
-                              child: Text(_t('ENTENDIDO')),
-                            ),
-                          ],
-                        ),
-                      );
-                      return;
-                    }
-                  }
+                    setState(() {
+                      if (esEdicion) {
+                        _incomingItems[indiceEdicion] = itemData;
+                      } else {
+                        // Si ya estaba en la factura, lo reemplaza
+                        final existIdx = _incomingItems.indexWhere((it) => it['id'] == producto['id']);
+                        if (existIdx >= 0) {
+                          _incomingItems[existIdx] = itemData;
+                        } else {
+                          _incomingItems.add(itemData);
+                        }
+                      }
+                      _searchController.clear();
+                      _filteredProducts = [];
+                    });
 
-                  final res = await DBHelper().registrarCompra(
-                    _incomingItems,
-                    totalFactura,
-                    _pagoConCaja,
-                    _proveedorCtrl.text,
-                    usuarioId: SessionService.userId() ?? 1,
-                  );
-                  if (!ctx.mounted) return;
-                  if (res['exito'] != true) {
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('❌ ${_t(res['mensaje'] ?? 'Error')}'),
+                        content: Text(esEdicion
+                            ? "🔄 ${producto['nombre']} actualizado en la factura"
+                            : "✅ ${producto['nombre']} agregado a la factura"),
+                        backgroundColor: Colors.green.shade700,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(_t('⚠️ Revisa los valores (Costo y Precio)')),
                         backgroundColor: Colors.red,
                       ),
                     );
-                    return;
                   }
-                  Navigator.pop(ctx);
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        _t('✅ Inventario y Precios actualizados'),
-                      ),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
                 },
-                icon: const Icon(Icons.check_circle),
-                label: Text(_t('CONFIRMAR INGRESO')),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[800],
+                  backgroundColor: esEdicion ? Colors.blue[800] : Colors.green[700],
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
+                icon: Icon(esEdicion ? Icons.save : Icons.add_shopping_cart),
+                label: Text(esEdicion ? _t('ACTUALIZAR ÍTEM') : _t('AGREGAR A FACTURA')),
               ),
             ],
           );
@@ -556,24 +581,251 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     );
   }
 
+  // --- 🏁 CONFIRMAR Y FINALIZAR FACTURA ---
+  void _finalizarFactura() async {
+    if (_incomingItems.isEmpty) return;
+    final double totalSuma = _sumaSubtotales;
+    final double? totalPapel = parseNumero(_totalFacturaPapelCtrl.text);
+
+    // Si el usuario ingresó un total papel diferente al calculado, alertar
+    if (totalPapel != null && (totalPapel - totalSuma).abs() > 1) {
+      final bool? confirmar = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              const SizedBox(width: 8),
+              Text(_t('⚠️ Diferencia con el Papel')),
+            ],
+          ),
+          content: Text(
+            "La suma de los productos cargados es ${formater.format(totalSuma)},\n"
+            "pero en el papel indicaste ${formater.format(totalPapel)}.\n\n"
+            "Diferencia: ${formater.format((totalPapel - totalSuma).abs())}\n\n"
+            "${_t('¿Deseas finalizar la factura de todas formas?')}",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: Text(_t('Cancelar')),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(c, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800], foregroundColor: Colors.white),
+              child: Text(_t('CONTINUAR Y GUARDAR')),
+            ),
+          ],
+        ),
+      );
+      if (confirmar != true) return;
+    }
+
+    // Validación de efectivo en caja si se paga con caja
+    if (_pagoConCaja) {
+      final resumen = await DBHelper().obtenerResumenCaja();
+      double dineroEnCaja = resumen['total_en_caja'] ?? 0;
+      if (totalSuma > dineroEnCaja) {
+        if (!mounted) return;
+        final bool? pagarExterno = await showDialog<bool>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.account_balance_wallet_outlined, color: Colors.orange, size: 28),
+                const SizedBox(width: 10),
+                const Text('Fondo de Caja Insuficiente'),
+              ],
+            ),
+            content: Text(
+              "En el cajón de la caja hoy solo hay: ${formater.format(dineroEnCaja)},\n"
+              "pero la factura total es de: ${formater.format(totalSuma)}.\n\n"
+              "¿Cómo se pagó este pedido?\n\n"
+              "• Si el dueño pagó con su propio dinero, transferencia (Nequi/Bancolombia) o quedó a crédito, "
+              "selecciona 'Pago Externo / Banco' para no afectar el cuadre de caja de hoy.\n"
+              "• Si vas a meter el dinero físico a la caja, cancela y haz primero un 'Ingreso de Dinero' en Control de Caja.",
+              style: const TextStyle(fontSize: 13),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('CANCELAR'),
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.account_balance),
+                label: const Text('REGISTRAR COMO PAGO EXTERNO / BANCO'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[800],
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(c, true),
+              ),
+            ],
+          ),
+        );
+
+        if (pagarExterno == true) {
+          _pagoConCaja = false;
+        } else {
+          return;
+        }
+      }
+    }
+
+    // Registrar en BD
+    final res = await DBHelper().registrarCompra(
+      _incomingItems,
+      totalSuma,
+      _pagoConCaja,
+      _proveedorCtrl.text.trim(),
+      usuarioId: SessionService.userId() ?? 1,
+    );
+
+    if (!mounted) return;
+
+    if (res['exito'] != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ ${_t(res['mensaje'] ?? 'Error')}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("✅ Factura de compra registrada con éxito (${_incomingItems.length} referencias actualizadas)"),
+        backgroundColor: Colors.green.shade700,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+
+    setState(() {
+      _incomingItems.clear();
+      _proveedorCtrl.clear();
+      _totalFacturaPapelCtrl.clear();
+      _searchController.clear();
+      _filteredProducts = [];
+    });
+    _cargarProductos();
+  }
+
+  Widget _buildCuadreBanner() {
+    final double suma = _sumaSubtotales;
+    final double? papel = parseNumero(_totalFacturaPapelCtrl.text);
+
+    if (papel == null || papel <= 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        color: Colors.brown[50],
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline, size: 18, color: Colors.brown),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                "Suma acumulada de productos: ${formater.format(suma)} (${_incomingItems.length} ítems)",
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.brown),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final double diff = papel - suma;
+    final bool cuadrado = diff.abs() < 1;
+    final bool falta = diff > 0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      color: cuadrado ? Colors.green[100] : (falta ? Colors.orange[100] : Colors.red[100]),
+      child: Row(
+        children: [
+          Icon(
+            cuadrado ? Icons.check_circle : Icons.warning_amber_rounded,
+            size: 20,
+            color: cuadrado ? Colors.green[800] : (falta ? Colors.orange[900] : Colors.red[900]),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              cuadrado
+                  ? "✅ ¡Factura Cuadrada con el Papel! (${formater.format(papel)})"
+                  : falta
+                      ? "⚠️ Faltan ${formater.format(diff)} por cargar (Papel: ${formater.format(papel)} | Suma: ${formater.format(suma)})"
+                      : "⚠️ La suma supera el papel por ${formater.format(diff.abs())} (Papel: ${formater.format(papel)} | Suma: ${formater.format(suma)})",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: cuadrado ? Colors.green[900] : (falta ? Colors.orange[900] : Colors.red[900]),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProductThumbnail(Map<String, dynamic> p) {
+    final imgPath = (p['imagen_path'] ?? '').toString();
+    if (imgPath.startsWith('assets/')) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.asset(
+          imgPath,
+          width: 44,
+          height: 44,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 24, color: Colors.grey),
+        ),
+      );
+    }
+    if (imgPath.isNotEmpty && File(imgPath).existsSync()) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.file(
+          File(imgPath),
+          width: 44,
+          height: 44,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 24, color: Colors.grey),
+        ),
+      );
+    }
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: (p['es_pesable'] == 1 ? Colors.green : Colors.orange).withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        p['es_pesable'] == 1 ? Icons.scale : Icons.shopping_basket,
+        color: p['es_pesable'] == 1 ? Colors.green[800] : Colors.orange[800],
+        size: 22,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final double totalSuma = _sumaSubtotales;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_t('Ingreso de Pedidos')),
+        title: Text(_t('Ingreso de Pedidos (Factura de Compra)')),
         backgroundColor: Colors.brown[700],
         foregroundColor: Colors.white,
-        // ✅ BOTÓN DE HISTORIAL AGREGADO AQUÍ
         actions: [
           IconButton(
-            icon: const Icon(Icons.history, size: 30),
+            icon: const Icon(Icons.history, size: 28),
             tooltip: _t('Ver Historial de Facturas'),
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (c) => const PurchaseHistoryScreen(),
-                ),
+                MaterialPageRoute(builder: (c) => const PurchaseHistoryScreen()),
               );
             },
           ),
@@ -581,189 +833,329 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       ),
       body: Column(
         children: [
+          // 1. CABECERA DE LA FACTURA
+          Container(
+            padding: const EdgeInsets.all(12),
+            color: Colors.white,
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: TextField(
+                    controller: _proveedorCtrl,
+                    decoration: InputDecoration(
+                      labelText: _t('Proveedor (ej: Corabastos, Mayorista...)'),
+                      prefixIcon: const Icon(Icons.local_shipping_outlined),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 4,
+                  child: TextField(
+                    controller: _totalFacturaPapelCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: _t('Total Factura en Papel (\$)'),
+                      prefixIcon: const Icon(Icons.receipt_outlined),
+                      hintText: 'Opcional para cuadre',
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Banner de Cuadre en tiempo real
+          _buildCuadreBanner(),
+
+          // 2. BUSCADOR RÁPIDO DE PRODUCTOS
           Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
             child: TextField(
               controller: _searchController,
               onChanged: _filtrarProductos,
               decoration: InputDecoration(
-                hintText: _t('Buscar producto para ingresar...'),
+                hintText: _t('Buscar producto por nombre o código PLU (ej: 101)...'),
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.clear),
-                  onPressed: () {
-                    _searchController.clear();
-                    _filtrarProductos("");
-                    FocusScope.of(context).unfocus();
-                  },
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          _filtrarProductos("");
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 filled: true,
-                fillColor: Colors.grey[200],
+                fillColor: Colors.grey[100],
+                isDense: true,
               ),
             ),
           ),
 
+          // Menú desplegable de resultados de búsqueda
           if (_searchController.text.isNotEmpty)
             Container(
-              height: 200,
-              color: Colors.white,
-              child: ListView.builder(
+              constraints: const BoxConstraints(maxHeight: 220),
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))],
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                separatorBuilder: (_, __) => const Divider(height: 1),
                 itemCount: _filteredProducts.length,
                 itemBuilder: (context, index) {
                   final prod = _filteredProducts[index];
-                  double costoSeguro =
-                      (prod['precio_costo'] as num?)?.toDouble() ?? 0.0;
+                  final double costoSeguro = (prod['precio_costo'] as num?)?.toDouble() ?? 0.0;
+                  final plu = prod['codigo_plu'] ?? '';
 
                   return ListTile(
                     dense: true,
-                    leading: const Icon(Icons.add_box, color: Colors.green),
+                    leading: _buildProductThumbnail(prod),
                     title: Text(
                       prod['nombre'],
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Text(
-                      // 🔥 AQUÍ USAMOS LA VARIABLE costoSeguro QUE DABA ERROR
-                      "${_t('Stock:')} ${prod['stock_actual']} | ${_t('Costo:')} ${formater.format(costoSeguro)}",
+                      "${plu.isNotEmpty ? 'PLU: $plu | ' : ''}${_t('Stock:')} ${prod['stock_actual']} | ${_t('Costo actual:')} ${formater.format(costoSeguro)}",
                     ),
-                    onTap: () {
-                      _mostrarDialogoIngreso(prod);
-                      _searchController.clear();
-                      _filtrarProductos("");
-                      FocusScope.of(context).unfocus();
-                    },
+                    trailing: ElevatedButton.icon(
+                      onPressed: () {
+                        final idx = _incomingItems.indexWhere((it) => it['id'] == prod['id']);
+                        _mostrarDialogoIngreso(prod, indiceEdicion: idx >= 0 ? idx : null);
+                      },
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text("Ingresar"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                    ),
                   );
                 },
               ),
             ),
 
-          const Divider(thickness: 5),
+          const Divider(height: 10),
 
+          // 3. ENCABEZADO DE LA LISTA DE PRODUCTOS CARGADOS EN ESTA FACTURA
           Container(
-            padding: const EdgeInsets.all(10),
-            color: Colors.brown[50],
-            width: double.infinity,
-            child: Text(
-              _t('📦 Productos a Ingresar (Con nuevos precios)'),
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.brown,
-              ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            color: Colors.grey[200],
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "${_t('📦 Productos en esta Factura')} (${_incomingItems.length})",
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.brown[900], fontSize: 13),
+                ),
+                if (_incomingItems.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() => _incomingItems.clear());
+                    },
+                    icon: const Icon(Icons.clear_all, size: 16, color: Colors.red),
+                    label: const Text("Limpiar todo", style: TextStyle(color: Colors.red, fontSize: 12)),
+                  ),
+              ],
             ),
           ),
+
+          // 4. LISTADO DE PRODUCTOS CARGADOS (EDITABLES UNO POR UNO)
           Expanded(
             child: _incomingItems.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.inventory,
-                          size: 50,
-                          color: Colors.grey[300],
+                        Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey[350]),
+                        const SizedBox(height: 10),
+                        Text(
+                          _t('Aún no has agregado productos a esta factura.'),
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.grey[700]),
                         ),
-                        Text(_t('Carrito de compras vacío')),
+                        const SizedBox(height: 4),
+                        Text(
+                          _t('Usa el buscador arriba para agregar el primer producto del pedido.'),
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
                       ],
                     ),
                   )
                 : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
                     itemCount: _incomingItems.length,
                     itemBuilder: (context, index) {
                       final item = _incomingItems[index];
+                      final double subtotal = (item['subtotal_compra'] as num).toDouble();
+                      final double nuevoPrecio = (item['nuevo_precio_venta'] as num).toDouble();
+                      final double cant = (item['cantidad'] as num).toDouble();
+                      final double unitCosto = (item['costo_unitario_factura'] as num?)?.toDouble() ?? (subtotal / (cant > 0 ? cant : 1));
+
                       return Card(
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        child: ListTile(
-                          title: Text(
-                            item['nombre'],
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            "${_t('Nuevas:')} +${item['cantidad']} | ${_t('Nuevo Precio Venta:')} ${formater.format(item['nuevo_precio_venta'])}",
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                formater.format(item['subtotal_compra']),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        elevation: 1.5,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        child: InkWell(
+                          onTap: () {
+                            final prodBD = _products.firstWhere(
+                              (p) => p['id'] == item['id'],
+                              orElse: () => item,
+                            );
+                            _mostrarDialogoIngreso(prodBD, indiceEdicion: index);
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Row(
+                              children: [
+                                _buildProductThumbnail(item),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item['nombre'],
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 4,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(4)),
+                                            child: Text(
+                                              "Entran: ${cant.toStringAsFixed(1)} ${item['es_pesable'] == 1 ? 'Kg' : 'Und'}",
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue[900]),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(4)),
+                                            child: Text(
+                                              "Costo: ${formater.format(subtotal)} (${formater.format(unitCosto)}/u)",
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green[900]),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(4)),
+                                            child: Text(
+                                              "+${item['porcentaje_ganancia']}% ➔ Venta: ${formater.format(nuevoPrecio)}",
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange[900]),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete,
-                                  color: Colors.red,
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, color: Colors.blue, size: 22),
+                                      tooltip: "Modificar precio, cantidad o margen",
+                                      onPressed: () {
+                                        final prodBD = _products.firstWhere(
+                                          (p) => p['id'] == item['id'],
+                                          orElse: () => item,
+                                        );
+                                        _mostrarDialogoIngreso(prodBD, indiceEdicion: index);
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
+                                      tooltip: "Quitar de esta factura",
+                                      onPressed: () => setState(() => _incomingItems.removeAt(index)),
+                                    ),
+                                  ],
                                 ),
-                                onPressed: () => setState(
-                                  () => _incomingItems.removeAt(index),
-                                ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       );
                     },
                   ),
           ),
+
+          // 5. BARRA INFERIOR DE TOTAL Y FINALIZAR
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
-                ),
-              ],
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -4))],
             ),
             child: Row(
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        _t('TOTAL FACTURA:'),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      Text(
-                        formater.format(
-                          _incomingItems.fold(
-                            0.0,
-                            (sum, item) => sum + item['subtotal_compra'],
+                      Row(
+                        children: [
+                          Text(
+                            _t('TOTAL FACTURA:'),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey),
                           ),
-                        ),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 24,
-                          color: Colors.brown,
-                        ),
+                          const SizedBox(width: 8),
+                          Text(
+                            formater.format(totalSuma),
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.brown[900]),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Switch(
+                            value: _pagoConCaja,
+                            activeColor: Colors.green[700],
+                            onChanged: (v) => setState(() => _pagoConCaja = v),
+                          ),
+                          Expanded(
+                            child: Text(
+                              _pagoConCaja
+                                  ? _t('¿Pagar con dinero de Caja?')
+                                  : _t('Se registra como crédito de proveedor o pago bancario'),
+                              style: const TextStyle(fontSize: 11),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed: _incomingItems.isEmpty ? null : _finalizarIngreso,
-                  icon: const Icon(Icons.save_alt),
-                  label: Text(_t('FINALIZAR')),
+                  onPressed: _incomingItems.isEmpty ? null : _finalizarFactura,
+                  icon: const Icon(Icons.check_circle_outline, size: 22),
+                  label: Text(
+                    "${_t('FINALIZAR FACTURA')} (${_incomingItems.length})",
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.brown[700],
+                    backgroundColor: Colors.brown[800],
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 15,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
               ],

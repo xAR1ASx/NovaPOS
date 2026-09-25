@@ -9,6 +9,8 @@ import 'package:path/path.dart' as path;
 import '../services/inventory_service.dart';
 import '../services/locale_service.dart';
 import '../utils/numero.dart';
+import 'mermas_screen.dart';
+import '../services/excel_export_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -100,6 +102,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   final _barrasCtrl = TextEditingController();
 
   bool _esPesable = false;
+  bool _esFavorito = false;
   int? _idEdicion;
   String? _imagenPathActual; // 🔥 Variable para la ruta de la foto
 
@@ -504,6 +507,7 @@ class _InventoryScreenState extends State<InventoryScreen>
         'codigo_barras': _barrasCtrl.text,
         'categoria': _categoriaSeleccionada,
         'imagen_path': _imagenPathActual,
+        'es_favorito': _esFavorito ? 1 : 0,
       };
 
       if (_idEdicion == null) {
@@ -550,6 +554,7 @@ class _InventoryScreenState extends State<InventoryScreen>
       _pluCtrl.text = producto['codigo_plu'] ?? "";
       _barrasCtrl.text = producto['codigo_barras'] ?? "";
       _esPesable = (producto['es_pesable'] == 1);
+      _esFavorito = (producto['es_favorito'] == 1);
       _categoriaSeleccionada = producto['categoria'] ?? "Otros";
       _imagenPathActual = producto['imagen_path'];
     });
@@ -566,6 +571,54 @@ class _InventoryScreenState extends State<InventoryScreen>
     }
   }
 
+  void _dialogoPrecargarCatalogo() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Row(
+          children: [
+            Icon(Icons.storefront, color: Colors.green),
+            SizedBox(width: 8),
+            Text("Catálogo Maestro Fruver"),
+          ],
+        ),
+        content: const Text(
+          "¿Deseas precargar el catálogo con más de 120 referencias típicas de fruver y minimarket?\n\n"
+          "Incluye frutas, verduras, tubérculos con códigos PLU, granos, lácteos y aseo con precios sugeridos. Podrás modificar precios o eliminar lo que no vendas.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("CANCELAR"),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.download_done),
+            label: const Text("SÍ, CARGAR PRODUCTOS"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[800],
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() => _isLoading = true);
+              final n = await DBHelper().precargarCatalogoMaestro(forzar: true);
+              _cargarProductos();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("✅ Se agregaron $n productos del catálogo maestro."),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   void _limpiarFormulario() {
     _nombreCtrl.clear();
     _precioVentaCtrl.clear();
@@ -575,6 +628,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     _barrasCtrl.clear();
     setState(() {
       _esPesable = false;
+      _esFavorito = false;
       _idEdicion = null;
       _categoriaSeleccionada = "Otros";
       _imagenPathActual = null;
@@ -600,16 +654,22 @@ class _InventoryScreenState extends State<InventoryScreen>
       itemCount: _productosFiltrados.length,
       itemBuilder: (context, index) {
         final p = _productosFiltrados[index];
-        bool tieneFoto =
-            p['imagen_path'] != null && File(p['imagen_path']).existsSync();
+        final imgPath = (p['imagen_path'] ?? '').toString();
+        final bool esAsset = imgPath.startsWith('assets/');
+        final bool tieneFoto = imgPath.isNotEmpty &&
+            (esAsset || File(imgPath).existsSync());
+
+        ImageProvider? imgProvider;
+        if (tieneFoto) {
+          imgProvider = esAsset
+              ? AssetImage(imgPath)
+              : ResizeImage(FileImage(File(imgPath)), width: 100);
+        }
 
         return ListTile(
           leading: CircleAvatar(
             backgroundColor: Colors.grey[200],
-            // 🔥 AQUÍ OPTIMICÉ LA IMAGEN PARA QUE LA LISTA NO SEA LENTA 🔥
-            backgroundImage: tieneFoto
-                ? ResizeImage(FileImage(File(p['imagen_path'])), width: 100)
-                : null,
+            backgroundImage: imgProvider,
             child: tieneFoto
                 ? null
                 : const Icon(Icons.image_not_supported, color: Colors.grey),
@@ -624,6 +684,30 @@ class _InventoryScreenState extends State<InventoryScreen>
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              IconButton(
+                icon: Icon(
+                  p['es_favorito'] == 1 ? Icons.star : Icons.star_border,
+                  color: p['es_favorito'] == 1 ? Colors.amber[700] : Colors.grey,
+                ),
+                tooltip: p['es_favorito'] == 1
+                    ? "Quitar de Favoritos"
+                    : "Marcar como Favorito (Top 12)",
+                onPressed: () async {
+                  final nuevoEstado = (p['es_favorito'] == 1) ? 0 : 1;
+                  await DBHelper().toggleFavorito(p['id'], nuevoEstado == 1);
+                  _cargarProductos();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(nuevoEstado == 1
+                            ? "⭐ '${p['nombre']}' añadido a Favoritos."
+                            : "'${p['nombre']}' removido de Favoritos."),
+                        duration: const Duration(seconds: 1),
+                      ),
+                    );
+                  }
+                },
+              ),
               IconButton(
                 icon: const Icon(Icons.layers, color: Colors.indigo),
                 onPressed: () => _gestionarPresentaciones(p),
@@ -705,20 +789,29 @@ class _InventoryScreenState extends State<InventoryScreen>
                   color: Colors.grey[200],
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: Colors.grey[400]!),
-                  image:
-                      _imagenPathActual != null &&
-                          File(_imagenPathActual!).existsSync()
-                      ? DecorationImage(
-                          // 🔥 OPTIMIZACIÓN: ResizeImage evita que fotos 4K congelen el formulario
-                          image: ResizeImage(
-                            FileImage(File(_imagenPathActual!)),
-                            width: 300,
-                          ),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
+                  image: () {
+                    if (_imagenPathActual == null || _imagenPathActual!.isEmpty) {
+                      return null;
+                    }
+                    if (_imagenPathActual!.startsWith('assets/')) {
+                      return DecorationImage(
+                        image: AssetImage(_imagenPathActual!),
+                        fit: BoxFit.cover,
+                      );
+                    }
+                    if (File(_imagenPathActual!).existsSync()) {
+                      return DecorationImage(
+                        image: ResizeImage(
+                          FileImage(File(_imagenPathActual!)),
+                          width: 300,
+                        ),
+                        fit: BoxFit.cover,
+                      );
+                    }
+                    return null;
+                  }(),
                 ),
-                child: _imagenPathActual == null
+                child: (_imagenPathActual == null || _imagenPathActual!.isEmpty)
                     ? const Icon(Icons.image, size: 40, color: Colors.grey)
                     : null,
               ),
@@ -884,6 +977,17 @@ class _InventoryScreenState extends State<InventoryScreen>
             secondary: const Icon(Icons.scale),
             onChanged: (v) => setState(() => _esPesable = v),
           ),
+          SwitchListTile(
+            title: const Text("⭐ Producto Favorito (Top 12)"),
+            subtitle: const Text("Acceso rápido táctil prioritario en el POS"),
+            value: _esFavorito,
+            activeThumbColor: Colors.amber[700],
+            secondary: Icon(
+              _esFavorito ? Icons.star : Icons.star_border,
+              color: _esFavorito ? Colors.amber[700] : Colors.grey,
+            ),
+            onChanged: (v) => setState(() => _esFavorito = v),
+          ),
 
           const SizedBox(height: 20),
           SizedBox(
@@ -912,6 +1016,54 @@ class _InventoryScreenState extends State<InventoryScreen>
         title: Text(_t("Gestión de Inventario")),
         backgroundColor: Colors.orange[800],
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_stories_outlined),
+            tooltip: "Cargar Catálogo Maestro Fruver",
+            onPressed: _dialogoPrecargarCatalogo,
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_sweep_outlined),
+            tooltip: "Mermas / Desperdicios",
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MermasScreen()),
+              ).then((_) => _cargarProductos());
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.table_view_outlined),
+            tooltip: "Exportar Inventario a Excel",
+            onPressed: () {
+              ExcelExportService().exportarInventario().then((ruta) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("✅ Inventario exportado: $ruta"),
+                      backgroundColor: Colors.green.shade800,
+                      action: SnackBarAction(
+                        label: "ABRIR CARPETA",
+                        textColor: Colors.white,
+                        onPressed: () =>
+                            ExcelExportService().abrirCarpetaEnExplorador(ruta),
+                      ),
+                    ),
+                  );
+                }
+              }).catchError((e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("Error exportando inventario: $e"),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              });
+            },
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,

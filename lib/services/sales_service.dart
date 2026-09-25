@@ -10,6 +10,7 @@ class SalesService {
     required String metodoPago,
     required List<Map<String, dynamic>> items,
     int clienteId = 0,
+    String? metodoPagoDetalle,
   }) async {
     if (!PermissionService.can("VENTAS_CREAR")) {
       throw Exception("No tienes permiso para crear ventas.");
@@ -23,6 +24,7 @@ class SalesService {
       items,
       clienteId: clienteId,
       usuarioId: usuarioId,
+      metodoPagoDetalle: metodoPagoDetalle,
     );
   }
 }

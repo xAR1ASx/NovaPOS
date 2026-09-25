@@ -4,7 +4,9 @@ import 'dart:math';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 import '../services/password_service.dart';
+import '../data/catalogo_maestro.dart';
 
 class DBHelper {
   static final DBHelper _instance = DBHelper._internal();
@@ -34,7 +36,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 7,
+      version: 9,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -45,7 +47,7 @@ class DBHelper {
       'CREATE TABLE usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT UNIQUE, password_hash TEXT, rol TEXT, nombre_completo TEXT, esta_activo INTEGER DEFAULT 1, auth_uid TEXT UNIQUE)',
     );
     await db.execute(
-      'CREATE TABLE productos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, codigo_barras TEXT, codigo_plu TEXT, categoria TEXT, precio_costo REAL, precio_venta REAL, stock_actual REAL, es_pesable INTEGER DEFAULT 0, esta_activo INTEGER DEFAULT 1, imagen_path TEXT, uuid TEXT, dispositivo_uuid TEXT)',
+      'CREATE TABLE productos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, codigo_barras TEXT, codigo_plu TEXT, categoria TEXT, precio_costo REAL, precio_venta REAL, stock_actual REAL, es_pesable INTEGER DEFAULT 0, esta_activo INTEGER DEFAULT 1, imagen_path TEXT, uuid TEXT, dispositivo_uuid TEXT, es_favorito INTEGER DEFAULT 0)',
     );
     await db.execute(
       'CREATE TABLE configuracion (clave TEXT PRIMARY KEY, valor TEXT)',
@@ -54,7 +56,7 @@ class DBHelper {
       'CREATE TABLE clientes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, telefono TEXT, direccion TEXT, deuda_actual REAL DEFAULT 0, cupo_credito REAL DEFAULT 0, esta_activo INTEGER DEFAULT 1, uuid TEXT)',
     );
     await db.execute(
-      'CREATE TABLE ventas (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, total REAL, metodo_pago TEXT, usuario_id INTEGER, cliente_id INTEGER DEFAULT 0, anulada INTEGER DEFAULT 0, uuid TEXT, dispositivo_uuid TEXT)',
+      'CREATE TABLE ventas (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, total REAL, metodo_pago TEXT, usuario_id INTEGER, cliente_id INTEGER DEFAULT 0, anulada INTEGER DEFAULT 0, uuid TEXT, dispositivo_uuid TEXT, metodo_pago_detalle TEXT)',
     );
     await db.execute(
       'CREATE TABLE detalle_ventas (id INTEGER PRIMARY KEY AUTOINCREMENT, venta_id INTEGER, producto_id INTEGER, nombre_producto TEXT, cantidad REAL, cantidad_descontada REAL, precio_unitario REAL, subtotal REAL, costo_unitario REAL DEFAULT 0)',
@@ -77,6 +79,20 @@ class DBHelper {
     await db.execute(
       'CREATE TABLE presentaciones (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, nombre TEXT, cantidad REAL, precio REAL, codigo_barras TEXT)',
     );
+    await db.execute('''
+CREATE TABLE mermas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fecha TEXT,
+  producto_id INTEGER,
+  nombre_producto TEXT,
+  cantidad REAL,
+  costo_unitario REAL,
+  total_perdida REAL,
+  motivo TEXT,
+  usuario_id INTEGER,
+  uuid TEXT
+)
+''');
 
     await db.execute('''
 CREATE TABLE roles(
@@ -209,6 +225,9 @@ CREATE TABLE roles_permisos(
     );
     await db.execute(
       "INSERT INTO configuracion (clave, valor) VALUES ('sync_activo', '1')",
+    );
+    await db.execute(
+      "INSERT INTO configuracion (clave, valor) VALUES ('permitir_stock_negativo', '1')",
     );
     await db.execute(
       "INSERT INTO clientes (nombre, telefono, direccion) VALUES ('Cliente Casual', '000', 'Local')",
@@ -473,17 +492,55 @@ CREATE TABLE roles_permisos(
       };
     }
 
+    final dispId = await obtenerDispositivoUuid();
     final ventasRes = await db.rawQuery(
       "SELECT SUM(total) as total FROM ventas WHERE fecha >= ? AND metodo_pago = 'EFECTIVO' AND anulada = 0 AND (dispositivo_uuid IS NULL OR dispositivo_uuid = ?)",
-      [fechaInicio, await obtenerDispositivoUuid()],
+      [fechaInicio, dispId],
     );
     double ventas = (ventasRes.first['total'] as num?)?.toDouble() ?? 0;
+
+    final mixtasLocal = await db.query(
+      'ventas',
+      columns: ['metodo_pago_detalle'],
+      where: "fecha >= ? AND metodo_pago = 'MIXTO' AND anulada = 0 AND (dispositivo_uuid IS NULL OR dispositivo_uuid = ?)",
+      whereArgs: [fechaInicio, dispId],
+    );
+    for (var row in mixtasLocal) {
+      final d = row['metodo_pago_detalle']?.toString();
+      if (d != null && d.isNotEmpty) {
+        try {
+          final parsed = jsonDecode(d);
+          if (parsed is Map && parsed['efectivo'] != null) {
+            ventas += (parsed['efectivo'] as num).toDouble();
+          }
+        } catch (_) {}
+      }
+    }
+
     final ventasGlobalRes = await db.rawQuery(
       "SELECT SUM(total) as total FROM ventas WHERE fecha >= ? AND metodo_pago = 'EFECTIVO' AND anulada = 0",
       [fechaInicio],
     );
     double ventasGlobal =
         (ventasGlobalRes.first['total'] as num?)?.toDouble() ?? 0;
+
+    final mixtasGlobal = await db.query(
+      'ventas',
+      columns: ['metodo_pago_detalle'],
+      where: "fecha >= ? AND metodo_pago = 'MIXTO' AND anulada = 0",
+      whereArgs: [fechaInicio],
+    );
+    for (var row in mixtasGlobal) {
+      final d = row['metodo_pago_detalle']?.toString();
+      if (d != null && d.isNotEmpty) {
+        try {
+          final parsed = jsonDecode(d);
+          if (parsed is Map && parsed['efectivo'] != null) {
+            ventasGlobal += (parsed['efectivo'] as num).toDouble();
+          }
+        } catch (_) {}
+      }
+    }
     final cajaRes = await db.query(
       'caja_movimientos',
       where: "fecha >= ?",
@@ -651,14 +708,50 @@ CREATE TABLE roles_permisos(
         "SELECT SUM(total) as total FROM ventas WHERE fecha >= ? AND metodo_pago = 'EFECTIVO' AND anulada = 0 AND (dispositivo_uuid IS NULL OR dispositivo_uuid = ?)",
         [fi, disp],
       );
-      final ventas = (ventasRes.first['total'] as num?)?.toDouble() ?? 0;
+      double ventas = (ventasRes.first['total'] as num?)?.toDouble() ?? 0;
+
+      final mixtasLocal = await txn.query(
+        'ventas',
+        columns: ['metodo_pago_detalle'],
+        where: "fecha >= ? AND metodo_pago = 'MIXTO' AND anulada = 0 AND (dispositivo_uuid IS NULL OR dispositivo_uuid = ?)",
+        whereArgs: [fi, disp],
+      );
+      for (var row in mixtasLocal) {
+        final d = row['metodo_pago_detalle']?.toString();
+        if (d != null && d.isNotEmpty) {
+          try {
+            final parsed = jsonDecode(d);
+            if (parsed is Map && parsed['efectivo'] != null) {
+              ventas += (parsed['efectivo'] as num).toDouble();
+            }
+          } catch (_) {}
+        }
+      }
 
       final ventasGlobalRes = await txn.rawQuery(
         "SELECT SUM(total) as total FROM ventas WHERE fecha >= ? AND metodo_pago = 'EFECTIVO' AND anulada = 0",
         [fi],
       );
-      final ventasGlobal =
+      double ventasGlobal =
           (ventasGlobalRes.first['total'] as num?)?.toDouble() ?? 0;
+
+      final mixtasGlobal = await txn.query(
+        'ventas',
+        columns: ['metodo_pago_detalle'],
+        where: "fecha >= ? AND metodo_pago = 'MIXTO' AND anulada = 0",
+        whereArgs: [fi],
+      );
+      for (var row in mixtasGlobal) {
+        final d = row['metodo_pago_detalle']?.toString();
+        if (d != null && d.isNotEmpty) {
+          try {
+            final parsed = jsonDecode(d);
+            if (parsed is Map && parsed['efectivo'] != null) {
+              ventasGlobal += (parsed['efectivo'] as num).toDouble();
+            }
+          } catch (_) {}
+        }
+      }
 
       final cajaRes = await txn.query(
         'caja_movimientos',
@@ -741,6 +834,7 @@ CREATE TABLE roles_permisos(
     List<Map<String, dynamic>> items, {
     int clienteId = 0,
     required int usuarioId,
+    String? metodoPagoDetalle,
   }) async {
     final db = await database;
     final ventaUuid = generateUuidV4();
@@ -749,6 +843,8 @@ CREATE TABLE roles_permisos(
     if (!cajaAbierta) {
       return {'exito': false, 'mensaje': 'Debe abrir la caja antes de vender'};
     }
+    final cfg = await obtenerConfiguracion();
+    final permitirNegativo = (cfg['permitir_stock_negativo'] ?? '1') == '1';
     if (metodo == 'CREDITO') {
       if (clienteId <= 0) {
         return {'exito': false, 'mensaje': 'Debe seleccionar un cliente válido'};
@@ -784,14 +880,23 @@ CREATE TABLE roles_permisos(
           'anulada': 0,
           'uuid': ventaUuid,
           'dispositivo_uuid': disp,
+          'metodo_pago_detalle': metodoPagoDetalle,
         });
         for (var i in items) {
           double factorPack = (i['contenido_pack'] as num?)?.toDouble() ?? 1.0;
           double cantidadReal = (i['cantidad'] as num).toDouble() * factorPack;
-          final resStock = await txn.rawUpdate(
-            'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= ?',
-            [cantidadReal, i['id'], cantidadReal],
-          );
+          int resStock;
+          if (permitirNegativo) {
+            resStock = await txn.rawUpdate(
+              'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?',
+              [cantidadReal, i['id']],
+            );
+          } else {
+            resStock = await txn.rawUpdate(
+              'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= ?',
+              [cantidadReal, i['id'], cantidadReal],
+            );
+          }
           if (resStock == 0) {
             throw Exception(
               'STOCK_INSUF|${i['id']}|${i['nombre']}',
@@ -849,6 +954,7 @@ CREATE TABLE roles_permisos(
         'cliente_uuid': clienteUuid,
         'anulada': 0,
         'dispositivo_uuid': disp,
+        'metodo_pago_detalle': metodoPagoDetalle,
         'detalle': detallePayload,
       }));
       for (var i in items) {
@@ -1474,14 +1580,17 @@ CREATE TABLE roles_permisos(
     return res.isEmpty ? null : res.first['id'] as int?;
   }
 
-  Future<String?> authUidPorUsuario(int usuarioId) async {
-    if (usuarioId <= 0) return null;
+  Future<String?> authUidPorUsuario(dynamic usuarioId) async {
+    final id = (usuarioId is num)
+        ? usuarioId.toInt()
+        : int.tryParse(usuarioId?.toString() ?? '');
+    if (id == null || id <= 0) return null;
     final db = await database;
     final res = await db.query(
       'usuarios',
       columns: ['auth_uid'],
       where: 'id = ?',
-      whereArgs: [usuarioId],
+      whereArgs: [id],
       limit: 1,
     );
     if (res.isEmpty) return null;
@@ -1609,13 +1718,13 @@ CREATE TABLE roles_permisos(
         whereArgs: [v['id']],
       );
       final clienteUuid = await _uuidDeTabla(db, 'clientes', v['cliente_id']);
-      final usuarioUid = await authUidPorUsuario(v['usuario_id'] as int);
+      final usuarioUid = await authUidPorUsuario(v['usuario_id']);
       final detallePayload = await _detalleVentaPayload(db, detalle);
       await encolarPendiente('VENTA', vu, jsonEncode({
         'uuid': vu,
         'fecha': v['fecha'],
         'fecha_epoch':
-            DateTime.tryParse(v['fecha'] as String)?.millisecondsSinceEpoch ?? 0,
+            DateTime.tryParse(v['fecha']?.toString() ?? '')?.millisecondsSinceEpoch ?? 0,
         'total': v['total'],
         'metodo_pago': v['metodo_pago'],
         'usuario_uid': usuarioUid,
@@ -1643,13 +1752,13 @@ CREATE TABLE roles_permisos(
         where: 'compra_id = ?',
         whereArgs: [c['id']],
       );
-      final usuarioUid = await authUidPorUsuario(c['usuario_id'] as int);
+      final usuarioUid = await authUidPorUsuario(c['usuario_id']);
       final detallePayload = await _detalleCompraPayload(db, detalle);
       await encolarPendiente('COMPRA', cu, jsonEncode({
         'uuid': cu,
         'fecha': c['fecha'],
         'fecha_epoch':
-            DateTime.tryParse(c['fecha'] as String)?.millisecondsSinceEpoch ?? 0,
+            DateTime.tryParse(c['fecha']?.toString() ?? '')?.millisecondsSinceEpoch ?? 0,
         'total': c['total'],
         'metodo_pago': c['metodo_pago'],
         'proveedor': c['proveedor'],
@@ -1675,7 +1784,7 @@ CREATE TABLE roles_permisos(
       final deudaCambio = tipo == 'ABONO' ? -monto : monto;
       final clienteUuid = await _uuidDeTabla(db, 'clientes', m['cliente_id']);
       final ventaUuid = await _uuidDeTabla(db, 'ventas', m['venta_id']);
-      final usuarioUid = await authUidPorUsuario(m['usuario_id'] as int);
+      final usuarioUid = await authUidPorUsuario(m['usuario_id']);
       await encolarPendiente('CARTERA', mu, jsonEncode({
         'uuid': mu,
         'cliente_uuid': clienteUuid,
@@ -1684,13 +1793,13 @@ CREATE TABLE roles_permisos(
         'deuda_cambio': deudaCambio,
         'venta_uuid': ventaUuid,
         'fecha_epoch':
-            DateTime.tryParse(m['fecha'] as String)?.millisecondsSinceEpoch ?? 0,
+            DateTime.tryParse(m['fecha']?.toString() ?? '')?.millisecondsSinceEpoch ?? 0,
         'usuario_uid': usuarioUid,
         'dispositivo_uuid': dispositivoUuid,
         'sin_deuda': true,
       }));
       await guardarAplicado('CARTERA', mu,
-          DateTime.tryParse(m['fecha'] as String)?.millisecondsSinceEpoch ?? 0);
+          DateTime.tryParse(m['fecha']?.toString() ?? '')?.millisecondsSinceEpoch ?? 0);
     }
   }
 
@@ -1932,12 +2041,25 @@ CREATE TABLE roles_permisos(
       argsGastos,
     );
     double gastos = (resGastos.first['t'] as num?)?.toDouble() ?? 0;
+
+    final argsMermas = <dynamic>[
+      inicio,
+      finExcl,
+      if (usuarioId != null) usuarioId,
+    ];
+    final resMermas = await db.rawQuery(
+      "SELECT SUM(total_perdida) as t FROM mermas WHERE fecha >= ? AND fecha < ?${usuarioId != null ? ' AND usuario_id = ?' : ''}",
+      argsMermas,
+    );
+    double mermas = (resMermas.first['t'] as num?)?.toDouble() ?? 0;
+
     return {
       'ventas': ventas,
       'costos': costos,
       'utilidad_bruta': ventas - costos,
       'gastos': gastos,
-      'utilidad_neta': (ventas - costos) - gastos,
+      'mermas': mermas,
+      'utilidad_neta': (ventas - costos) - gastos - mermas,
     };
   }
 
@@ -2316,5 +2438,316 @@ CREATE TABLE roles_permisos(
         }
       }
     }
+    if (oldVersion < 8) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS mermas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fecha TEXT,
+          producto_id INTEGER,
+          nombre_producto TEXT,
+          cantidad REAL,
+          costo_unitario REAL,
+          total_perdida REAL,
+          motivo TEXT,
+          usuario_id INTEGER,
+          uuid TEXT
+        )
+      ''');
+      final cfgStockNeg = await db.query(
+        'configuracion',
+        where: "clave = 'permitir_stock_negativo'",
+        limit: 1,
+      );
+      if (cfgStockNeg.isEmpty) {
+        await db.insert('configuracion', {
+          'clave': 'permitir_stock_negativo',
+          'valor': '1',
+        });
+      }
+      final colsVen = await db.rawQuery('PRAGMA table_info(ventas)');
+      if (!colsVen.any((c) => c['name'] == 'metodo_pago_detalle')) {
+        await db.execute(
+          'ALTER TABLE ventas ADD COLUMN metodo_pago_detalle TEXT',
+        );
+      }
+    }
+    if (oldVersion < 9) {
+      final colsProd = await db.rawQuery('PRAGMA table_info(productos)');
+      if (!colsProd.any((c) => c['name'] == 'es_favorito')) {
+        await db.execute(
+          'ALTER TABLE productos ADD COLUMN es_favorito INTEGER DEFAULT 0',
+        );
+      }
+      // Marcar los 12 staples principales como favoritos si existen en la base
+      await db.rawUpdate('''
+        UPDATE productos SET es_favorito = 1
+        WHERE codigo_plu IN ('101', '103', '110', '201', '202', '205', '206', '207', '208', '211', '212', '214')
+      ''');
+    }
+  }
+
+  // --- CONFIGURACIÓN DE STOCK FLEXIBLE ---
+  Future<bool> permitirStockNegativo() async {
+    final cfg = await obtenerConfiguracion();
+    return (cfg['permitir_stock_negativo'] ?? '1') == '1';
+  }
+
+  Future<void> guardarPermitirStockNegativo(bool permitir) async {
+    await guardarConfiguracion('permitir_stock_negativo', permitir ? '1' : '0');
+  }
+
+  // --- GESTIÓN DE MERMAS Y DESPERDICIOS ---
+  Future<int> registrarMerma({
+    required int productoId,
+    required double cantidad,
+    required String motivo,
+    required int usuarioId,
+  }) async {
+    final db = await database;
+    final prod = await db.query(
+      'productos',
+      where: 'id = ?',
+      whereArgs: [productoId],
+      limit: 1,
+    );
+    if (prod.isEmpty) throw Exception('Producto no encontrado');
+
+    final p = prod.first;
+    final nombre = p['nombre']?.toString() ?? '';
+    final costoUnitario = (p['precio_costo'] as num?)?.toDouble() ?? 0.0;
+    final totalPerdida = costoUnitario * cantidad;
+    final mermaUuid = generateUuidV4();
+    final fecha = DateTime.now().toIso8601String();
+
+    return await db.transaction((txn) async {
+      await txn.rawUpdate(
+        'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?',
+        [cantidad, productoId],
+      );
+
+      final mermaId = await txn.insert('mermas', {
+        'fecha': fecha,
+        'producto_id': productoId,
+        'nombre_producto': nombre,
+        'cantidad': cantidad,
+        'costo_unitario': costoUnitario,
+        'total_perdida': totalPerdida,
+        'motivo': motivo,
+        'usuario_id': usuarioId,
+        'uuid': mermaUuid,
+      });
+
+      return mermaId;
+    }).then((id) async {
+      await encolarStockOp(productoId, -cantidad);
+      return id;
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerMermas({
+    String? fechaInicio,
+    String? fechaFin,
+  }) async {
+    final db = await database;
+    String? whereClause;
+    List<dynamic>? whereArgs;
+    if (fechaInicio != null && fechaFin != null) {
+      whereClause = 'fecha >= ? AND fecha <= ?';
+      whereArgs = [fechaInicio, fechaFin];
+    }
+    return await db.query(
+      'mermas',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'fecha DESC',
+    );
+  }
+
+  Future<double> obtenerTotalMermas(String fechaInicio, String fechaFin) async {
+    final db = await database;
+    final res = await db.rawQuery(
+      'SELECT SUM(total_perdida) as total FROM mermas WHERE fecha >= ? AND fecha <= ?',
+      [fechaInicio, fechaFin],
+    );
+    return (res.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  // --- COPIAS DE SEGURIDAD (BACKUP Y RESTAURACIÓN) ---
+  Future<String> obtenerRutaBaseDatos() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final rutaCarpeta = Directory(join(directory.path, 'Sistema_Fruver_Data'));
+    return join(rutaCarpeta.path, 'mifruver_sistema_v12_imagenes_ok.db');
+  }
+
+  Future<bool> exportarBackup(String rutaDestino) async {
+    try {
+      final db = await database;
+      try {
+        await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+      } catch (_) {}
+
+      final origenPath = await obtenerRutaBaseDatos();
+      final archivoOrigen = File(origenPath);
+      if (!await archivoOrigen.exists()) return false;
+
+      final archivoDestino = File(rutaDestino);
+      await archivoOrigen.copy(archivoDestino.path);
+      return true;
+    } catch (e) {
+      debugPrint('Error exportando backup: $e');
+      return false;
+    }
+  }
+
+  Future<bool> restaurarBackup(String rutaArchivoBackup) async {
+    try {
+      final archivoBackup = File(rutaArchivoBackup);
+      if (!await archivoBackup.exists()) return false;
+
+      if (_database != null) {
+        await _database!.close();
+        _database = null;
+      }
+
+      final destinoPath = await obtenerRutaBaseDatos();
+      final archivoDestino = File(destinoPath);
+      await archivoBackup.copy(archivoDestino.path);
+
+      final walFile = File('$destinoPath-wal');
+      if (await walFile.exists()) await walFile.delete();
+      final shmFile = File('$destinoPath-shm');
+      if (await shmFile.exists()) await shmFile.delete();
+
+      _database = await _initDB();
+      return true;
+    } catch (e) {
+      debugPrint('Error restaurando backup: $e');
+      return false;
+    }
+  }
+
+  /// Carga el catálogo maestro de ~120 productos de Fruver y Minimarket
+  /// con códigos PLU, costos, precios y categorías colombianas.
+  /// Si [forzar] es true, inserta las referencias que falten aunque ya haya productos.
+  Future<int> precargarCatalogoMaestro({bool forzar = false}) async {
+    final db = await database;
+    if (!forzar) {
+      final res = await db.rawQuery(
+        'SELECT COUNT(*) AS total FROM productos WHERE esta_activo = 1',
+      );
+      final cuenta = (res.isNotEmpty ? res.first['total'] as num? : 0)?.toInt() ?? 0;
+      if (cuenta > 0) return 0;
+    }
+
+    int insertados = 0;
+    for (final p in catalogoMaestroProductos) {
+      final existente = await db.query(
+        'productos',
+        where: 'codigo_plu = ? OR nombre = ?',
+        whereArgs: [p.codigoPlu, p.nombre],
+        limit: 1,
+      );
+      if (existente.isEmpty) {
+        final map = p.toMap();
+        final id = await db.insert('productos', map);
+        map['id'] = id;
+        try {
+          await encolarProductoCambio(map, stockRecon: true);
+        } catch (_) {}
+        insertados++;
+      }
+    }
+    return insertados;
+  }
+
+  // --- GESTIÓN DE PRODUCTOS FAVORITOS (TOP 12) ---
+  Future<void> toggleFavorito(int productoId, bool esFavorito) async {
+    final db = await database;
+    try {
+      final colsProd = await db.rawQuery('PRAGMA table_info(productos)');
+      if (!colsProd.any((c) => c['name'] == 'es_favorito')) {
+        await db.execute('ALTER TABLE productos ADD COLUMN es_favorito INTEGER DEFAULT 0');
+      }
+    } catch (_) {}
+
+    await db.update(
+      'productos',
+      {'es_favorito': esFavorito ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [productoId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerProductosFavoritos({int limit = 12}) async {
+    final db = await database;
+    try {
+      final colsProd = await db.rawQuery('PRAGMA table_info(productos)');
+      if (!colsProd.any((c) => c['name'] == 'es_favorito')) {
+        await db.execute('ALTER TABLE productos ADD COLUMN es_favorito INTEGER DEFAULT 0');
+      }
+    } catch (_) {}
+
+    // 1. Obtener los productos marcados explícitamente como favoritos
+    final marcados = await db.query(
+      'productos',
+      where: 'esta_activo = 1 AND es_favorito = 1',
+      limit: limit,
+    );
+
+    if (marcados.length >= limit) {
+      return List<Map<String, dynamic>>.from(marcados);
+    }
+
+    final idsYa = marcados.map((m) => m['id']).toSet();
+    final List<Map<String, dynamic>> resultado = List.from(marcados);
+
+    // 2. Complementar con los productos más vendidos en el historial
+    try {
+      final resVendidos = await db.rawQuery('''
+        SELECT p.*, SUM(dv.cantidad) as total_vendido
+        FROM detalle_ventas dv
+        INNER JOIN productos p ON p.id = dv.producto_id
+        WHERE p.esta_activo = 1
+        GROUP BY p.id
+        ORDER BY total_vendido DESC
+        LIMIT ?
+      ''', [limit * 2]);
+
+      for (final p in resVendidos) {
+        if (!idsYa.contains(p['id']) && resultado.length < limit) {
+          idsYa.add(p['id']);
+          resultado.add(p);
+        }
+      }
+    } catch (_) {}
+
+    // 3. Si aún no llega al límite, complementar con los staples de Fruver por código PLU
+    if (resultado.length < limit) {
+      final faltan = limit - resultado.length;
+      try {
+        final resStaples = await db.rawQuery('''
+          SELECT * FROM productos
+          WHERE esta_activo = 1
+          ORDER BY
+            CASE
+              WHEN codigo_plu IN ('101', '103', '110', '201', '202', '205', '206', '207', '208', '211', '212', '214') THEN 0
+              WHEN es_pesable = 1 THEN 1
+              ELSE 2
+            END,
+            nombre ASC
+          LIMIT ?
+        ''', [faltan * 3]);
+
+        for (final p in resStaples) {
+          if (!idsYa.contains(p['id']) && resultado.length < limit) {
+            idsYa.add(p['id']);
+            resultado.add(p);
+          }
+        }
+      } catch (_) {}
+    }
+
+    return resultado;
   }
 }
+

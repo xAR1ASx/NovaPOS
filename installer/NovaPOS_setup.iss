@@ -5,13 +5,13 @@
 ;   2) Compila el ejecutable de la app:          flutter build windows --release
 ;   3) Compila el instalador (PowerShell):
 ;        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" .\installer\NovaPOS_setup.iss
-;   4) El instalador queda en:  .\installer\output\NovaPOS-Setup-1.0.0.exe
+;   4) El instalador queda en:  .\installer\output\NovaPOS-Setup-1.1.0.exe
 ;
 ; Ese .exe se lo entregas al cliente: lo instala en Program Files, con acceso
 ; directo en el Escritorio y en el Menu de Inicio, y desinstalador.
 
 #define MyAppName "NovaPOS"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "NovaPOS"
 #define MyAppExeName "NovaPOS.exe"
 

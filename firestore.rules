@@ -10,15 +10,13 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.negocio_id;
     }
 
-    // Solo acceso a los datos del negocio propio.
     function esDelNegocio(negocioId) {
       return autenticado() && miNegocio() == negocioId;
     }
 
-    // Usuarios: lectura restringida al mismo negocio; solo un ADMIN de tu
-    // negocio puede crear/editar a sus compañeros; nadie puede borrar.
     match /usuarios/{uid} {
       allow read: if autenticado() && (
+        request.auth.uid == uid ||
         get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.negocio_id == resource.data.negocio_id
       );
 
@@ -34,7 +32,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Datos del negocio: productos, stock_ops, ventas, compras, clientes, cartera
     match /negocios/{negocioId} {
       allow read, write: if esDelNegocio(negocioId);
 

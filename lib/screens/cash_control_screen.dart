@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/cash_service.dart';
 import '../services/session_service.dart';
+import '../services/auto_backup_service.dart';
 import '../utils/numero.dart';
 import '../services/locale_service.dart';
 import 'cierre_history_screen.dart';
@@ -567,6 +569,9 @@ child: Text(
                             DateTime.now().toIso8601String(),
                         usuarioId: SessionService.userId() ?? 1,
                       );
+
+                      // 💾 Disparo de Copia de Seguridad Automática si está configurada
+                      unawaited(AutoBackupService().ejecutarBackupSiCorresponde(motivo: 'cierre_caja'));
 
                       if (!context.mounted) return;
                       Navigator.pop(context);

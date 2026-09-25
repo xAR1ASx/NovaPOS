@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/locale_service.dart';
+import '../database/db_helper.dart';
+import '../services/auto_backup_service.dart';
 import 'pin_login_screen.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
@@ -30,6 +32,16 @@ class _SplashScreenState extends State<SplashScreen>
     );
     _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
     _controller.forward();
+    _inicializarApp();
+  }
+
+  Future<void> _inicializarApp() async {
+    try {
+      await DBHelper().precargarCatalogoMaestro(forzar: false);
+      unawaited(AutoBackupService().ejecutarBackupSiCorresponde(motivo: 'inicio_app'));
+    } catch (e) {
+      debugPrint('Error inicializando catalogo maestro: $e');
+    }
     Timer(const Duration(milliseconds: 1500), _irAlLogin);
   }
 

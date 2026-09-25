@@ -5,7 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 import '../database/db_helper.dart';
+import 'cloudinary_service.dart';
 
 class SyncEstado {
   final bool activo;
@@ -288,6 +290,21 @@ class SyncService {
   }
 
   Future<String> _subirImagen(String uuid, String path) async {
+    // 1. Intentar subir primero vía Cloudinary (sin requerir tarjeta de crédito)
+    try {
+      final cloudUrl = await CloudinaryService().subirImagen(
+        localPath: path,
+        negocioId: _negocioId ?? 'general',
+        productoUuid: uuid,
+      );
+      if (cloudUrl != null && cloudUrl.isNotEmpty) {
+        return cloudUrl;
+      }
+    } catch (e) {
+      debugPrint('Cloudinary upload fallback a Storage: $e');
+    }
+
+    // 2. Fallback a Firebase Storage si aplica
     final ext =
         (path.contains('.') ? path.split('.').last : 'jpg').toLowerCase();
     final ref = FirebaseStorage.instance
@@ -327,9 +344,19 @@ class SyncService {
     final dir = await _dirImagenesSync();
     final destino = '${dir.path}${Platform.pathSeparator}$uuid.jpg';
     try {
-      final bytes = await FirebaseStorage.instance
-          .refFromURL(url)
-          .getData(10 * 1024 * 1024);
+      Uint8List? bytes;
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        final resp = await http.get(Uri.parse(url));
+        if (resp.statusCode == 200) {
+          bytes = resp.bodyBytes;
+        } else {
+          throw Exception('HTTP ${resp.statusCode}');
+        }
+      } else {
+        bytes = await FirebaseStorage.instance
+            .refFromURL(url)
+            .getData(10 * 1024 * 1024);
+      }
       if (bytes == null) throw Exception('Imagen vacia');
       await File(destino).writeAsBytes(bytes, flush: true);
       await db.rawUpdate(
