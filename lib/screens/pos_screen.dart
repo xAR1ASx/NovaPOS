@@ -13,6 +13,7 @@ import '../utils/numero.dart';
 import '../services/sales_service.dart';
 import '../services/balanza_service.dart';
 import '../services/locale_service.dart';
+import '../services/sync_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -124,6 +125,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   // Categorías
   List<String> _categorias = ["TODO", "⭐ FAVORITOS"];
   String _categoriaActual = "TODO";
+  VoidCallback? _syncListener;
 
   @override
   void initState() {
@@ -131,6 +133,13 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     _verificarCaja();
     _cargarCategorias();
     _cargarProductos();
+    _syncListener = () {
+      if (mounted) {
+        _cargarProductos();
+        _cargarCategorias();
+      }
+    };
+    SyncService.cambiosRemotosNotifier.addListener(_syncListener!);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _searchFocusNode.requestFocus();
     });
@@ -181,6 +190,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    if (_syncListener != null) {
+      SyncService.cambiosRemotosNotifier.removeListener(_syncListener!);
+    }
     _searchFocusNode.dispose();
     _searchController.dispose();
     super.dispose();

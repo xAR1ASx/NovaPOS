@@ -39,6 +39,10 @@ class SyncService {
   final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>> _subs =
       [];
   Timer? _timerImagenes;
+  Timer? _timerAutoSync;
+
+  /// Notificador reactivo para que pantallas abiertas (POS, Inventario) refresquen en tiempo real
+  static final ValueNotifier<int> cambiosRemotosNotifier = ValueNotifier<int>(0);
 
   /// Imágenes locales que aún no se subieron a Storage (uuid|path).
   final Set<String> _imagenesPorSubir = {};
@@ -94,6 +98,13 @@ class SyncService {
         await _subirPendientes();
       }
       await _instalarListeners();
+      DBHelper.onDatoEncolado = () {
+        unawaited(sincronizarAhora().catchError((e) {}));
+      };
+      _timerAutoSync = Timer.periodic(
+        const Duration(seconds: 8),
+        (_) => _subirPendientes(),
+      );
       _timerImagenes = Timer.periodic(
         const Duration(seconds: 45),
         (_) => _retrabajarImagenes(),
@@ -107,6 +118,9 @@ class SyncService {
   }
 
   Future<void> detener() async {
+    DBHelper.onDatoEncolado = null;
+    _timerAutoSync?.cancel();
+    _timerAutoSync = null;
     _timerImagenes?.cancel();
     _timerImagenes = null;
     _imagenesPorSubir.clear();
@@ -148,36 +162,46 @@ class SyncService {
         ));
   }
 
-  void _procesarSnapshot(
+  Future<void> _procesarSnapshot(
     QuerySnapshot<Map<String, dynamic>> snap,
     String tipo,
-  ) {
+  ) async {
+    bool huboCambios = false;
     for (final dc in snap.docChanges) {
       if (dc.type == DocumentChangeType.removed) continue;
       try {
         switch (tipo) {
           case 'PRODUCTO':
-            _aplicarProducto(dc.doc);
+            await _aplicarProducto(dc.doc);
+            huboCambios = true;
             break;
           case 'STOCK_OP':
-            _aplicarStockOp(dc.doc);
+            await _aplicarStockOp(dc.doc);
+            huboCambios = true;
             break;
           case 'VENTA':
-            _aplicarVenta(dc.doc);
+            await _aplicarVenta(dc.doc);
+            huboCambios = true;
             break;
           case 'COMPRA':
-            _aplicarCompra(dc.doc);
+            await _aplicarCompra(dc.doc);
+            huboCambios = true;
             break;
           case 'CLIENTE':
-            _aplicarCliente(dc.doc, bootstrap: false);
+            await _aplicarCliente(dc.doc, bootstrap: false);
+            huboCambios = true;
             break;
           case 'CARTERA':
-            _aplicarCartera(dc.doc, bootstrap: false);
+            await _aplicarCartera(dc.doc, bootstrap: false);
+            huboCambios = true;
             break;
         }
       } catch (e) {
         debugPrint('SyncService aplicar $tipo: $e');
       }
+    }
+    if (huboCambios) {
+      cambiosRemotosNotifier.value++;
     }
   }
 
@@ -218,6 +242,7 @@ class SyncService {
     for (final doc in compras.docs) {
       await _aplicarCompra(doc);
     }
+    cambiosRemotosNotifier.value++;
   }
 
   // ======================= APLICAR DOCUMENTOS REMOTOS =======================

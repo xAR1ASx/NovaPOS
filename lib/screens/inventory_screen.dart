@@ -11,6 +11,7 @@ import '../services/locale_service.dart';
 import '../utils/numero.dart';
 import 'mermas_screen.dart';
 import '../services/excel_export_service.dart';
+import '../services/sync_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -114,6 +115,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   List<Map<String, dynamic>> _productos = [];
   List<Map<String, dynamic>> _productosFiltrados = [];
   final _searchCtrl = TextEditingController();
+  VoidCallback? _syncListener;
 
   @override
   void initState() {
@@ -121,6 +123,13 @@ class _InventoryScreenState extends State<InventoryScreen>
     _tabController = TabController(length: 2, vsync: this);
     _cargarProductos();
     _cargarCategorias();
+    _syncListener = () {
+      if (mounted) {
+        _cargarProductos();
+        _cargarCategorias();
+      }
+    };
+    SyncService.cambiosRemotosNotifier.addListener(_syncListener!);
     if (widget.codigoPrellenado != null) {
       _pluCtrl.text = widget.codigoPrellenado!;
       _tabController.animateTo(1);
@@ -129,6 +138,9 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   @override
   void dispose() {
+    if (_syncListener != null) {
+      SyncService.cambiosRemotosNotifier.removeListener(_syncListener!);
+    }
     _tabController.dispose();
     _nombreCtrl.dispose();
     _precioVentaCtrl.dispose();

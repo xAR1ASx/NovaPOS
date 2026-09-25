@@ -14,6 +14,7 @@ class DBHelper {
   DBHelper._internal();
 
   static Database? _database;
+  static void Function()? onDatoEncolado;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -1471,6 +1472,9 @@ CREATE TABLE roles_permisos(
       'estado': 0,
       'creado_en': DateTime.now().toIso8601String(),
     });
+    try {
+      onDatoEncolado?.call();
+    } catch (_) {}
   }
 
   Future<List<Map<String, dynamic>>> obtenerPendientes() async {
