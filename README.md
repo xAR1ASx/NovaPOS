@@ -1,245 +1,163 @@
-# NovaPOS 🥦
+# NovaPOS 🥦 — Edición Especial Fruvers & Minimarkets
 
-**Sistema de Punto de Venta (POS) para fruterías y tiendas de barrio.**
+**Sistema de Punto de Venta (POS) e Inteligencia de Negocio de alto rendimiento, optimizado para fruterías, verdulerías y minimarkets.**
 
-NovaPOS es una aplicación de escritorio para **Windows** construida con
-**Flutter**. Combina una base de datos **local en SQLite** (rápida y funcional
-sin internet) con **Firebase** (autenticación segura de usuarios y respaldo de
-cuentas/licencia en la nube).
+NovaPOS combina una arquitectura local ultrarrápida impulsada por **SQLite (100% offline-first)** con sincronización en la nube mediante **Firebase & Cloudinary** para gestión multi-caja, auditoría y control de licencias. Desarrollado con **Flutter** para Windows y tablets Android.
 
 ---
 
-## ✨ Funcionalidades
+## 🚀 Estado Actual del Proyecto (Versión 1.1.0 — Piloto Listo)
 
-- **Ventas rapidas**: busca por nombre, PLU o **código de barras**, agrega al
-  carrito y cobra en efectivo o fiado (clientes).
-- **Productos por peso (balanza)**: los productos marcados como pesables se
-  venden por peso, leyendo el peso en **tiempo real** desde la balanza serial,
-  o con ingreso manual/simulado.
-- **Lectores de código de barras**: compatible con **cualquier** lector USB
-  (HID) — funciona como teclado: escanea en el campo activo y presiona Enter.
-- **Impresión de tickets**: ticket PDF en formato 80 mm. Imprime con el diálogo
-  del sistema o **directo a la impresora** que elijas (compatible con cualquier
-  impresora instalada en Windows: Epson TM, Hasar, Xprinter, etc.).
-- **Inventario**: productos, categorías, PLU, código de barras, costo/precio,
-  y **carga masiva desde Excel**.
-- **Compras**: registro de entradas de mercancía con aumento de stock.
-- **Arqueo de caja**: apertura/cierre y movimientos de caja.
-- **Reportes**: ventas, totales y utilidades.
-- **Clientes y fiados**: cartera de clientes con ventas a crédito.
-- **Múltiples cajeros** con roles y permisos.
-- **Seguridad real**: el PIN de cada empleado es su contraseña de Firebase
-  (mínimo 6 dígitos). Sin PIN en texto plano ni en la base local.
+El sistema se encuentra en su versión **1.1.0**, completamente funcional, blindado con pruebas unitarias automatizadas y con su instalador oficial de Windows compilado:
+
+* **Instalador generado**: `installer/output/NovaPOS-Setup-1.1.0.exe` (22.2 MB).
+* **Base de datos local**: SQLite versión 9 con migración transparente automática.
+* **Cobertura de pruebas**: 23 tests unitarios automatizados aprobados al 100%.
 
 ---
 
-## 🖥️ Requisitos
+## ✨ Características Principales
 
-| Requisito | Detalle |
-|-----------|---------|
-| Sistema operativo | Windows 10/11 (64 bits) |
-| Internet | Necesario solo para el **inicio de sesión** y la gestión de usuarios |
-| Funcionamiento | Sin internet, la app trabaja con los datos locales ya sincronizados |
-| Impresora (opcional) | Cualquier impresora térmica instalada en Windows |
-| Balanza (opcional) | Cualquier balanza por puerto serial (COM) |
-| Lector de barras (opcional) | Cualquier lector USB tipo teclado (HID) |
+### 🛒 1. Punto de Venta (POS) Táctil de Alta Velocidad
+* **⭐ Top 12 Favoritos de Acceso Rápido**:
+  * Barra superior táctil con los productos de mayor rotación (Tomate, Cebolla, Papa, Plátano, Limón, Aguacate, etc.).
+  * **Un solo toque**: Abre de inmediato el pesaje por balanza o añade la unidad al carrito.
+  * Pestaña dorada `⭐ FAVORITOS` en la barra de categorías para visualización en grilla completa.
+  * Atajo interactivo: Mantén presionado cualquier producto en la grilla para marcarlo o desmarcarlo de tus favoritos.
+* **Cobro con Pagos Mixtos**:
+  * Permite cobrar ventas combinando múltiples métodos (ej. parte en Efectivo y el resto por Nequi, Daviplata o Tarjeta/Datafono).
+  * Apertura inteligente del cajón monedero: solo se dispara si la transacción involucró efectivo.
+* **Pesaje en Tiempo Real (Balanza)**:
+  * Compatible con básculas de conexión serial (USB→COM / RS-232) mediante filtrado de paquetes ASCII continuo y STX/ETX.
+  * Modal interactivo de pesaje con detección de peso estable y simulación en caso de básculas no conectadas.
+* **Lector de Código de Barras Instantáneo**:
+  * Detección automática por emulación de teclado (HID) sin importar la marca del escáner.
+* **Ventas en Espera (Multi-ticket)**:
+  * Permite pausar una venta y atender al siguiente cliente en fila sin perder los productos marcados.
 
 ---
 
-## 🚀 Puesta en marcha (para desarrollo)
+### 📦 2. Catálogo Maestro y Control de Inventario
+* **Catálogo Maestro Fruver Colombia (~120 Referencias con Fotos)**:
+  * Precarga automática al primer inicio de la app o a demanda con un solo clic.
+  * Incluye frutas, verduras, tubérculos, hierbas aromáticas, lácteos y abarrotes con códigos PLU colombianos oficiales, estimación de costos y precios sugeridos.
+* **Módulo de Mermas y Bajas de Inventario**:
+  * Bitácora diaria de producto perecedero dado de baja (fruta podrida, madura, golpeada, vencida o degustación).
+  * Conexión directa con la balanza para pesar el desperdicio.
+  * **Impacto real en el P&L**: Descuenta las mermas directamente del Estado de Resultados para obtener la **Utilidad Neta Real**.
+* **Gestión de Presentaciones y Packs**:
+  * Venta por kilogramo, gramos, unidades sueltas o canastillas/bultos enteros.
+* **Stock Negativo Configurable**:
+  * Interruptor en Ajustes para permitir seguir facturando rápidamente aunque no se haya ingresado la compra física del día.
 
-### 1. Clonar e instalar dependencias
+---
+
+### 🚚 3. Recepción Inteligente de Mercancía (Compras)
+* **Diseñado para la Central de Abastos**:
+  * Entrada rápida por número de bultos o canastillas y peso promedio por bulto.
+  * Cálculo dinámico de costo por kilo y recálculo automático del precio de venta según el margen de ganancia deseado (%).
+  * Cuadre rápido contra el total de la factura física en papel del proveedor.
+
+---
+
+### 📊 4. Inteligencia de Negocio y Exportación a Excel
+* **Estado de Resultados (P&L)**:
+  * Comparativo en vivo: Hoy, Mes y Año.
+  * Ventas Brutas (-) Costos (-) Gastos Operativos (-) Mermas (=) **Utilidad Neta**.
+* **Exportación Completa a Microsoft Excel (.xlsx)**:
+  * Botón directo en la barra superior de Reportes e Inventario.
+  * Formato contable con cabeceras estilizadas y cálculos de márgenes.
+  * Genera reportes de:
+    1. *Inventario Valorizado al Costo y Venta*.
+    2. *Ventas Detalladas Ítem por Ítem*.
+    3. *Estado de Resultados y Balances*.
+    4. *Historial de Mermas y Pérdidas*.
+    5. *Compras a Proveedores*.
+  * **Integración con Windows**: Botón *"ABRIR CARPETA"* que resalta automáticamente el archivo generado en el Explorador de Windows (`Documentos/NovaPOS_Reportes/`).
+
+---
+
+### 💾 5. Seguridad y Copias de Respaldo Automáticas
+* **Backups Automáticos Locales**:
+  * La base de datos se respalda automáticamente en `Documentos/NovaPOS_Backups/` en cada cierre de caja o apertura del sistema.
+  * Rotación inteligente de copias (conserva las últimas 3 versiones para proteger el almacenamiento).
+  * Opciones de exportación manual a memorias USB y restauración con 1 clic.
+* **Control de Usuarios y Roles**:
+  * Login mediante PIN individual.
+  * Perfil **ADMIN** (acceso total, auditoría, márgenes y configuración).
+  * Perfil **CAJERO** (restringido únicamente al cobro y caja, sin acceso a costos ni utilidades).
+* **Tirilla Térmica Personalizada para Colombia**:
+  * Soporte de impresión directa en impresoras de 58 mm y 80 mm (Epson, Xprinter, Hasar, etc.).
+  * Encabezado con Nombre del negocio, NIT, Régimen (*No responsable de IVA / Común*), Dirección, Teléfono, Ciudad, pie de ticket y leyenda DIAN.
+  * Función de *Imprimir Ticket de Prueba*.
+
+---
+
+## 🛠️ Requisitos de Hardware y Entorno
+
+| Dispositivo / Periférico | Compatibilidad |
+|--------------------------|----------------|
+| **Sistema Operativo** | Windows 10 / Windows 11 (64-bit) o Android 8.0+ (Tablets) |
+| **Báscula / Balanza** | Serial RS-232 o USB (Driver COM / Prolific / CH340 / FTDI) |
+| **Impresora Térmica** | Térmica 58mm u 80mm vía USB, Red o Bluetooth (driver Windows) |
+| **Cajón Monedero** | Conexión RJ11 a la impresora térmica (apertura automática) |
+| **Lector de Códigos** | USB estándar tipo teclado (HID) 1D / 2D |
+| **Conexión a Internet** | Opcional para operar. Se requiere únicamente para login inicial y sincronización en la nube. |
+
+---
+
+## 💻 Guía de Despliegue para Prueba Piloto
+
+### Instalación en el Computador del Fruver:
+1. Copia el archivo `NovaPOS-Setup-1.1.0.exe` (ubicado en `installer/output/`) a una memoria USB.
+2. Ejecuta el instalador en el equipo del fruver; el asistente instalará la aplicación en *Archivos de Programa* y creará el acceso directo en el Escritorio.
+3. Abre la aplicación: el **Catálogo Maestro de ~120 referencias con fotos** se precargará de inmediato.
+4. Ingresa con la cuenta de administrador.
+5. Ve a **Ajustes**:
+   * Escribe el Nombre comercial del negocio, NIT, Ciudad, Dirección y Teléfono.
+   * En **Impresora**, selecciona la impresora instalada y pulsa *"Imprimir Ticket de Prueba"*.
+   * En **Balanza**, selecciona el puerto COM de la báscula y valida el peso en vivo.
+6. En **Gestión de Usuarios**, crea los cajeros asignándoles su nombre y PIN de acceso.
+7. ¡Listo para iniciar turnos y comenzar a facturar!
+
+---
+
+## 🔮 Roadmap y Posibles Mejoras a Futuro
+
+Para las siguientes etapas después de la inauguración y validación del piloto, se tienen proyectadas las siguientes mejoras de alto impacto:
+
+1. **📲 Envío de Cierre Diario por WhatsApp al Dueño**:
+   * Botón al momento de cerrar la caja que genera un enlace directo a WhatsApp (`api.whatsapp.com/send`) con el resumen financiero del turno listo para enviar al dueño: *Ventas totales, Efectivo en cajón, Recaudos Nequi/Daviplata, Gastos del día y Pérdidas por Mermas*.
+2. **🏷️ Soporte para Básculas Etiquetadoras con Código de Barras**:
+   * Interpretación de códigos de barras generados por balanzas pesadoras (prefijo 20/21 con código de producto y peso/precio embebido en el código de 13 dígitos).
+3. **🌐 Panel Web / App Móvil para el Propietario**:
+   * Tablero de control remoto para que el dueño consulte las ventas en vivo y el inventario de su fruver desde su teléfono celular sin estar físicamente en el local.
+4. **🎯 Promociones y Días Especiales de Plaza**:
+   * Motor de descuentos programados (ej. *"Martes de Cítricos 10% OFF"*, *"Miércoles Campesino de Papa y Plátano"*).
+5. **🧾 Integración Facturación Electrónica DIAN**:
+   * Módulo opcional para emisión de documentos equivalentes electrónicos (POS electrónico DIAN) mediante proveedor tecnológico para fruvers que superen los topes tributarios.
+
+---
+
+## 🧑‍💻 Comandos para Desarrollo y Mantenimiento
 
 ```bash
+# Instalar dependencias
 flutter pub get
-```
 
-### 2. Configurar Firebase
+# Ejecutar banco de pruebas automatizadas
+flutter test
 
-El proyecto ya incluye la configuración de Firebase necesaria
-(`lib/firebase_options.dart` y `android/app/google-services.json`). No se
-necesita hacer nada más para compilar y ejecutar la app.
+# Verificar análisis estático de código
+flutter analyze
 
-### 3. Servidor
+# Compilar ejecutable Release para Windows
+flutter build windows --release
 
-La seguridad y los datos del lado servidor los administra el proveedor del
-sistema. El usuario final no necesita configurar nada.
-
-### 4. Compilar y ejecutar
-
-```bash
-flutter run -d windows        # desarrollo
-flutter build windows --release   # compilación para producción
-```
-
-El ejecutable queda en:
-
-```
-build\windows\x64\runner\Release\NovaPOS.exe
-```
-
-Para distribuirlo, copia **toda la carpeta `Release`** (incluye las DLL de
-Firebase, SQLite y libserialport que la app necesita).
-
-### 5. Pruebas
-
-```bash
-flutter test        # suite de pruebas unitarias
-flutter analyze     # análisis estático de código
+# Compilar instalador final (PowerShell con Inno Setup 6)
+& "C:\Users\jhona\AppData\Local\Programs\Inno Setup 6\ISCC.exe" .\installer\NovaPOS_setup.iss
 ```
 
 ---
 
-## 🔐 Cómo funciona el acceso
-
-### El PIN es la contraseña
-
-Cada cuenta se crea en **Firebase Authentication** con un contraseña igual al
-**PIN del empleado** (siempre **6 dígitos**). La app nunca guarda el PIN en
-texto plano ni en la base local.
-
-### Pantalla de login
-
-- **Primer inicio**: debes escribir tu **correo electrónico** y luego el **PIN**
-  de 6 dígitos.
-- **Inicios siguientes**: la sesión queda guardada en el equipo y basta con
-  ingresar **solo el PIN**. Puedes cambiarte de usuario con el enlace
-  **"Cambiar"**.
-- **Seguridad**: tras **3 intentos fallidos** el login se bloquea **30 segundos**.
-
-### Crear el primer administrador (una sola vez)
-
-> Las cuentas de administrador y de la empresa las crea el **proveedor del
-> sistema** cuando instala y habilita el software. El usuario final no necesita
-> crear cuentas desde ninguna consola externa.
-
-### Crear empleados (en la app)
-
-El **ADMIN** entra a *Usuarios → Nuevo usuario*: ahí se crea la cuenta de
-Firebase y el documento de Firestore automáticamente. Si un empleado olvida su
-PIN, el administrador usa **"Recuperar PIN"** (envía un correo de
-restablecimiento) y el empleado puede **cambiar su propio PIN** desde
-*Configuración → Seguridad → Cambiar mi PIN*.
-
----
-
-## 👥 Roles y permisos
-
-| Permiso | ADMIN | CAJERO |
-|---------|:-----:|:------:|
-| Crear/ver ventas | ✅ | ✅ |
-| Anular ventas | ✅ | ❌ |
-| Abrir/cerrar/movimientos de caja | ✅ | ✅ |
-| Inventario (ver/crear/editar/eliminar) | ✅ | ❌ |
-| Reportes | ✅ | ❌ |
-| Compras (crear/ver) | ✅ | ❌ |
-| Clientes (ver/editar) | ✅ | ✅ |
-| Eliminar clientes | ✅ | ❌ |
-| Configuración general | ✅ | ❌ |
-| Gestión de usuarios | ✅ | ❌ |
-
----
-
-## 🖨️ Impresora
-
-1. Instala el **driver de tu impresora** en Windows (Epson TM, etc.).
-2. En la app: **Configuración → Impresora**.
-3. Pulsa **"Detectar impresoras"** y elige tu impresora de la lista.
-4. Activa **"Impresión directa (sin diálogo)"** para que el ticket se imprima
-   automáticamente, sin ventanas. Si está desactivado, se abre el diálogo de
-   impresión de Windows.
-
-Formato de ticket: **80 mm térmico** (encabezado con nombre/NIT/dirección del
-negocio, lista de productos, total y método de pago).
-
----
-
-## 📟 Lector de código de barras
-
-No requiere configuración: **cualquier lector USB** que funcione como teclado
-escribe el código en el campo activo del POS y presiona Enter, exactamente como
-si un cajero tipeara el código.
-
----
-
-## ⚖️ Balanza
-
-Compatible con balanzas que transmiten por **puerto serial (RS-232 / USB→COM)**.
-
-1. Conecta la balanza y anota el puerto (ej. `COM3`) y los **baudios**.
-2. En **Configuración → Balanza**: pulsa **"Detectar puertos"**, elige puerto y
-   velocidad (usualmente **9600**).
-3. Pulsa **"Probar conexión"**; si el puerto se abre verás el estado.
-4. En el POS, al agregar un producto **pesable**, se mostrará el **peso en
-   tiempo real** con botón *"Usar peso"*. Si no hay balanza, usa *"Simular
-   peso"*.
-
-### Formatos de peso soportados
-
-La app detecta automáticamente el peso en gramos o kilogramos, con o sin
-unidad, incluyendo tramas **ASCII continuo** (`001234 g`) y paquetes
-**STX (0x02) ... ETX (0x03)**. Pesos fuera del rango 0.001–500 kg se ignoran
-(filtro contra ruido).
-
----
-
-## 🗄️ Datos
-
-- **Local**: SQLite (archivo en el directorio de datos de la aplicación).
-  Contiene productos, ventas, compras, clientes, caja y configuración.
-- **Nube (Firebase)**: solo cuentas de usuario, roles y datos del negocio
-  (nombre/NIT) y licencia. Sin internet no se puede iniciar sesión, pero una vez
-  iniciada la app trabaja con el inventario y ventas locales.
-
----
-
-## 🏗️ Estructura del proyecto
-
-```
-lib/
-├── main.dart                     # Inicialización (Firebase + SQLite) y app
-├── firebase_options.dart         # Configuración de Firebase por plataforma
-├── database/db_helper.dart       # Base de datos local SQLite
-├── services/
-│   ├── pin_auth_service.dart     # Autenticación Firebase (login, cuentas, PIN)
-│   ├── session_service.dart      # Usuario en sesión
-│   ├── role_permissions.dart     # Permisos por rol
-│   ├── permission_service.dart   # Gestión de permisos en memoria
-│   ├── sales_service.dart        # Lógica de ventas
-│   ├── printer_service.dart      # Tickets 80 mm (diálogo o directo)
-│   ├── balanza_service.dart      # Lectura de balanza por puerto serial
-│   └── password_service.dart     # Hash SHA-256 (legado/respaldo)
-└── screens/
-    ├── splash_screen.dart        # Splash con la marca
-    ├── pin_login_screen.dart     # Login con correo + PIN
-    ├── home_screen.dart          # Menú principal
-    ├── pos_screen.dart           # Punto de venta
-    ├── inventory_screen.dart     # Inventario
-    ├── purchases_screen.dart     # Compras
-    ├── cash_control_screen.dart  # Arqueo de caja
-    ├── reports_screen.dart       # Reportes
-    ├── sales_history_screen.dart # Historial de ventas
-    ├── clients_screen.dart       # Clientes y fiados
-    ├── users_screen.dart         # Gestión de usuarios
-    └── settings_screen.dart      # Configuración (negocio, impresora, balanza)
-```
-
----
-
-## 🧪 Pruebas
-
-```
-test/
-├── widget_test.dart              # Inicio: splash → login
-├── password_service_test.dart    # Hash y verificación de contraseñas
-├── role_permissions_test.dart    # Permisos de ADMIN y CAJERO
-└── balanza_service_test.dart     # Parser de pesos (gramos, kg, STX/ETX)
-```
-
----
-
-## 📦 Versiones
-
-Ver [`CHANGELOG.md`](CHANGELOG.md).
-
-NovaPOS · v1.0.0
+**NovaPOS** · *Tecnología ágil, robusta y confiable para el comercio colombiano.*
