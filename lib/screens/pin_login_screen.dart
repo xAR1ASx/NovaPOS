@@ -115,6 +115,22 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
       return;
     }
 
+    // Verificar bloqueo persistente primero
+    final cfg = await DBHelper().obtenerConfiguracion();
+    final bloqueoHastaStr = cfg['login_bloqueo_hasta'] ?? '0';
+    final bloqueoHasta = int.tryParse(bloqueoHastaStr) ?? 0;
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    
+    if (ahora < bloqueoHasta) {
+      int segundos = ((bloqueoHasta - ahora) / 1000).ceil();
+      setState(() {
+        _bloqueado = true;
+        _segundosBloqueo = segundos;
+      });
+      _iniciarContadorBloqueo();
+      return;
+    }
+
     setState(() => _cargando = true);
 
     try {
@@ -129,19 +145,25 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
       if (!mounted) return;
 
       if (usuario == null) {
-        _intentosFallidos++;
+        int intentosPrevios = int.tryParse(cfg['login_intentos_fallidos'] ?? '0') ?? 0;
+        int nuevosIntentos = intentosPrevios + 1;
+        await DBHelper().guardarConfiguracion('login_intentos_fallidos', nuevosIntentos.toString());
+
         setState(() {
           _error = _soloPin ? 'PIN incorrecto' : 'Correo o PIN incorrectos';
           _pin = '';
           _cargando = false;
         });
 
-        if (_intentosFallidos >= 3) {
+        if (nuevosIntentos >= 3) {
           _bloquearPorIntentos();
         }
         return;
       }
 
+      // Éxito: limpiar intentos
+      await DBHelper().guardarConfiguracion('login_intentos_fallidos', '0');
+      
       String? negocioId = usuario['negocio_id'];
       if (negocioId == null) {
         setState(() {
@@ -203,6 +225,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
           break;
         case 'too-many-requests':
           mensaje = 'Demasiados intentos fallidos. Espera unos minutos';
+          _bloquearPorIntentos(); // Bloqueo local preventivo
           break;
         case 'network-request-failed':
           mensaje = 'Sin conexion a internet';
@@ -225,20 +248,28 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
     }
   }
 
-  void _bloquearPorIntentos() {
+  Future<void> _bloquearPorIntentos() async {
+    final bloqueoHasta = DateTime.now().millisecondsSinceEpoch + (30 * 1000);
+    await DBHelper().guardarConfiguracion('login_bloqueo_hasta', bloqueoHasta.toString());
+    
+    if (!mounted) return;
     setState(() {
       _bloqueado = true;
       _segundosBloqueo = 30;
     });
+    _iniciarContadorBloqueo();
+  }
 
+  void _iniciarContadorBloqueo() {
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 1));
       if (!mounted) return false;
       setState(() => _segundosBloqueo--);
       if (_segundosBloqueo <= 0) {
+        await DBHelper().guardarConfiguracion('login_intentos_fallidos', '0');
+        await DBHelper().guardarConfiguracion('login_bloqueo_hasta', '0');
         setState(() {
           _bloqueado = false;
-          _intentosFallidos = 0;
         });
         return false;
       }

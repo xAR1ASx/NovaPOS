@@ -17,7 +17,8 @@ service cloud.firestore {
     match /usuarios/{uid} {
       allow read: if autenticado() && (
         request.auth.uid == uid ||
-        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.negocio_id == resource.data.negocio_id
+        (get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.negocio_id == resource.data.negocio_id &&
+         get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'ADMIN')
       );
 
       allow create: if autenticado() &&
@@ -33,7 +34,13 @@ service cloud.firestore {
     }
 
     match /negocios/{negocioId} {
-      allow read, write: if esDelNegocio(negocioId);
+      allow read: if esDelNegocio(negocioId);
+      
+      // Prohibir que la app modifique campos críticos de licencia
+      allow update: if esDelNegocio(negocioId) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['financiado', 'estado', 'licencia_fin']));
+        
+      allow create: if false; // Solo se crean por backend/consola o functions
 
       match /{documento=**} {
         allow read, write: if esDelNegocio(negocioId);

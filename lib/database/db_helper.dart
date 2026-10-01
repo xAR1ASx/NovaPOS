@@ -901,9 +901,22 @@ CREATE TABLE roles_permisos(
             throw Exception('EXCEDE_CUPO');
           }
         }
+
+        // H-01 VALIDACIÓN DE SEGURIDAD: Recalcular el total desde los items para evitar
+        // que una alteración manual en la UI o en la base de datos evada el cobro real.
+        double totalCalculado = 0.0;
+        for (var i in items) {
+          totalCalculado += (i['subtotal'] as num).toDouble();
+        }
+        
+        // Permitimos una tolerancia de $1 peso/centavo por redondeo
+        if ((totalCalculado - total).abs() > 1.0) {
+          throw Exception('ALERTA DE SEGURIDAD: El total recibido ($total) no coincide con la suma de los productos ($totalCalculado). Venta rechazada.');
+        }
+
         int id = await txn.insert('ventas', {
           'fecha': DateTime.now().toIso8601String(),
-          'total': total,
+          'total': totalCalculado, // Guardamos el calculado por seguridad
           'metodo_pago': metodo,
           'usuario_id': usuarioId,
           'cliente_id': clienteId,

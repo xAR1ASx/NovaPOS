@@ -216,6 +216,17 @@ class LicenseMonitor {
     if (cfg['licencia_financiado'] == '1') {
       final ultimoSyncStr = cfg['ultimo_sync_exitoso_epoch'] ?? '0';
       final ultimoSync = int.tryParse(ultimoSyncStr) ?? 0;
+      
+      // FAIL CLOSED: Si borraron la fila de la base de datos local
+      if (ultimoSync == 0) {
+        return const LicenciaResult(
+          estado: LicenciaEstado.bloqueada,
+          diasRestantes: 0,
+          mensaje: 'Error de integridad de seguridad. Conecte el equipo a internet para verificar la licencia.',
+          online: false,
+        );
+      }
+
       if (ultimoSync > 0) {
         final ahora = DateTime.now().millisecondsSinceEpoch;
         final elapsed = ahora - ultimoSync;
