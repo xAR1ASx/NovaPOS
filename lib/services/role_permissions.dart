@@ -20,6 +20,7 @@ class RolePermissions {
       'CLIENTES_ELIMINAR',
       'CONFIGURACION_GENERAL',
       'USUARIOS_GESTIONAR',
+      'PROMOCIONES_GESTIONAR',
     ],
     'CAJERO': [
       'VENTAS_CREAR',

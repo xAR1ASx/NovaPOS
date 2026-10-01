@@ -37,7 +37,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 9,
+      version: 10,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -91,6 +91,22 @@ CREATE TABLE mermas (
   total_perdida REAL,
   motivo TEXT,
   usuario_id INTEGER,
+  uuid TEXT
+)
+''');
+
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS promociones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  dias_semana TEXT NOT NULL,
+  tipo_alcance TEXT NOT NULL,
+  alcance_valor TEXT,
+  tipo_descuento TEXT NOT NULL,
+  valor_descuento REAL NOT NULL,
+  esta_activa INTEGER DEFAULT 1,
+  forzar_hoy INTEGER DEFAULT 0,
+  creado_en TEXT,
   uuid TEXT
 )
 ''');
@@ -165,6 +181,7 @@ CREATE TABLE roles_permisos(
       ["USUARIOS_ELIMINAR", "Eliminar usuarios"],
 
       ["CONFIGURACION_GENERAL", "Configuración general"],
+      ["PROMOCIONES_GESTIONAR", "Gestionar Días de Plaza y Promociones"],
     ];
 
     for (var permiso in permisos) {
@@ -229,6 +246,18 @@ CREATE TABLE roles_permisos(
     );
     await db.execute(
       "INSERT INTO configuracion (clave, valor) VALUES ('permitir_stock_negativo', '1')",
+    );
+    await db.execute(
+      "INSERT INTO configuracion (clave, valor) VALUES ('promociones_activas', '1')",
+    );
+    await db.execute(
+      "INSERT INTO configuracion (clave, valor) VALUES ('balanza_etiqueta_activa', '1')",
+    );
+    await db.execute(
+      "INSERT INTO configuracion (clave, valor) VALUES ('balanza_etiqueta_prefijo_peso', '20')",
+    );
+    await db.execute(
+      "INSERT INTO configuracion (clave, valor) VALUES ('balanza_etiqueta_prefijo_precio', '21')",
     );
     await db.execute(
       "INSERT INTO clientes (nombre, telefono, direccion) VALUES ('Cliente Casual', '000', 'Local')",
@@ -2488,6 +2517,159 @@ CREATE TABLE roles_permisos(
         WHERE codigo_plu IN ('101', '103', '110', '201', '202', '205', '206', '207', '208', '211', '212', '214')
       ''');
     }
+    if (oldVersion < 10) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS promociones (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nombre TEXT NOT NULL,
+          dias_semana TEXT NOT NULL,
+          tipo_alcance TEXT NOT NULL,
+          alcance_valor TEXT,
+          tipo_descuento TEXT NOT NULL,
+          valor_descuento REAL NOT NULL,
+          esta_activa INTEGER DEFAULT 1,
+          forzar_hoy INTEGER DEFAULT 0,
+          creado_en TEXT,
+          uuid TEXT
+        )
+      ''');
+
+      final configsDefecto = {
+        'promociones_activas': '1',
+        'balanza_etiqueta_activa': '1',
+        'balanza_etiqueta_prefijo_peso': '20',
+        'balanza_etiqueta_prefijo_precio': '21',
+      };
+
+      for (final entry in configsDefecto.entries) {
+        final cfg = await db.query(
+          'configuracion',
+          where: 'clave = ?',
+          whereArgs: [entry.key],
+          limit: 1,
+        );
+        if (cfg.isEmpty) {
+          await db.insert('configuracion', {
+            'clave': entry.key,
+            'valor': entry.value,
+          });
+        }
+      }
+
+      // Permiso PROMOCIONES_GESTIONAR para ADMIN
+      final permPromo = await db.query(
+        'permisos',
+        where: 'codigo = ?',
+        whereArgs: ['PROMOCIONES_GESTIONAR'],
+        limit: 1,
+      );
+      int permPromoId;
+      if (permPromo.isEmpty) {
+        permPromoId = await db.insert('permisos', {
+          'codigo': 'PROMOCIONES_GESTIONAR',
+          'descripcion': 'Gestionar Días de Plaza y Promociones',
+        });
+      } else {
+        permPromoId = permPromo.first['id'] as int;
+      }
+      final adminRole = await db.query(
+        'roles',
+        where: 'nombre = ?',
+        whereArgs: ['ADMIN'],
+        limit: 1,
+      );
+      if (adminRole.isNotEmpty) {
+        final yaAsignado = await db.query(
+          'roles_permisos',
+          where: 'rol_id = ? AND permiso_id = ?',
+          whereArgs: [adminRole.first['id'], permPromoId],
+        );
+        if (yaAsignado.isEmpty) {
+          await db.insert('roles_permisos', {
+            'rol_id': adminRole.first['id'],
+            'permiso_id': permPromoId,
+          });
+        }
+      }
+
+      // Sembrar plantillas recomendadas para Fruvers si no hay ninguna
+      final totalPromos = await db.query('promociones');
+      if (totalPromos.isEmpty) {
+        await db.insert('promociones', {
+          'nombre': 'Martes Campesino',
+          'dias_semana': '2',
+          'tipo_alcance': 'CATEGORIA',
+          'alcance_valor': 'Verduras',
+          'tipo_descuento': 'PORCENTAJE',
+          'valor_descuento': 10.0,
+          'esta_activa': 0,
+          'forzar_hoy': 0,
+          'creado_en': DateTime.now().toIso8601String(),
+          'uuid': generateUuidV4(),
+        });
+        await db.insert('promociones', {
+          'nombre': 'Miércoles de Cosecha',
+          'dias_semana': '3',
+          'tipo_alcance': 'CATEGORIA',
+          'alcance_valor': 'Frutas',
+          'tipo_descuento': 'PORCENTAJE',
+          'valor_descuento': 10.0,
+          'esta_activa': 0,
+          'forzar_hoy': 0,
+          'creado_en': DateTime.now().toIso8601String(),
+          'uuid': generateUuidV4(),
+        });
+      }
+    }
+  }
+
+  // --- GESTIÓN DE PROMOCIONES Y DÍAS DE PLAZA ---
+  Future<List<Map<String, dynamic>>> obtenerPromociones() async {
+    final db = await database;
+    return await db.query('promociones', orderBy: 'id DESC');
+  }
+
+  Future<int> guardarPromocion(Map<String, dynamic> promo) async {
+    final db = await database;
+    final Map<String, dynamic> datos = Map.from(promo);
+    if (datos['uuid'] == null || datos['uuid'].toString().isEmpty) {
+      datos['uuid'] = generateUuidV4();
+    }
+    if (datos['creado_en'] == null) {
+      datos['creado_en'] = DateTime.now().toIso8601String();
+    }
+    if (datos.containsKey('id') && datos['id'] != null) {
+      final id = datos['id'] as int;
+      await db.update('promociones', datos, where: 'id = ?', whereArgs: [id]);
+      return id;
+    } else {
+      return await db.insert('promociones', datos);
+    }
+  }
+
+  Future<int> eliminarPromocion(int id) async {
+    final db = await database;
+    return await db.delete('promociones', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> togglePromocionActiva(int id, bool activa) async {
+    final db = await database;
+    await db.update(
+      'promociones',
+      {'esta_activa': activa ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> togglePromocionForzarHoy(int id, bool forzar) async {
+    final db = await database;
+    await db.update(
+      'promociones',
+      {'forzar_hoy': forzar ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // --- CONFIGURACIÓN DE STOCK FLEXIBLE ---

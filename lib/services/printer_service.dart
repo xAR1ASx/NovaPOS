@@ -49,6 +49,13 @@ class PrinterService {
     if (mensajePie.isEmpty) mensajePie = "¡Gracias por su compra!";
     String leyenda = (config['ticket_leyenda'] ?? '').trim();
 
+    final double ahorroTotalPromo = productos.fold(0.0, (acc, item) {
+      final double desc =
+          (item['descuento_aplicado'] as num?)?.toDouble() ?? 0.0;
+      final double cant = (item['cantidad'] as num?)?.toDouble() ?? 1.0;
+      return acc + (desc * cant);
+    });
+
     // 2. Crear Documento PDF (Formato Ticket)
     final doc = pw.Document();
 
@@ -182,6 +189,28 @@ class PrinterService {
                   ),
                 ],
               ),
+              if (ahorroTotalPromo > 0) ...[
+                pw.SizedBox(height: 3),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      "* Ahorro Días de Plaza:",
+                      style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 9,
+                      ),
+                    ),
+                    pw.Text(
+                      "-${formater.format(ahorroTotalPromo)}",
+                      style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 9,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               pw.SizedBox(height: 5),
               pw.Text(
                 _formatearMetodoPagoTicket(venta),

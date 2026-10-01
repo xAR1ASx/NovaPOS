@@ -17,6 +17,7 @@ import '../services/pin_auth_service.dart';
 import '../services/license_monitor.dart';
 import 'pin_login_screen.dart';
 import 'users_screen.dart';
+import 'promociones_screen.dart';
 import '../services/locale_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
@@ -548,6 +549,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (c) => const UsersScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                PermissionGate(
+                  permission: "PROMOCIONES_GESTIONAR",
+                  child: _menuButton(
+                    _t('DÍAS DE PLAZA'),
+                    Icons.local_offer,
+                    Colors.amber[900]!,
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => const PromocionesScreen(),
                         ),
                       );
                     },

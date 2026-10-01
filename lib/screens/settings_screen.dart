@@ -15,6 +15,8 @@ import '../utils/numero.dart';
 import '../services/locale_service.dart';
 import '../services/ui_mode_service.dart';
 import '../services/sync_service.dart';
+import '../services/balanza_barcode_service.dart';
+import 'promociones_screen.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -65,6 +67,13 @@ class _SettingsScreenState extends State<SettingsScreen>
   final _cloudinaryCloudCtrl = TextEditingController();
   final _cloudinaryPresetCtrl = TextEditingController();
 
+  // Configuración Balanza Etiquetadora (Códigos de Barras EAN-13)
+  bool _balanzaEtiquetaActiva = true;
+  final _balanzaEtiquetaPrefijoPesoCtrl = TextEditingController(text: "20");
+  final _balanzaEtiquetaPrefijoPrecioCtrl = TextEditingController(text: "21");
+  final _balanzaPruebaCodigoCtrl = TextEditingController();
+  String _resultadoPruebaEtiqueta = "";
+
   // Configuración de Copias de Seguridad Automáticas (Auto-Backup)
   bool _backupAutoActivo = true;
   String _backupAutoFrecuencia = 'cierre_caja';
@@ -112,6 +121,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     _leyendaCtrl.dispose();
     _cloudinaryCloudCtrl.dispose();
     _cloudinaryPresetCtrl.dispose();
+    _balanzaEtiquetaPrefijoPesoCtrl.dispose();
+    _balanzaEtiquetaPrefijoPrecioCtrl.dispose();
+    _balanzaPruebaCodigoCtrl.dispose();
     super.dispose();
   }
 
@@ -142,6 +154,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       _backupAutoFrecuencia = config['backup_auto_frecuencia'] ?? 'cierre_caja';
       _backupMaxArchivos = int.tryParse(config['backup_max_archivos'] ?? '3') ?? 3;
       _estadoBackups = estadoBkp;
+
+      _balanzaEtiquetaActiva = (config['balanza_etiqueta_activa'] ?? '1') != '0';
+      _balanzaEtiquetaPrefijoPesoCtrl.text = config['balanza_etiqueta_prefijo_peso'] ?? "20";
+      _balanzaEtiquetaPrefijoPrecioCtrl.text = config['balanza_etiqueta_prefijo_precio'] ?? "21";
     });
   }
 
@@ -176,6 +192,19 @@ class _SettingsScreenState extends State<SettingsScreen>
     await db.guardarConfiguracion('backup_auto_activo', _backupAutoActivo ? '1' : '0');
     await db.guardarConfiguracion('backup_auto_frecuencia', _backupAutoFrecuencia);
     await db.guardarConfiguracion('backup_max_archivos', _backupMaxArchivos.toString());
+
+    await db.guardarConfiguracion(
+      'balanza_etiqueta_activa',
+      _balanzaEtiquetaActiva ? '1' : '0',
+    );
+    await db.guardarConfiguracion(
+      'balanza_etiqueta_prefijo_peso',
+      _balanzaEtiquetaPrefijoPesoCtrl.text.trim(),
+    );
+    await db.guardarConfiguracion(
+      'balanza_etiqueta_prefijo_precio',
+      _balanzaEtiquetaPrefijoPrecioCtrl.text.trim(),
+    );
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2010,11 +2039,176 @@ class _SettingsScreenState extends State<SettingsScreen>
                         ),
                       ],
                     ),
+
+                    const SizedBox(height: 25),
+                    const Text(
+                      "🏷️ Balanza Etiquetadora (Códigos EAN-13)",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Divider(),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text("Lectura de etiquetas de balanza"),
+                      subtitle: const Text(
+                        "Interpreta códigos de barras con peso o precio embebido (Torrey, Dibal, Systel, CAS, etc.)",
+                      ),
+                      value: _balanzaEtiquetaActiva,
+                      activeColor: Colors.green,
+                      onChanged: (val) {
+                        setState(() => _balanzaEtiquetaActiva = val);
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _balanzaEtiquetaPrefijoPesoCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: "Prefijo Peso (default 20)",
+                              hintText: "20",
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _balanzaEtiquetaPrefijoPrecioCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: "Prefijo Precio (default 21)",
+                              hintText: "21",
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+                    Card(
+                      color: Colors.grey[50],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "🔍 Probador de Códigos de Balanza:",
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _balanzaPruebaCodigoCtrl,
+                                    decoration: const InputDecoration(
+                                      hintText: "Escribe o escanea ej. 2000101012503",
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    final codigo = _balanzaPruebaCodigoCtrl.text.trim();
+                                    final res = BalanzaBarcodeService.parsearCodigo(
+                                      codigo,
+                                      config: {
+                                        'balanza_etiqueta_activa': _balanzaEtiquetaActiva ? '1' : '0',
+                                        'balanza_etiqueta_prefijo_peso': _balanzaEtiquetaPrefijoPesoCtrl.text.trim(),
+                                        'balanza_etiqueta_prefijo_precio': _balanzaEtiquetaPrefijoPrecioCtrl.text.trim(),
+                                      },
+                                    );
+                                    setState(() {
+                                      if (res.esValido) {
+                                        if (res.tipo == 'PESO') {
+                                          _resultadoPruebaEtiqueta = '✅ VÁLIDO: Tipo PESO | PLU: ${res.plu} | Peso: ${res.pesoKg.toStringAsFixed(3)} Kg';
+                                        } else {
+                                          _resultadoPruebaEtiqueta = '✅ VÁLIDO: Tipo PRECIO | PLU: ${res.plu} | Total: \$${res.precioTotal.toInt()}';
+                                        }
+                                      } else {
+                                        _resultadoPruebaEtiqueta = '❌ INVÁLIDO: ${res.error}';
+                                      }
+                                    });
+                                  },
+                                  icon: const Icon(Icons.check, size: 16),
+                                  label: const Text("Probar"),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.teal,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_resultadoPruebaEtiqueta.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: _resultadoPruebaEtiqueta.startsWith('✅') ? Colors.green[50] : Colors.red[50],
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _resultadoPruebaEtiqueta.startsWith('✅') ? Colors.green[300]! : Colors.red[300]!,
+                                  ),
+                                ),
+                                child: Text(
+                                  _resultadoPruebaEtiqueta,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: _resultadoPruebaEtiqueta.startsWith('✅') ? Colors.green[900] : Colors.red[900],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
+                    const Text(
+                      "🎯 Días de Plaza & Promociones",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.amber,
+                      ),
+                    ),
+                    const Divider(),
+                    ListTile(
+                      leading: const Icon(Icons.local_offer, color: Colors.amber),
+                      title: const Text("Gestionar Días de Plaza y Promociones"),
+                      subtitle: const Text(
+                        "Configura descuentos por día (Martes Campesino, Miércoles de Cosecha, etc.)",
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      tileColor: Colors.amber[50],
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const PromocionesScreen()),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 25),
+
                     const Text(
                       "📥 Carga Masiva",
                       style: TextStyle(

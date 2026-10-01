@@ -24,6 +24,7 @@ void main() {
         'CLIENTES_ELIMINAR',
         'CONFIGURACION_GENERAL',
         'USUARIOS_GESTIONAR',
+        'PROMOCIONES_GESTIONAR',
       ]));
     });
 
@@ -47,6 +48,7 @@ void main() {
       expect(permisos, isNot(contains('INVENTARIO_CREAR')));
       expect(permisos, isNot(contains('VENTAS_ANULAR')));
       expect(permisos, isNot(contains('CLIENTES_ELIMINAR')));
+      expect(permisos, isNot(contains('PROMOCIONES_GESTIONAR')));
     });
 
     test('un rol desconocido no tiene permisos', () {

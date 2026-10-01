@@ -14,6 +14,10 @@ import '../services/sales_service.dart';
 import '../services/balanza_service.dart';
 import '../services/locale_service.dart';
 import '../services/sync_service.dart';
+import '../services/balanza_barcode_service.dart';
+import '../services/promociones_service.dart';
+import '../services/session_service.dart';
+import 'promociones_screen.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -125,6 +129,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   // Categorías
   List<String> _categorias = ["TODO", "⭐ FAVORITOS"];
   String _categoriaActual = "TODO";
+  List<Map<String, dynamic>> _promocionesActivas = [];
   VoidCallback? _syncListener;
 
   @override
@@ -327,10 +332,12 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   void _cargarProductos() async {
     final data = await DBHelper().getProducts();
     final favs = await DBHelper().obtenerProductosFavoritos(limit: 12);
+    final promos = await PromocionesService().obtenerPromocionesActivasHoy();
     if (mounted) {
       setState(() {
         _products = data;
         _favoritos = favs;
+        _promocionesActivas = promos;
         if (_categoriaActual == "⭐ FAVORITOS") {
           _filteredProducts = favs;
         } else if (_categoriaActual == "TODO") {
@@ -386,8 +393,99 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
       _searchController.clear();
       _filtrar("");
       _searchFocusNode.requestFocus();
+      return;
+    }
+
+    // 2. Si no hubo coincidencia exacta, verificar si es código de balanza etiquetadora (EAN-13)
+    _procesarCodigoBalanzaEtiqueta(codigoLimpio);
+  }
+
+  Future<void> _procesarCodigoBalanzaEtiqueta(String codigo) async {
+    final cfg = await DBHelper().obtenerConfiguracion();
+    final res = BalanzaBarcodeService.parsearCodigo(codigo, config: cfg);
+    if (!res.esValido) {
+      _filtrar(codigo);
+      return;
+    }
+
+    Map<String, dynamic>? prodBalanza;
+    for (var p in _products) {
+      final plu = (p['codigo_plu'] ?? '').toString().trim();
+      final id = p['id'].toString();
+      final barras = (p['codigo_barras'] ?? '').toString().trim();
+      if (plu == res.plu ||
+          plu == res.plu5 ||
+          plu == res.plu4 ||
+          id == res.plu ||
+          barras == res.plu) {
+        prodBalanza = p;
+        break;
+      }
+    }
+
+    if (prodBalanza != null) {
+      if (res.tipo == 'PESO') {
+        _agregar(prodBalanza, cantidad: res.pesoKg);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.scale, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "⚖️ ${prodBalanza['nombre']} — ${res.pesoKg.toStringAsFixed(3)} Kg (desde etiqueta)",
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFF145A32),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // PRECIO
+        final precioUnitario = ((prodBalanza['precio_venta'] as num?)?.toDouble() ?? 0.0);
+        double cant = 1.0;
+        if (precioUnitario > 0) {
+          cant = double.parse((res.precioTotal / precioUnitario).toStringAsFixed(3));
+        }
+        _agregar(prodBalanza, cantidad: cant);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.local_offer, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "🏷️ ${prodBalanza['nombre']} — \$${res.precioTotal.toInt()} ($cant Kg) (desde etiqueta)",
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFF145A32),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+      _searchController.clear();
+      _filtrar("");
+      _searchFocusNode.requestFocus();
     } else {
-      _filtrar(codigoLimpio);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("⚠️ Etiqueta de balanza: PLU '${res.plu}' no encontrado en inventario."),
+            backgroundColor: Colors.orange[800],
+          ),
+        );
+      }
+      _filtrar(codigo);
     }
   }
 
@@ -471,8 +569,28 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     String? nombreEspecial,
     double packSize = 1.0,
   }) {
-    double precioFinal = precioEspecial ?? p['precio_venta'];
-    String nombreFinal = nombreEspecial ?? p['nombre'];
+    // Si no se pasó un precio especial (ej. presentaciones / packs),
+    // verificar si aplica una promoción o Día de Plaza activo
+    final promoInfo = precioEspecial == null
+        ? PromocionesService().calcularDescuentoProducto(p, _promocionesActivas)
+        : null;
+
+    final double precioRegular = ((p['precio_venta'] as num?)?.toDouble() ?? 0.0);
+    final double precioFinal = precioEspecial ??
+        (promoInfo != null
+            ? (promoInfo['precio_con_descuento'] as num).toDouble()
+            : precioRegular);
+
+    final double descUnidad = promoInfo != null && precioEspecial == null
+        ? (promoInfo['descuento_por_unidad'] as num).toDouble()
+        : 0.0;
+
+    final String? promoNombre = promoInfo != null && precioEspecial == null
+        ? promoInfo['promo_nombre']?.toString()
+        : null;
+
+    final String nombreFinal = nombreEspecial ?? p['nombre'];
+
     setState(() {
       int idx = _currentCart.indexWhere(
         (i) => i['id'] == p['id'] && i['nombre'] == nombreFinal,
@@ -481,12 +599,17 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
         double n = _currentCart[idx]['cantidad'] + cantidad;
         _currentCart[idx]['cantidad'] = n;
         _currentCart[idx]['subtotal'] = n * precioFinal;
+        _currentCart[idx]['descuento_aplicado'] = descUnidad;
+        _currentCart[idx]['promo_nombre'] = promoNombre;
       } else {
         if (cantidad > 0) {
           _currentCart.add({
             'id': p['id'],
             'nombre': nombreFinal,
             'precio': precioFinal,
+            'precio_original': precioRegular,
+            'descuento_aplicado': descUnidad,
+            'promo_nombre': promoNombre,
             'cantidad': cantidad,
             'subtotal': cantidad * precioFinal,
             'es_pesable': p['es_pesable'],
@@ -1486,9 +1609,31 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                Text(
-                  "${formater.format(item['precio'])} ${_t('x unit')}",
-                  style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                Row(
+                  children: [
+                    Text(
+                      "${formater.format(item['precio'])} ${_t('x unit')}",
+                      style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                    ),
+                    if (item['descuento_aplicado'] != null && (item['descuento_aplicado'] as num) > 0) ...[
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade100,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          "🏷️ -${formater.format(item['descuento_aplicado'])}",
+                          style: TextStyle(
+                            color: Colors.amber.shade900,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -1550,6 +1695,109 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  double _calcularAhorroTotal() {
+    double ahorro = 0.0;
+    for (var item in _currentCart) {
+      final double desc = (item['descuento_aplicado'] as num?)?.toDouble() ?? 0.0;
+      final double cant = (item['cantidad'] as num?)?.toDouble() ?? 0.0;
+      ahorro += (desc * cant);
+    }
+    return ahorro;
+  }
+
+  // 🎯 BANNER DE DÍAS DE PLAZA / PROMOCIONES ACTIVAS HOY
+  Widget _buildBannerDiasDePlaza() {
+    if (_promocionesActivas.isEmpty) return const SizedBox.shrink();
+
+    final nombres = _promocionesActivas.map((p) {
+      final tipo = (p['tipo_descuento'] ?? 'PORCENTAJE') == 'PORCENTAJE'
+          ? '${(p['valor_descuento'] as num).toInt()}%'
+          : '\$${(p['valor_descuento'] as num).toInt()}';
+      return '${p['nombre']} ($tipo OFF)';
+    }).join(' • ');
+
+    final esAdmin = SessionService.userRole() == 'ADMIN';
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(10, 4, 10, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.amber.shade700, Colors.deepOrange.shade600],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.amber.withOpacity(0.3),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.celebration, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          const Text(
+            "¡HOY ES DÍA DE PLAZA!",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 11.5,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              nombres,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 11.5,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (esAdmin) ...[
+            const SizedBox(width: 6),
+            InkWell(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PromocionesScreen()),
+                );
+                _cargarProductos();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.tune, color: Colors.white, size: 13),
+                    SizedBox(width: 4),
+                    Text(
+                      "Ajustar",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1637,6 +1885,13 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   final double precio =
                       (p['precio_venta'] as num?)?.toDouble() ?? 0.0;
                   final bool esPesable = (p['es_pesable'] == 1);
+                  final promoFav = PromocionesService().calcularDescuentoProducto(
+                    p,
+                    _promocionesActivas,
+                  );
+                  final bool enPromo = promoFav != null;
+                  final double precioEfectivo =
+                      enPromo ? (promoFav['precio_final'] as double) : precio;
 
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
@@ -1650,10 +1905,14 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           width: 88,
                           padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFFDF5),
+                            color: enPromo
+                                ? const Color(0xFFFFF7ED)
+                                : const Color(0xFFFFFDF5),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.amber.shade200,
+                              color: enPromo
+                                  ? Colors.deepOrange.shade300
+                                  : Colors.amber.shade200,
                               width: 1,
                             ),
                           ),
@@ -1664,7 +1923,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                 width: 38,
                                 height: 38,
                                 decoration: BoxDecoration(
-                                  color: Colors.amber.shade50,
+                                  color: enPromo
+                                      ? Colors.deepOrange.shade50
+                                      : Colors.amber.shade50,
                                   shape: BoxShape.circle,
                                 ),
                                 child: ClipRRect(
@@ -1692,7 +1953,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                               ? Icons.scale
                                               : Icons.shopping_basket,
                                           size: 18,
-                                          color: Colors.amber.shade800,
+                                          color: enPromo
+                                              ? Colors.deepOrange.shade700
+                                              : Colors.amber.shade800,
                                         ),
                                 ),
                               ),
@@ -1709,11 +1972,13 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                 textAlign: TextAlign.center,
                               ),
                               Text(
-                                "${formater.format(precio)}${esPesable ? '/Kg' : ''}",
+                                "${enPromo ? '🔥 ' : ''}${formater.format(precioEfectivo)}${esPesable ? '/Kg' : ''}",
                                 style: TextStyle(
                                   fontSize: 9.5,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.green.shade800,
+                                  color: enPromo
+                                      ? Colors.deepOrange.shade800
+                                      : Colors.green.shade800,
                                 ),
                                 maxLines: 1,
                               ),
@@ -1878,6 +2143,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   ),
                 ),
 
+                // 🎯 BANNER DE DÍAS DE PLAZA / PROMOCIONES ACTIVAS HOY
+                _buildBannerDiasDePlaza(),
+
                 // ⭐ BARRA DE ACCESO RÁPIDO (TOP 12 FAVORITOS)
                 _buildBarraFavoritos(),
 
@@ -1971,6 +2239,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                     itemCount: _filteredProducts.length,
                     itemBuilder: (c, i) {
                       final p = _filteredProducts[i];
+                      final promoDesc = PromocionesService().calcularDescuentoProducto(p, _promocionesActivas);
                       double stock =
                           (p['stock_actual'] as num?)?.toDouble() ?? 0;
                       bool stockBajo = stock <= 5;
@@ -2114,15 +2383,58 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 5),
-                              Text(
-                                formater.format(p['precio_venta']),
-                                style: TextStyle(
-                                  color: Colors.green[800],
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 13,
+                              if (promoDesc != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  margin: const EdgeInsets.only(bottom: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.deepOrange,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    "🔥 -${promoDesc['porcentaje'].toInt()}%",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
+                              const SizedBox(height: 3),
+                              if (promoDesc != null) ...[
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      formater.format(promoDesc['precio_con_descuento']),
+                                      style: const TextStyle(
+                                        color: Colors.deepOrange,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      formater.format(p['precio_venta']),
+                                      style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 10,
+                                        decoration: TextDecoration.lineThrough,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ] else ...[
+                                Text(
+                                  formater.format(p['precio_venta']),
+                                  style: TextStyle(
+                                    color: Colors.green[800],
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -2420,6 +2732,47 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           ),
                         ),
                         const SizedBox(height: 10),
+                        if (_calcularAhorroTotal() > 0)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.deepOrange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.deepOrange.shade200,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text('🔥 ', style: TextStyle(fontSize: 12)),
+                                    Text(
+                                      _t("Ahorro Días de Plaza:"),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.deepOrange.shade800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  "-${formater.format(_calcularAhorroTotal())}",
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.deepOrange.shade800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
