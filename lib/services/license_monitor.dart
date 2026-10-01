@@ -1,10 +1,33 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../database/db_helper.dart';
 import '../screens/licencia_bloqueo_screen.dart';
 import 'pin_auth_service.dart';
 import 'sync_service.dart';
+
+class NativeSecurityChannel {
+  static const _channel = MethodChannel('com.novapos.security/kiosk');
+
+  static Future<void> bloquearPorMora() async {
+    try {
+      await _channel.invokeMethod('activarBloqueoMora');
+    } catch (_) {}
+  }
+
+  static Future<void> desactivarBloqueo() async {
+    try {
+      await _channel.invokeMethod('desactivarBloqueo');
+    } catch (_) {}
+  }
+
+  static Future<void> refrescarValidacionExitosa(bool isFinanced) async {
+    try {
+      await _channel.invokeMethod('renovarTimestampLicencia', {'isFinanced': isFinanced});
+    } catch (_) {}
+  }
+}
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -100,14 +123,25 @@ class LicenseMonitor {
     }
     final data = doc.data() ?? {};
     await _guardarCache(data);
+    
+    final bool esFinanciado = data['financiado'] == true;
     final estado = (data['estado'] ?? '').toString();
+    
     if (estado == 'bloqueada') {
+      if (esFinanciado) {
+        await NativeSecurityChannel.bloquearPorMora();
+      }
       return const LicenciaResult(
         estado: LicenciaEstado.bloqueada,
         diasRestantes: 0,
-        mensaje: 'Licencia bloqueada. Contacte al administrador.',
+        mensaje: 'Licencia bloqueada por administración o impago.',
       );
     }
+
+    // Si el servidor nos dice OK, notificamos la validación offline al Native Worker
+    await NativeSecurityChannel.desactivarBloqueo();
+    await NativeSecurityChannel.refrescarValidacionExitosa(esFinanciado);
+
     final fin = data['licencia_fin'];
     if (fin == null) {
       return const LicenciaResult(
@@ -118,8 +152,6 @@ class LicenseMonitor {
     final fechaFin =
         fin is Timestamp ? fin.toDate() : DateTime.parse(fin.toString());
 
-    // Ancora el reloj al servidor: escribe un timestamp de Firestore (ServerTimestamp)
-    // y lo relee del servidor, guardando el desfase con el reloj local.
     final serverNow = await _servidorAhora(negocioId);
     if (serverNow != null) {
       await DBHelper().guardarConfiguracion(
