@@ -127,6 +127,10 @@ class LicenseMonitor {
     final bool esFinanciado = data['financiado'] == true;
     final estado = (data['estado'] ?? '').toString();
     
+    // Guardar variables para el Dead Man's Switch universal (Windows/Android)
+    await DBHelper().guardarConfiguracion('licencia_financiado', esFinanciado ? '1' : '0');
+    await DBHelper().guardarConfiguracion('ultimo_sync_exitoso_epoch', DateTime.now().millisecondsSinceEpoch.toString());
+
     if (estado == 'bloqueada') {
       if (esFinanciado) {
         await NativeSecurityChannel.bloquearPorMora();
@@ -207,6 +211,37 @@ class LicenseMonitor {
 
   Future<LicenciaResult> _verificarLocal() async {
     final cfg = await DBHelper().obtenerConfiguracion();
+    
+    // DEAD MAN'S SWITCH UNIVERSAL (Windows / Fallback Android)
+    if (cfg['licencia_financiado'] == '1') {
+      final ultimoSyncStr = cfg['ultimo_sync_exitoso_epoch'] ?? '0';
+      final ultimoSync = int.tryParse(ultimoSyncStr) ?? 0;
+      if (ultimoSync > 0) {
+        final ahora = DateTime.now().millisecondsSinceEpoch;
+        final elapsed = ahora - ultimoSync;
+        
+        // Manipulación de reloj hacia atrás
+        if (ahora < ultimoSync) {
+          return const LicenciaResult(
+            estado: LicenciaEstado.bloqueada,
+            diasRestantes: 0,
+            mensaje: 'Manipulación de reloj detectada. Conecte a internet para verificar la licencia.',
+            online: false,
+          );
+        }
+        
+        // 72 horas offline (72 * 60 * 60 * 1000 = 259200000 ms)
+        if (elapsed > 259200000) {
+          return const LicenciaResult(
+            estado: LicenciaEstado.bloqueada,
+            diasRestantes: 0,
+            mensaje: 'Terminal suspendida: 72 horas sin conexión a internet. Conecte a Wi-Fi para reactivar el sistema.',
+            online: false,
+          );
+        }
+      }
+    }
+
     if ((cfg['licencia_bloqueada'] ?? '').toString() == '1') {
       return const LicenciaResult(
         estado: LicenciaEstado.bloqueada,
