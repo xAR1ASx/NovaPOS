@@ -174,13 +174,14 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
         return;
       }
 
-      Map<String, dynamic> licencia = await PinAuthService.verificarLicencia(negocioId);
+      // L-02: Unificar verificación de licencia usando LicenseMonitor
+      LicenciaResult licencia = await LicenseMonitor.instance.revisar(negocioId: negocioId);
 
       if (!mounted) return;
 
-      if (!licencia['valida']) {
+      if (!licencia.esValida) {
         setState(() {
-          _error = licencia['mensaje'];
+          _error = licencia.mensaje;
           _pin = '';
           _cargando = false;
         });

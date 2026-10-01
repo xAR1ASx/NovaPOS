@@ -160,6 +160,10 @@ class SyncService {
           (s) => _procesarSnapshot(s, 'CARTERA'),
           onError: (e) {},
         ));
+    _subs.add(_col('mermas').snapshots().listen(
+          (s) => _procesarSnapshot(s, 'MERMA'),
+          onError: (e) {},
+        ));
   }
 
   Future<void> _procesarSnapshot(
@@ -193,6 +197,10 @@ class SyncService {
             break;
           case 'CARTERA':
             await _aplicarCartera(dc.doc, bootstrap: false);
+            huboCambios = true;
+            break;
+          case 'MERMA':
+            await _aplicarMerma(dc.doc);
             huboCambios = true;
             break;
         }
@@ -242,6 +250,12 @@ class SyncService {
     for (final doc in compras.docs) {
       await _aplicarCompra(doc);
     }
+    
+    final mermas = await _col('mermas').get();
+    for (final doc in mermas.docs) {
+      await _aplicarMerma(doc);
+    }
+    
     cambiosRemotosNotifier.value++;
   }
 
@@ -656,6 +670,33 @@ class SyncService {
     await _db.guardarAplicado('COMPRA', uuid, epoch);
   }
 
+  Future<void> _aplicarMerma(DocumentSnapshot<Map<String, dynamic>> doc) async {
+    final data = doc.data();
+    if (data == null) return;
+    final uuid = doc.id;
+    final db = await _db.database;
+
+    final existe = await db.query(
+      'mermas',
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+      limit: 1,
+    );
+    if (existe.isNotEmpty) return;
+
+    await db.insert('mermas', {
+      'fecha': data['fecha'],
+      'producto_id': data['producto_id'],
+      'nombre_producto': data['nombre_producto'],
+      'cantidad': data['cantidad'],
+      'costo_unitario': data['costo_unitario'],
+      'total_perdida': data['total_perdida'],
+      'motivo': data['motivo'],
+      'usuario_id': data['usuario_id'],
+      'uuid': uuid,
+    });
+  }
+
   Future<void> _aplicarCartera(
     DocumentSnapshot<Map<String, dynamic>> doc, {
     bool bootstrap = false,
@@ -798,6 +839,10 @@ class SyncService {
 
       case 'VENTA':
         await _col('ventas').doc(uuid).set(data);
+        return true;
+
+      case 'MERMA':
+        await _col('mermas').doc(uuid).set(data);
         return true;
 
       case 'VENTA_ANULA':

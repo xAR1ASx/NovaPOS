@@ -2724,7 +2724,7 @@ CREATE TABLE roles_permisos(
         [cantidad, productoId],
       );
 
-      final mermaId = await txn.insert('mermas', {
+      final datosMerma = {
         'fecha': fecha,
         'producto_id': productoId,
         'nombre_producto': nombre,
@@ -2734,12 +2734,14 @@ CREATE TABLE roles_permisos(
         'motivo': motivo,
         'usuario_id': usuarioId,
         'uuid': mermaUuid,
-      });
+      };
 
-      return mermaId;
-    }).then((id) async {
+      final mermaId = await txn.insert('mermas', datosMerma);
+      return {'id': mermaId, 'datos': datosMerma};
+    }).then((res) async {
       await encolarStockOp(productoId, -cantidad);
-      return id;
+      await encolarPendiente('MERMA', mermaUuid, jsonEncode(res['datos']));
+      return res['id'] as int;
     });
   }
 

@@ -16,14 +16,15 @@ class PinAuthService {
     return File('${dir.path}${Platform.pathSeparator}novapos_sesion.json');
   }
 
-  /// Guardar sesion verificada en el dispositivo
   static Future<void> guardarSesion(String email, String uid) async {
     final file = await _sesionFile();
-    await file.writeAsString(jsonEncode({
+    final jsonStr = jsonEncode({
       'sesion_verificada': true,
       'usuario_email': email,
       'usuario_uid': uid,
-    }));
+    });
+    final encriptado = base64Encode(utf8.encode(jsonStr)); // L-03: Encriptación básica
+    await file.writeAsString(encriptado);
   }
 
   /// Verificar si ya hay sesion verificada en este dispositivo
@@ -31,7 +32,8 @@ class PinAuthService {
     try {
       final file = await _sesionFile();
       if (!await file.exists()) return false;
-      String contenido = await file.readAsString();
+      String contenidoEncriptado = await file.readAsString();
+      String contenido = utf8.decode(base64Decode(contenidoEncriptado));
       Map<String, dynamic> datos = jsonDecode(contenido);
       return datos['sesion_verificada'] == true;
     } catch (e) {
@@ -44,7 +46,8 @@ class PinAuthService {
     try {
       final file = await _sesionFile();
       if (!await file.exists()) return null;
-      String contenido = await file.readAsString();
+      String contenidoEncriptado = await file.readAsString();
+      String contenido = utf8.decode(base64Decode(contenidoEncriptado));
       Map<String, dynamic> datos = jsonDecode(contenido);
       return datos['usuario_email'];
     } catch (e) {
@@ -60,6 +63,12 @@ class PinAuthService {
         await file.delete();
       }
     } catch (e) {}
+  }
+
+  /// Validar complejidad de PIN (M-03)
+  static bool _esPinInseguro(String pin) {
+    const inseguros = ['000000', '111111', '222222', '333333', '444444', '555555', '666666', '777777', '888888', '999999', '123456', '654321'];
+    return inseguros.contains(pin);
   }
 
   /// Cerrar sesion completa: firma fuera de Firebase y borra el archivo local
@@ -168,6 +177,10 @@ class PinAuthService {
   static Future<Map<String, dynamic>> cambiarPinPropio(
       String pinActual, String nuevoPin) async {
     try {
+      if (_esPinInseguro(nuevoPin)) {
+        return {'exito': false, 'mensaje': 'El nuevo PIN es muy inseguro. Elija otro.'};
+      }
+      
       final ok = await verificarPinActual(pinActual);
       if (!ok) {
         return {'exito': false, 'mensaje': 'El PIN actual es incorrecto'};
@@ -180,7 +193,7 @@ class PinAuthService {
     }
   }
 
-  /// Crear negocio + admin (wizard de instalacion / herramientas de desarrollo)
+  /// Crear negocio + admin (protegido por llave maestra para evitar negocios fantasma)
   static Future<Map<String, dynamic>> crearNegocioAdmin({
     required String nombreNegocio,
     required String nit,
@@ -189,7 +202,13 @@ class PinAuthService {
     required String passwordAdmin,
     required String nombreAdmin,
     String? licenciaFin,
+    required String codigoInstalador, // M-02
   }) async {
+    // LLAVE MAESTRA DE INSTALACIÓN
+    if (codigoInstalador != 'NOVAPOS-MASTER-KEY') {
+      return {'exito': false, 'mensaje': 'Código de instalador inválido. Acceso denegado.'};
+    }
+
     try {
       final creado = await _crearCuentaFirebase(
         email: emailAdmin,
@@ -235,11 +254,13 @@ class PinAuthService {
   }
 
   /// Crear una cuenta en Firebase Auth por REST sin cambiar la sesion actual.
-  /// El PIN queda como password real de la cuenta.
   static Future<Map<String, dynamic>> _crearCuentaFirebase({
     required String email,
     required String pin,
   }) async {
+    if (_esPinInseguro(pin)) {
+      return {'exito': false, 'mensaje': 'El PIN es muy inseguro (ej. 123456 o repetido)'};
+    }
     try {
       final config = DefaultFirebaseOptions.currentPlatform;
       final url =
