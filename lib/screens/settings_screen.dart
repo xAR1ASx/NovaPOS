@@ -14,6 +14,7 @@ import '../services/auto_backup_service.dart';
 import '../utils/numero.dart';
 import '../services/locale_service.dart';
 import '../services/ui_mode_service.dart';
+import '../services/theme_service.dart';
 import '../services/sync_service.dart';
 import '../services/balanza_barcode_service.dart';
 import 'promociones_screen.dart';
@@ -21,6 +22,9 @@ import 'promociones_screen.dart';
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
 const Map<String, String> _mapEn = {
+  'Modo oscuro': 'Dark mode',
+  'Apariencia oscura activada': 'Dark appearance activated',
+  'Apariencia clara activada': 'Light appearance activated',
   'Idioma / Language': 'Language',
   'Los textos del sistema en Inglés': 'System texts in English',
   'Los textos del sistema en Español': 'System texts in Spanish',
@@ -1695,6 +1699,23 @@ class _SettingsScreenState extends State<SettingsScreen>
                           secondary: const Icon(Icons.tablet),
                           value: esTablet,
                           onChanged: (v) => UIModeService.setEsTablet(v),
+                        );
+                      },
+                    ),
+                    ValueListenableBuilder<ThemeMode>(
+                      valueListenable: ThemeService.themeMode,
+                      builder: (context, themeMode, child) {
+                        final isDark = themeMode == ThemeMode.dark;
+                        return SwitchListTile(
+                          title: Text(_t("Modo oscuro")),
+                          subtitle: Text(
+                            isDark
+                                ? _t("Apariencia oscura activada")
+                                : _t("Apariencia clara activada"),
+                          ),
+                          secondary: const Icon(Icons.dark_mode),
+                          value: isDark,
+                          onChanged: (v) => ThemeService.setTheme(v ? ThemeMode.dark : ThemeMode.light),
                         );
                       },
                     ),

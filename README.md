@@ -6,16 +6,18 @@ NovaPOS combina una arquitectura local ultrarrápida impulsada por **SQLite (100
 
 ---
 
-## 🚀 Estado Actual del Proyecto (Versión 1.2.0)
+## 🚀 Estado Actual del Proyecto (Versión 1.2.1)
 
-El sistema se encuentra en su versión **1.2.0**, completamente blindado con seguridad nativa y arquitectura escalable:
+El sistema se encuentra en su versión **1.2.1**, completamente blindado con seguridad nativa y arquitectura escalable. Modificaciones recientes incluyen:
 
+* **Modo Oscuro / Claro**: Nueva opción en configuración para cambiar la apariencia de la UI y guardarla localmente.
+* **Seguridad Estricta de Precios (H-01 Plus)**: Nivel militar. Un CAJERO ya no puede manipular o inyectar descuentos. El backend intercepta la venta, va a la BD oculta, evalúa las promociones del día y recalcula el importe exacto.
+* **Sincronización de Promociones Multi-caja**: Las promociones creadas en la Caja 1 ahora se propagan y aplican instantáneamente en la Caja 2 y Caja 3.
+* **Matemáticas de Inventario Perfectas**: Resolución de bugs de tolerancia de punto flotante en básculas (0.001 de margen) y erradicación del "Inventario Fantasma".
 * **Arquitectura Offline-First**: Funciona de forma totalmente autónoma sin internet. Lee y guarda todo localmente a velocidad nativa.
-* **Sincronización en Tiempo Real (Firebase Blaze)**: Multi-caja instantáneo. Actualiza precios, productos y ventas entre 3-5 cajas al mismo tiempo en milisegundos.
-* **Seguridad Nativa Android (Kiosk Mode)**: Integración con Android Device Admin (Device Owner). Bloquea la tablet en una "Pantalla Roja" (Dead Man's Switch) impidiendo salir al menú o apagar el equipo si se incumple el pago de licencia o si la tablet queda offline por más de 72h.
-* **Seguridad de Roles Avanzada**: Auditorías constantes, bloqueos de PIN y protección contra fraude de precios.
-* **Integración Cloudinary**: Subida de imágenes de productos segura sin comprometer la cuota de la base de datos y de manera organizada por negocio.
-* **Copias de Seguridad Ante Desastres**: Si se rompe una tablet o PC, instalar la app en una nueva descarga automáticamente todo el inventario, ventas, clientes y mermas en 1 minuto (`_descargaInicial`).
+* **Sincronización en Tiempo Real (Firebase Blaze)**: Multi-caja instantáneo. Actualiza precios, productos, promociones y ventas entre 3-5 cajas al mismo tiempo en milisegundos.
+* **Seguridad Nativa Android (Kiosk Mode)**: Integración con Android Device Admin (Device Owner). Bloquea la tablet en una "Pantalla Roja" impidiendo salir al menú si se incumple el pago de licencia o si queda offline por más de 72h.
+* **Copias de Seguridad Ante Desastres**: Si se rompe una tablet o PC, instalar la app en una nueva descarga automáticamente todo en 1 minuto (`_descargaInicial`).
 
 ---
 

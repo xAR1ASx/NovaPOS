@@ -9,6 +9,7 @@ import 'screens/splash_screen.dart';
 import 'services/locale_service.dart';
 import 'services/license_monitor.dart';
 import 'services/ui_mode_service.dart';
+import 'services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +22,7 @@ void main() async {
   }
 
   await UIModeService.init();
+  await ThemeService.init();
   await LocaleService().cargarInicial();
   await initializeDateFormatting('es_CO', null);
   await initializeDateFormatting('en_US', null);
@@ -36,29 +38,41 @@ class NovaPOSApp extends StatelessWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: UIModeService.tablet,
       builder: (context, esTablet, child) {
-        return ListenableBuilder(
-          listenable: LocaleService(),
-          builder: (context, child) {
-            final idioma = LocaleService().idioma;
-            return MaterialApp(
-              navigatorKey: appNavigatorKey,
-              debugShowCheckedModeBanner: false,
-              title: 'NovaPOS',
-              locale: Locale(idioma),
-              supportedLocales: const [Locale('es'), Locale('en')],
-              localizationsDelegates: const [
-                GlobalMaterialLocalizations.delegate,
-                GlobalWidgetsLocalizations.delegate,
-                GlobalCupertinoLocalizations.delegate,
-              ],
-              theme: ThemeData(
-                primarySwatch: Colors.green,
-                useMaterial3: true,
-                visualDensity: esTablet
-                    ? VisualDensity.comfortable
-                    : VisualDensity.standard,
-                scaffoldBackgroundColor: const Color(0xFFF5F5F5),
-              ),
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: ThemeService.themeMode,
+          builder: (context, themeMode, child) {
+            return ListenableBuilder(
+              listenable: LocaleService(),
+              builder: (context, child) {
+                final idioma = LocaleService().idioma;
+                return MaterialApp(
+                  navigatorKey: appNavigatorKey,
+                  debugShowCheckedModeBanner: false,
+                  title: 'NovaPOS',
+                  locale: Locale(idioma),
+                  supportedLocales: const [Locale('es'), Locale('en')],
+                  localizationsDelegates: const [
+                    GlobalMaterialLocalizations.delegate,
+                    GlobalWidgetsLocalizations.delegate,
+                    GlobalCupertinoLocalizations.delegate,
+                  ],
+                  themeMode: themeMode,
+                  theme: ThemeData(
+                    primarySwatch: Colors.green,
+                    useMaterial3: true,
+                    visualDensity: esTablet
+                        ? VisualDensity.comfortable
+                        : VisualDensity.standard,
+                    scaffoldBackgroundColor: const Color(0xFFF5F5F5),
+                  ),
+                  darkTheme: ThemeData(
+                    primarySwatch: Colors.green,
+                    brightness: Brightness.dark,
+                    useMaterial3: true,
+                    visualDensity: esTablet
+                        ? VisualDensity.comfortable
+                        : VisualDensity.standard,
+                  ),
               builder: (context, child) {
                 return MediaQuery(
                   data: MediaQuery.of(context).copyWith(
@@ -69,6 +83,8 @@ class NovaPOSApp extends StatelessWidget {
               },
               home: const SplashScreen(),
             );
+          },
+        );
           },
         );
       },

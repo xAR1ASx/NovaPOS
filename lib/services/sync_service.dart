@@ -164,6 +164,10 @@ class SyncService {
           (s) => _procesarSnapshot(s, 'MERMA'),
           onError: (e) {},
         ));
+    _subs.add(_col('promociones').snapshots().listen(
+          (s) => _procesarSnapshot(s, 'PROMOCION'),
+          onError: (e) {},
+        ));
   }
 
   Future<void> _procesarSnapshot(
@@ -201,6 +205,10 @@ class SyncService {
             break;
           case 'MERMA':
             await _aplicarMerma(dc.doc);
+            huboCambios = true;
+            break;
+          case 'PROMOCION':
+            await _aplicarPromocion(dc.doc);
             huboCambios = true;
             break;
         }
@@ -254,6 +262,11 @@ class SyncService {
     final mermas = await _col('mermas').get();
     for (final doc in mermas.docs) {
       await _aplicarMerma(doc);
+    }
+    
+    final promos = await _col('promociones').get();
+    for (final doc in promos.docs) {
+      await _aplicarPromocion(doc);
     }
     
     cambiosRemotosNotifier.value++;
@@ -697,6 +710,35 @@ class SyncService {
     });
   }
 
+  Future<void> _aplicarPromocion(DocumentSnapshot<Map<String, dynamic>> doc) async {
+    final data = doc.data();
+    if (data == null) return;
+    final uuid = doc.id;
+    final epoch = (data['actualizado_epoch'] as num?)?.toInt() ?? 0;
+    
+    final aplicado = await _db.obtenerAplicado('PROMOCION', uuid);
+    final epochAplicado = (aplicado?['epoch'] as num?)?.toInt() ?? -1;
+    if (aplicado != null && epoch <= epochAplicado) return;
+
+    final db = await _db.database;
+    final existe = await db.query('promociones', where: 'uuid = ?', whereArgs: [uuid], limit: 1);
+    
+    Map<String, dynamic> payload = Map.from(data);
+    payload.remove('actualizado_epoch');
+    payload.remove('dispositivo_uuid');
+    
+    if (existe.isNotEmpty) {
+      payload.remove('id'); // No actualizar el ID local
+      await db.update('promociones', payload, where: 'uuid = ?', whereArgs: [uuid]);
+    } else {
+      payload.remove('id'); // Insertar para auto-generar
+      payload['uuid'] = uuid;
+      await db.insert('promociones', payload);
+    }
+    
+    await _db.guardarAplicado('PROMOCION', uuid, epoch);
+  }
+
   Future<void> _aplicarCartera(
     DocumentSnapshot<Map<String, dynamic>> doc, {
     bool bootstrap = false,
@@ -895,6 +937,14 @@ class SyncService {
 
       case 'COMPRA':
         await _col('compras').doc(uuid).set(data);
+        return true;
+
+      case 'PROMOCION':
+        await _col('promociones').doc(uuid).set(data, SetOptions(merge: true));
+        return true;
+
+      case 'PROMOCION_ELIMINAR':
+        await _col('promociones').doc(uuid).delete();
         return true;
 
       default:

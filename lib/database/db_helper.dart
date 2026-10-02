@@ -935,8 +935,10 @@ CREATE TABLE roles_permisos(
               [cantidadReal, i['id']],
             );
           } else {
+            // Se usa una tolerancia de 0.001 para evitar bloqueos por errores de precisión de punto flotante
+            // típicos en básculas (ej. stock_actual = 0.500 y cantidadReal = 0.5000001)
             resStock = await txn.rawUpdate(
-              'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= ?',
+              'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= (? - 0.001)',
               [cantidadReal, i['id'], cantidadReal],
             );
           }
@@ -1335,19 +1337,22 @@ CREATE TABLE roles_permisos(
           );
           if (prod.isEmpty) continue;
           final p = prod.first;
-          double stockAntiguo = (p['stock_actual'] as num).toDouble();
-          if (stockAntiguo < 0) stockAntiguo = 0;
+          double stockAntiguoReal = (p['stock_actual'] as num).toDouble();
+          double stockAntiguoParaCosto = stockAntiguoReal < 0 ? 0 : stockAntiguoReal;
           double costoAntiguo = (p['precio_costo'] as num?)?.toDouble() ?? 0;
 
-          // Costo promedio ponderado en BD
-          final stockTotal = stockAntiguo + cantidad;
-          final nuevoCosto = stockTotal > 0
-              ? ((stockAntiguo * costoAntiguo) + subtotalLinea) / stockTotal
+          // Costo promedio ponderado en BD (Ignoramos negativos para no distorsionar el costo)
+          final stockTotalParaCosto = stockAntiguoParaCosto + cantidad;
+          final nuevoCosto = stockTotalParaCosto > 0
+              ? ((stockAntiguoParaCosto * costoAntiguo) + subtotalLinea) / stockTotalParaCosto
               : (subtotalLinea / cantidad);
+
+          // El stock físico sí debe compensar las ventas en negativo hechas previamente
+          final nuevoStockFisico = stockAntiguoReal + cantidad;
 
           double? nuevoPrecioVenta = (item['nuevo_precio_venta'] as num?)?.toDouble();
           Map<String, dynamic> campos = {
-            'stock_actual': stockTotal,
+            'stock_actual': nuevoStockFisico,
             'precio_costo': nuevoCosto,
           };
           if (nuevoPrecioVenta != null && nuevoPrecioVenta > 0) {
@@ -2651,17 +2656,31 @@ CREATE TABLE roles_permisos(
     if (datos['creado_en'] == null) {
       datos['creado_en'] = DateTime.now().toIso8601String();
     }
+    
+    datos['actualizado_epoch'] = DateTime.now().millisecondsSinceEpoch;
+    datos['dispositivo_uuid'] = await obtenerDispositivoUuid();
+
+    int idRes;
     if (datos.containsKey('id') && datos['id'] != null) {
-      final id = datos['id'] as int;
-      await db.update('promociones', datos, where: 'id = ?', whereArgs: [id]);
-      return id;
+      idRes = datos['id'] as int;
+      await db.update('promociones', datos, where: 'id = ?', whereArgs: [idRes]);
     } else {
-      return await db.insert('promociones', datos);
+      idRes = await db.insert('promociones', datos);
     }
+    
+    // Sync to cloud
+    datos['id'] = idRes;
+    await encolarPendiente('PROMOCION', datos['uuid'], jsonEncode(datos));
+    return idRes;
   }
 
   Future<int> eliminarPromocion(int id) async {
     final db = await database;
+    final pList = await db.query('promociones', columns: ['uuid'], where: 'id = ?', whereArgs: [id]);
+    if (pList.isNotEmpty) {
+      final uuid = pList.first['uuid'] as String;
+      await encolarPendiente('PROMOCION_ELIMINAR', uuid, jsonEncode({'uuid': uuid, 'actualizado_epoch': DateTime.now().millisecondsSinceEpoch}));
+    }
     return await db.delete('promociones', where: 'id = ?', whereArgs: [id]);
   }
 
@@ -2669,20 +2688,34 @@ CREATE TABLE roles_permisos(
     final db = await database;
     await db.update(
       'promociones',
-      {'esta_activa': activa ? 1 : 0},
+      {
+        'esta_activa': activa ? 1 : 0, 
+        'actualizado_epoch': DateTime.now().millisecondsSinceEpoch
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
+    final pList = await db.query('promociones', where: 'id = ?', whereArgs: [id]);
+    if (pList.isNotEmpty) {
+       await encolarPendiente('PROMOCION', pList.first['uuid'] as String, jsonEncode(pList.first));
+    }
   }
 
   Future<void> togglePromocionForzarHoy(int id, bool forzar) async {
     final db = await database;
     await db.update(
       'promociones',
-      {'forzar_hoy': forzar ? 1 : 0},
+      {
+        'forzar_hoy': forzar ? 1 : 0,
+        'actualizado_epoch': DateTime.now().millisecondsSinceEpoch
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
+    final pList = await db.query('promociones', where: 'id = ?', whereArgs: [id]);
+    if (pList.isNotEmpty) {
+       await encolarPendiente('PROMOCION', pList.first['uuid'] as String, jsonEncode(pList.first));
+    }
   }
 
   // --- CONFIGURACIÓN DE STOCK FLEXIBLE ---
