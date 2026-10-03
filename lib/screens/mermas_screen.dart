@@ -73,6 +73,15 @@ class _MermasScreenState extends State<MermasScreen> {
   }
 
   void _abrirDialogoRegistrar() async {
+    if (SessionService.userRole() != 'ADMIN') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Solo el Administrador puede registrar mermas.'),
+          backgroundColor: Colors.deepOrange,
+        ),
+      );
+      return;
+    }
     final db = DBHelper();
     final productos = await db.obtenerTodoElInventario();
     if (!mounted) return;

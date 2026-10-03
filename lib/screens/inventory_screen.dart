@@ -12,6 +12,7 @@ import '../utils/numero.dart';
 import 'mermas_screen.dart';
 import '../services/excel_export_service.dart';
 import '../services/sync_service.dart';
+import '../services/session_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -1038,6 +1039,15 @@ class _InventoryScreenState extends State<InventoryScreen>
             icon: const Icon(Icons.delete_sweep_outlined),
             tooltip: "Mermas / Desperdicios",
             onPressed: () {
+              if (SessionService.userRole() != 'ADMIN') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('⚠️ Solo el Administrador puede registrar mermas.'),
+                    backgroundColor: Colors.deepOrange,
+                  ),
+                );
+                return;
+              }
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const MermasScreen()),
