@@ -109,10 +109,35 @@ class _CierreHistoryScreenState extends State<CierreHistoryScreen> {
               _t("Sobrante/Faltante"),
               formater.format(c['diferencia'] ?? 0),
             ),
-            if (c['detalle'] != null && (c['detalle'] as String).isNotEmpty) ...[
-              const SizedBox(height: 5),
-              _filaDetalle(_t("Detalle"), c['detalle'].toString()),
-            ],
+            ...(() {
+              final d = c['detalle']?.toString() ?? '';
+              List<Widget> widgets = [];
+              if (d.contains('METODOS:')) {
+                try {
+                  String jsonPart = d.split('METODOS:')[1];
+                  Map<String, dynamic> map = jsonDecode(jsonPart);
+                  widgets.add(const Divider());
+                  widgets.add(
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(_t("Desglose de Pagos"), style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  );
+                  map.forEach((k, v) {
+                    widgets.add(_filaDetalle(" > $k", formater.format(v)));
+                  });
+                } catch (_) {}
+                String prefix = d.split('|METODOS:')[0].replaceAll('METODOS:', '');
+                if (prefix.isNotEmpty) {
+                  widgets.add(const SizedBox(height: 5));
+                  widgets.add(_filaDetalle(_t("Detalle"), prefix));
+                }
+              } else if (d.isNotEmpty) {
+                widgets.add(const SizedBox(height: 5));
+                widgets.add(_filaDetalle(_t("Detalle"), d));
+              }
+              return widgets;
+            })(),
             const SizedBox(height: 15),
             SizedBox(
               width: double.infinity,

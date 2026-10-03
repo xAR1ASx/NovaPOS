@@ -8,6 +8,7 @@ import '../services/permission_service.dart';
 import '../services/role_permissions.dart';
 import '../services/sync_service.dart';
 import '../services/license_monitor.dart';
+import '../database/db_helper.dart';
 import 'home_screen.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
@@ -175,11 +176,11 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
       }
 
       // L-02: Unificar verificación de licencia usando LicenseMonitor
-      LicenciaResult licencia = await LicenseMonitor.instance.revisar(negocioId: negocioId);
+      LicenciaResult licencia = await LicenseMonitor.instance.revisar(negocioId);
 
       if (!mounted) return;
 
-      if (!licencia.esValida) {
+      if (!licencia.valida) {
         setState(() {
           _error = licencia.mensaje;
           _pin = '';

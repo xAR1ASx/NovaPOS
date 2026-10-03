@@ -797,11 +797,35 @@ CREATE TABLE roles_permisos(
       }
       final totalSistema = (baseTurno + ventas + ingresos) - gastos;
 
+      // --- EXTRAER DESGLOSE DE MÉTODOS DE PAGO ---
+      final breakdownRes = await txn.rawQuery(
+        "SELECT metodo_pago, SUM(total) as total FROM ventas WHERE fecha >= ? AND anulada = 0 GROUP BY metodo_pago",
+        [fi],
+      );
+      Map<String, double> metodos = {};
+      for (var row in breakdownRes) {
+        metodos[row['metodo_pago'].toString()] = (row['total'] as num).toDouble();
+      }
+      for (var row in mixtasGlobal) {
+        final d = row['metodo_pago_detalle']?.toString();
+        if (d != null && d.isNotEmpty) {
+          try {
+            final parsed = jsonDecode(d);
+            if (parsed is Map && parsed['digital'] != null) {
+              String nombreDig = (parsed['metodo_digital'] ?? 'DIGITAL').toString();
+              metodos[nombreDig] = (metodos[nombreDig] ?? 0) + (parsed['digital'] as num).toDouble();
+            }
+          } catch (_) {}
+        }
+      }
+      String desgloseJson = jsonEncode(metodos);
+      String nuevoDetalle = detalle.isEmpty ? 'METODOS:$desgloseJson' : '$detalle|METODOS:$desgloseJson';
+
       await txn.insert('caja_movimientos', {
         'fecha': DateTime.now().toIso8601String(),
         'tipo': 'CIERRE',
         'monto': realContado,
-        'descripcion': detalle,
+        'descripcion': detalle, // Para el movimiento dejamos el detalle normal
         'usuario_id': usuarioId,
       });
       await txn.insert('cierres_caja', {
@@ -818,7 +842,7 @@ CREATE TABLE roles_permisos(
         'diferencia': diferencia,
         'estado': estado,
         'usuario_id': usuarioId,
-        'detalle': detalle,
+        'detalle': nuevoDetalle,
       });
       return {
         'exito': true,

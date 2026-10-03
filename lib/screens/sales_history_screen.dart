@@ -134,6 +134,81 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     }
   }
 
+  // --- DEVOLUCIÓN PARCIAL DE ARTÍCULO ---
+  void _devolverArticuloDialog(Map<String, dynamic> venta, Map<String, dynamic> detalle) {
+    final cantCtrl = TextEditingController(text: detalle['cantidad'].toString());
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Devolver Artículo'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Producto: ${detalle['nombre_producto']}'),
+            const SizedBox(height: 10),
+            TextField(
+              controller: cantCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Cantidad a devolver (Max: ${detalle['cantidad']})',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(_t('Cancelar')),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              double cantDev = double.tryParse(cantCtrl.text) ?? 0;
+              double maxCant = (detalle['cantidad'] as num).toDouble();
+              
+              if (cantDev <= 0 || cantDev > maxCant) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Cantidad inválida')),
+                );
+                return;
+              }
+
+              // Calcular dinero a devolver en base a la cantidad
+              double precioUnitario = (detalle['precio_unitario'] as num).toDouble();
+              double dineroADevolver = cantDev * precioUnitario;
+
+              Navigator.pop(ctx);
+              setState(() => _cargando = true);
+              
+              final res = await DBHelper().devolverArticulo(
+                detalle['id'],
+                detalle['producto_id'],
+                venta['id'],
+                maxCant,
+                dineroADevolver,
+                cantidadADevolver: cantDev,
+                usuarioId: SessionService.userId() ?? 1,
+              );
+
+              if (mounted) {
+                setState(() => _cargando = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(res['mensaje'].toString())),
+                );
+                if (res['exito'] == true) {
+                  _cargarVentas();
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.brown, foregroundColor: Colors.white),
+            child: const Text('Devolver'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- VER DETALLE DE UNA VENTA ---
   void _verDetalleVenta(Map<String, dynamic> venta) async {
     final db = await DBHelper().database;
@@ -193,9 +268,23 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     subtitle: Text(
                       "${d['cantidad']} x ${formater.format(d['precio_unitario'])}",
                     ),
-                    trailing: Text(
-                      formater.format(d['subtotal']),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          formater.format(d['subtotal']),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        if ((venta['anulada'] ?? 0) != 1 && PermissionService.can("VENTAS_ANULAR"))
+                          IconButton(
+                            icon: const Icon(Icons.replay, color: Colors.brown, size: 20),
+                            tooltip: 'Devolver artículo',
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _devolverArticuloDialog(venta, d);
+                            },
+                          ),
+                      ],
                     ),
                   );
                 },
@@ -393,9 +482,18 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                       if (anulada) {
                         iconPago = Icons.cancel;
                         colorPago = Colors.red;
-                      } else if (v['metodo_pago'] == 'NEQUI') {
+                      } else if (v['metodo_pago'] == 'NEQUI' || v['metodo_pago'] == 'DAVIPLATA') {
                         iconPago = Icons.phone_android;
                         colorPago = Colors.purple;
+                      } else if (v['metodo_pago'] == 'TARJETA') {
+                        iconPago = Icons.credit_card;
+                        colorPago = Colors.blue;
+                      } else if (v['metodo_pago'] == 'TRANSFERENCIA') {
+                        iconPago = Icons.account_balance;
+                        colorPago = Colors.teal;
+                      } else if (v['metodo_pago'] == 'MIXTO') {
+                        iconPago = Icons.pie_chart;
+                        colorPago = Colors.indigo;
                       } else if (v['metodo_pago'] == 'CREDITO') {
                         iconPago = Icons.people;
                         colorPago = Colors.orange;

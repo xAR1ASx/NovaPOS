@@ -520,6 +520,24 @@ class PrinterService {
               _filaArqueo("Base", (cierre['base'] ?? 0)),
               _filaArqueo("Ventas turno", (cierre['ventas_turno'] ?? 0)),
               _filaArqueo("Ventas global", (cierre['ventas_turno_global'] ?? 0)),
+              pw.Divider(borderStyle: pw.BorderStyle.dashed),
+              ...(() {
+                final d = cierre['detalle']?.toString() ?? '';
+                if (d.contains('METODOS:')) {
+                  try {
+                    String jsonPart = d.split('METODOS:')[1];
+                    Map<String, dynamic> map = jsonDecode(jsonPart);
+                    List<pw.Widget> rows = [];
+                    map.forEach((k, v) {
+                      rows.add(_filaArqueo(" > $k", v));
+                    });
+                    if (rows.isNotEmpty) {
+                      return [...rows, pw.Divider(borderStyle: pw.BorderStyle.dashed)];
+                    }
+                  } catch (_) {}
+                }
+                return <pw.Widget>[];
+              })(),
               _filaArqueo("Ingresos", (cierre['ingresos_turno'] ?? 0)),
               _filaArqueo("Gastos", (cierre['gastos_turno'] ?? 0)),
               _filaArqueo("Total sistema", (cierre['total_sistema'] ?? 0)),

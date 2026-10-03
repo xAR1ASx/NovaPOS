@@ -1,4 +1,4 @@
-# NovaPOS 🥦 — Edición Especial Fruvers & Minimarkets
+# NovaPOS 🍎🛒 Edición Especial Fruvers & Minimarkets
 
 **Sistema de Punto de Venta (POS) e Inteligencia de Negocio de alto rendimiento.**
 
@@ -6,69 +6,64 @@ NovaPOS combina una arquitectura local ultrarrápida impulsada por **SQLite (100
 
 ---
 
-## 🚀 Estado Actual del Proyecto (Versión 1.2.1)
+## 🚀 Estado Actual del Proyecto (Versión 1.3.0)
 
-El sistema se encuentra en su versión **1.2.1**, completamente blindado con seguridad nativa y arquitectura escalable. Modificaciones recientes incluyen:
+El sistema se encuentra en su versión **1.3.0**, completamente blindado con seguridad nativa, arquitectura escalable y nuevas funcionalidades financieras. Modificaciones recientes incluyen:
 
-* **Modo Oscuro / Claro**: Nueva opción en configuración para cambiar la apariencia de la UI y guardarla localmente.
+* **Devolución Parcial de Artículos**: Ya no es necesario anular toda la venta; se puede devolver una fracción o unidad específica de un ticket, regresando el inventario automáticamente y ajustando caja/cartera.
+* **Desglose de Métodos de Pago en Arqueo**: La tirilla de cierre de caja (Z) ahora detalla de manera exacta los ingresos segregados por Efectivo, Nequi, Daviplata, Tarjeta y Transferencia (incluso separando automáticamente las porciones de los pagos mixtos).
+* **Identificadores Visuales de Pago**: El historial de ventas incorpora iconografía y colores dedicados para cada método de pago, permitiendo auditoría visual en milisegundos.
 * **Seguridad Estricta de Precios (H-01 Plus)**: Nivel militar. Un CAJERO ya no puede manipular o inyectar descuentos. El backend intercepta la venta, va a la BD oculta, evalúa las promociones del día y recalcula el importe exacto.
-* **Sincronización de Promociones Multi-caja**: Las promociones creadas en la Caja 1 ahora se propagan y aplican instantáneamente en la Caja 2 y Caja 3.
-* **Matemáticas de Inventario Perfectas**: Resolución de bugs de tolerancia de punto flotante en básculas (0.001 de margen) y erradicación del "Inventario Fantasma".
-* **Arquitectura Offline-First**: Funciona de forma totalmente autónoma sin internet. Lee y guarda todo localmente a velocidad nativa.
-* **Sincronización en Tiempo Real (Firebase Blaze)**: Multi-caja instantáneo. Actualiza precios, productos, promociones y ventas entre 3-5 cajas al mismo tiempo en milisegundos.
-* **Seguridad Nativa Android (Kiosk Mode)**: Integración con Android Device Admin (Device Owner). Bloquea la tablet en una "Pantalla Roja" impidiendo salir al menú si se incumple el pago de licencia o si queda offline por más de 72h.
-* **Copias de Seguridad Ante Desastres**: Si se rompe una tablet o PC, instalar la app en una nueva descarga automáticamente todo en 1 minuto (`_descargaInicial`).
+* **Arquitectura Offline-First y Multi-Caja**: Funciona de forma totalmente autónoma sin internet. Lee y guarda todo localmente a velocidad nativa. Al volver la conexión, Firebase sube los deltas (mermas, ventas, cierres) en ráfagas.
+* **Seguridad Nativa Android (Kiosk Mode)**: Integración con Android Device Admin. Bloquea la tablet en una "Pantalla Roja" impidiendo salir al menú si se incumple el pago de licencia o queda offline 72h.
 
 ---
 
-## ✨ Características Principales
+## 📦 Características Principales
 
-### 🛒 1. Punto de Venta (POS) Táctil
+### 💻 1. Punto de Venta (POS) Táctil
+* **Lectura de Código de Barras y Balanzas**: Reconocimiento de prefijos 20/21 para balanzas etiquetadoras, cálculo de peso (`WWWWW / 1000 = Kg`) e importe. Compatibilidad con básculas RS-232/USB (COM).
 * **Top 12 Favoritos de Acceso Rápido**: Accesos táctiles en grilla superior.
-* **Lectura de Código de Barras y Balanzas**: Reconocimiento de prefijos 20/21 para balanzas etiquetadoras de supermercado, cálculo de peso (`WWWWW / 1000 = Kg`) e importe.
-* **Promociones y Días de Plaza**: Motor potente de descuentos programados por día o forzados (`Forzar HOY`).
-* **Multi-ticket**: Ventas en espera ilimitadas.
+* **Promociones y Días de Plaza**: Motor potente de descuentos (porcentuales o fijos) programados por día de la semana, por categoría o por producto (ej. "Martes Campesino").
+* **Multi-ticket & Pagos Mixtos**: Ventas en espera ilimitadas y soporte nativo para fraccionar un pago entre Efectivo y Digital (Nequi/Tarjeta).
 
-### 📦 2. Inventario y Nube
-* **Catálogo Maestro**: Precarga de referencias colombianas con PLU.
-* **Módulo de Mermas**: Registro de pérdida de producto y daño. Ahora sincronizado al 100% con Firebase.
-* **Sync Inteligente**: Cola de datos offline (`sync_pendientes`). Si se cae el internet, la tienda sigue operando. Al volver la conexión, se suben miles de registros en ráfaga.
+### 🛒 2. Inventario, Mermas y Nube
+* **Catálogo Maestro**: Precarga de referencias con PLU y conectividad a Cloudinary para fotos.
+* **Módulo de Mermas Inteligente**: Registro de pérdida de producto (maduración, avería, consumo). Permite tomar peso directo de la balanza, afecta el costo en la contabilidad y sincroniza a la nube.
+* **Recuperación Ante Desastres**: Si se rompe una tablet o PC, instalar la app en una nueva descarga automáticamente todo en 1 minuto (`_descargaInicial`).
 
-### 💾 3. Seguridad de Nube y Dispositivo (Auditoría C/H/M/L)
-El sistema ha pasado una estricta auditoría, blindando:
-* **Fuerza Bruta**: El PIN se bloquea y persiste en disco tras 3 intentos. Bloquea PINs obvios (`123456`, `000000`).
-* **Firebase Rules**: Un cajero no puede leer datos confidenciales del negocio. Nadie puede quitar el flag de `financiado` excepto el dueño de NovaPOS desde la consola de Firebase.
-* **Anti-Fraude de Precios**: El servidor local recalcula el total exacto del carrito; rechaza cualquier manipulación local del archivo de base de datos que intente cobrar $0.
-* **Licencias Anti-Evasión**: Fallo seguro (Fail Closed). Si un cajero intenta borrar los registros de tiempo de la base de datos para engañar al sistema, se bloquea por "Hackeo de Caché".
-* **Creación de Negocios**: Protegida con `NOVAPOS-MASTER-KEY` para evitar bases de datos fantasma.
+### 🛡️ 3. Seguridad y Auditoría
+* **Bloqueo Anti-Fuerza Bruta**: Bloquea y registra intentos fallidos de PIN.
+* **Licencias Anti-Evasión**: Fallo seguro (Fail Closed). Evita manipulaciones de reloj del sistema.
+* **Gestión de Permisos**: Control estricto; los cajeros no pueden ver utilidades, anular ventas globales ni alterar la configuración maestra del negocio.
 
 ---
 
-## 🛠️ Requisitos de Hardware y Entorno
+## 🖥️ Requisitos de Entorno y Periféricos
 
-| Dispositivo / Periférico | Compatibilidad |
-|--------------------------|----------------|
-| **Sistema Operativo** | Windows 10 / Windows 11 (64-bit) o Android 8.0+ (Tablets) |
-| **Nube** | Firebase (Blaze Plan requerido para tráfico offline-burst) y Cloudinary |
-| **Báscula / Balanza Serial** | Serial RS-232 o USB (Driver COM / Prolific / CH340 / FTDI) |
-| **Balanza Etiquetadora** | EAN-13 (Prefijos 20 y 21 para peso e importe con código PLU) |
-| **Impresora Térmica** | Térmica 58mm u 80mm vía USB, Red o Bluetooth (driver Windows) |
+| Periférico / Servicio | Compatibilidad |
+|-----------------------|----------------|
+| **Sistema Operativo** | Windows 10 / 11 (64-bit) o Android 8.0+ (Tablets) |
+| **Báscula Serial** | Serial RS-232 o USB (Driver COM / Prolific / CH340 / FTDI) |
+| **Balanza Etiquetadora**| EAN-13 (Prefijos 20 y 21) |
+| **Impresora Térmica** | Térmica 58mm u 80mm vía USB, Red o Bluetooth (driver Windows POS) |
 | **Lector de Códigos** | USB estándar tipo teclado (HID) 1D / 2D |
+| **Nube** | Firebase (Firestore Blaze Plan) y Cloudinary |
 
 ---
 
-## 🧑‍💻 Comandos para Desarrollo y Mantenimiento
+## ⚙️ Comandos para Desarrollo y Construcción
 
 ```bash
-# Ejecutar banco de pruebas automatizadas (37 tests)
-flutter test
-
 # Compilar ejecutable Release para Windows
 flutter build windows --release
 
-# Compilar instalador final para Windows (PowerShell con Inno Setup 6)
+# Compilar instalador final para Windows (Requiere Inno Setup 6)
 & "C:\Users\jhona\AppData\Local\Programs\Inno Setup 6\ISCC.exe" .\installer\NovaPOS_setup.iss
 
 # Compilar paquete APK Release para Tablet Android
 flutter build apk --release
+
+# Ejecutar banco de pruebas automatizadas (Test Suite)
+flutter test
 ```
