@@ -1,4 +1,4 @@
-# NovaPOS 🍎🛒 Edición Especial Fruvers & Minimarkets
+# NovaPOS 🍍🛒 Edición Especial Fruvers & Minimarkets
 
 **Sistema de Punto de Venta (POS) e Inteligencia de Negocio de alto rendimiento.**
 
@@ -6,28 +6,30 @@ NovaPOS combina una arquitectura local ultrarrápida impulsada por **SQLite (100
 
 ---
 
-## 🚀 Estado Actual del Proyecto (Versión 1.3.0)
+## 🚀 Estado Actual del Proyecto (Versión 1.4.0)
 
-El sistema se encuentra en su versión **1.3.0**, completamente blindado con seguridad nativa, arquitectura escalable y nuevas funcionalidades financieras. Modificaciones recientes incluyen:
+El sistema se encuentra en su versión **1.4.0**, completamente blindado con seguridad nativa, arquitectura escalable y nuevas funcionalidades financieras. Modificaciones recientes incluyen:
 
+* **Sistema de Combos y Ofertas (Nuevo)**: Módulo nativo especializado para crear paquetes promocionales (Ej. "Arroz + Aceite" o "Anchetas"). Se venden como un solo ítem en el Punto de Venta, pero el sistema descuenta de forma inteligente y paralela el inventario exacto de cada producto que lo compone (funciona también para anulaciones y devoluciones parciales).
+* **Protección Estricta de Mermas**: El módulo de registro de mermas y desperdicios ha sido blindado y bloqueado exclusivamente para el usuario `ADMIN`, erradicando cualquier manipulación del inventario o pérdidas fantasma por parte de los cajeros.
 * **Devolución Parcial de Artículos**: Ya no es necesario anular toda la venta; se puede devolver una fracción o unidad específica de un ticket, regresando el inventario automáticamente y ajustando caja/cartera.
 * **Desglose de Métodos de Pago en Arqueo**: La tirilla de cierre de caja (Z) ahora detalla de manera exacta los ingresos segregados por Efectivo, Nequi, Daviplata, Tarjeta y Transferencia (incluso separando automáticamente las porciones de los pagos mixtos).
 * **Identificadores Visuales de Pago**: El historial de ventas incorpora iconografía y colores dedicados para cada método de pago, permitiendo auditoría visual en milisegundos.
 * **Seguridad Estricta de Precios (H-01 Plus)**: Nivel militar. Un CAJERO ya no puede manipular o inyectar descuentos. El backend intercepta la venta, va a la BD oculta, evalúa las promociones del día y recalcula el importe exacto.
 * **Arquitectura Offline-First y Multi-Caja**: Funciona de forma totalmente autónoma sin internet. Lee y guarda todo localmente a velocidad nativa. Al volver la conexión, Firebase sube los deltas (mermas, ventas, cierres) en ráfagas.
-* **Seguridad Nativa Android (Kiosk Mode)**: Integración con Android Device Admin. Bloquea la tablet en una "Pantalla Roja" impidiendo salir al menú si se incumple el pago de licencia o queda offline 72h.
+* **Seguridad Nativa Android (Kiosk Mode)**: Integración con Android Device Admin (reestructuración de recursos en Manifest). Bloquea la tablet en una "Pantalla Roja" impidiendo salir al menú si se incumple el pago de licencia o queda offline 72h.
 
 ---
 
-## 📦 Características Principales
+## 💡 Características Principales
 
-### 💻 1. Punto de Venta (POS) Táctil
+### 👆 1. Punto de Venta (POS) Táctil
 * **Lectura de Código de Barras y Balanzas**: Reconocimiento de prefijos 20/21 para balanzas etiquetadoras, cálculo de peso (`WWWWW / 1000 = Kg`) e importe. Compatibilidad con básculas RS-232/USB (COM).
 * **Top 12 Favoritos de Acceso Rápido**: Accesos táctiles en grilla superior.
 * **Promociones y Días de Plaza**: Motor potente de descuentos (porcentuales o fijos) programados por día de la semana, por categoría o por producto (ej. "Martes Campesino").
 * **Multi-ticket & Pagos Mixtos**: Ventas en espera ilimitadas y soporte nativo para fraccionar un pago entre Efectivo y Digital (Nequi/Tarjeta).
 
-### 🛒 2. Inventario, Mermas y Nube
+### 📦 2. Inventario, Mermas y Nube
 * **Catálogo Maestro**: Precarga de referencias con PLU y conectividad a Cloudinary para fotos.
 * **Módulo de Mermas Inteligente**: Registro de pérdida de producto (maduración, avería, consumo). Permite tomar peso directo de la balanza, afecta el costo en la contabilidad y sincroniza a la nube.
 * **Recuperación Ante Desastres**: Si se rompe una tablet o PC, instalar la app en una nueva descarga automáticamente todo en 1 minuto (`_descargaInicial`).
@@ -39,7 +41,7 @@ El sistema se encuentra en su versión **1.3.0**, completamente blindado con seg
 
 ---
 
-## 🖥️ Requisitos de Entorno y Periféricos
+## 💻 Requisitos de Entorno y Periféricos
 
 | Periférico / Servicio | Compatibilidad |
 |-----------------------|----------------|
@@ -52,7 +54,7 @@ El sistema se encuentra en su versión **1.3.0**, completamente blindado con seg
 
 ---
 
-## ⚙️ Comandos para Desarrollo y Construcción
+## 🔨 Comandos para Desarrollo y Construcción
 
 ```bash
 # Compilar ejecutable Release para Windows
