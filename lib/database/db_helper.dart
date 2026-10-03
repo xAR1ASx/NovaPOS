@@ -37,7 +37,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -48,7 +48,10 @@ class DBHelper {
       'CREATE TABLE usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT UNIQUE, password_hash TEXT, rol TEXT, nombre_completo TEXT, esta_activo INTEGER DEFAULT 1, auth_uid TEXT UNIQUE)',
     );
     await db.execute(
-      'CREATE TABLE productos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, codigo_barras TEXT, codigo_plu TEXT, categoria TEXT, precio_costo REAL, precio_venta REAL, stock_actual REAL, es_pesable INTEGER DEFAULT 0, esta_activo INTEGER DEFAULT 1, imagen_path TEXT, uuid TEXT, dispositivo_uuid TEXT, es_favorito INTEGER DEFAULT 0)',
+      'CREATE TABLE productos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, codigo_barras TEXT, codigo_plu TEXT, categoria TEXT, precio_costo REAL, precio_venta REAL, stock_actual REAL, es_pesable INTEGER DEFAULT 0, esta_activo INTEGER DEFAULT 1, imagen_path TEXT, uuid TEXT, dispositivo_uuid TEXT, es_favorito INTEGER DEFAULT 0, es_combo INTEGER DEFAULT 0)',
+    );
+    await db.execute(
+      'CREATE TABLE combo_detalles (id INTEGER PRIMARY KEY AUTOINCREMENT, combo_id INTEGER, producto_id INTEGER, cantidad REAL, uuid TEXT)',
     );
     await db.execute(
       'CREATE TABLE configuracion (clave TEXT PRIMARY KEY, valor TEXT)',
@@ -950,27 +953,50 @@ CREATE TABLE roles_permisos(
           'metodo_pago_detalle': metodoPagoDetalle,
         });
         for (var i in items) {
+          bool esCombo = (i['es_combo'] as num?)?.toInt() == 1;
           double factorPack = (i['contenido_pack'] as num?)?.toDouble() ?? 1.0;
           double cantidadReal = (i['cantidad'] as num).toDouble() * factorPack;
-          int resStock;
-          if (permitirNegativo) {
-            resStock = await txn.rawUpdate(
-              'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?',
-              [cantidadReal, i['id']],
-            );
+
+          if (esCombo) {
+            final componentes = await txn.query('combo_detalles', where: 'combo_id = ?', whereArgs: [i['id']]);
+            for (var comp in componentes) {
+              double cantComp = (comp['cantidad'] as num).toDouble() * (i['cantidad'] as num).toDouble();
+              int compResStock;
+              if (permitirNegativo) {
+                compResStock = await txn.rawUpdate(
+                  'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?',
+                  [cantComp, comp['producto_id']],
+                );
+              } else {
+                compResStock = await txn.rawUpdate(
+                  'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= (? - 0.001)',
+                  [cantComp, comp['producto_id'], cantComp],
+                );
+              }
+              if (compResStock == 0) {
+                throw Exception('STOCK_INSUF|${comp['producto_id']}|Componente de Combo ${i['nombre']}');
+              }
+            }
           } else {
-            // Se usa una tolerancia de 0.001 para evitar bloqueos por errores de precisión de punto flotante
-            // típicos en básculas (ej. stock_actual = 0.500 y cantidadReal = 0.5000001)
-            resStock = await txn.rawUpdate(
-              'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= (? - 0.001)',
-              [cantidadReal, i['id'], cantidadReal],
-            );
+            int resStock;
+            if (permitirNegativo) {
+              resStock = await txn.rawUpdate(
+                'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?',
+                [cantidadReal, i['id']],
+              );
+            } else {
+              resStock = await txn.rawUpdate(
+                'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= (? - 0.001)',
+                [cantidadReal, i['id'], cantidadReal],
+              );
+            }
+            if (resStock == 0) {
+              throw Exception(
+                'STOCK_INSUF|${i['id']}|${i['nombre']}',
+              );
+            }
           }
-          if (resStock == 0) {
-            throw Exception(
-              'STOCK_INSUF|${i['id']}|${i['nombre']}',
-            );
-          }
+
           await txn.insert('detalle_ventas', {
             'venta_id': id,
             'producto_id': i['id'],
@@ -1114,10 +1140,24 @@ CREATE TABLE roles_permisos(
             (detalle['cantidad_descontada'] as num?)?.toDouble() ??
             cantActual;
 
-        await txn.rawUpdate(
-          'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
-          [cantDev, prodId],
-        );
+        final prod = await txn.query('productos', columns: ['es_combo'], where: 'id = ?', whereArgs: [prodId]);
+        bool esCombo = prod.isNotEmpty && (prod.first['es_combo'] as num?)?.toInt() == 1;
+
+        if (esCombo) {
+             final componentes = await txn.query('combo_detalles', where: 'combo_id = ?', whereArgs: [prodId]);
+             for (var comp in componentes) {
+                 double cantComp = (comp['cantidad'] as num).toDouble() * cantDev;
+                 await txn.rawUpdate(
+                   'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+                   [cantComp, comp['producto_id']],
+                 );
+             }
+        } else {
+            await txn.rawUpdate(
+              'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+              [cantDev, prodId],
+            );
+        }
 
         if (cantDev >= cantDescontada) {
           await txn.delete('detalle_ventas', where: 'id = ?', whereArgs: [detId]);
@@ -1210,10 +1250,25 @@ CREATE TABLE roles_permisos(
           double cantReal =
               (i['cantidad_descontada'] as num?)?.toDouble() ??
               (i['cantidad'] as num).toDouble();
-          await txn.rawUpdate(
-            'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
-            [cantReal, i['producto_id']],
-          );
+          
+          final prod = await txn.query('productos', columns: ['es_combo'], where: 'id = ?', whereArgs: [i['producto_id']]);
+          bool esCombo = prod.isNotEmpty && (prod.first['es_combo'] as num?)?.toInt() == 1;
+
+          if (esCombo) {
+             final componentes = await txn.query('combo_detalles', where: 'combo_id = ?', whereArgs: [i['producto_id']]);
+             for (var comp in componentes) {
+                 double cantComp = (comp['cantidad'] as num).toDouble() * (i['cantidad'] as num).toDouble();
+                 await txn.rawUpdate(
+                   'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+                   [cantComp, comp['producto_id']],
+                 );
+             }
+          } else {
+             await txn.rawUpdate(
+               'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+               [cantReal, i['producto_id']],
+             );
+          }
         }
         final v = await txn.query('ventas', where: 'id = ?', whereArgs: [vId]);
         if (v.isEmpty) throw Exception('VENTA_NO_EXISTE');
@@ -2663,6 +2718,15 @@ CREATE TABLE roles_permisos(
         });
       }
     }
+    if (oldVersion < 11) {
+      final colsProd = await db.rawQuery('PRAGMA table_info(productos)');
+      if (!colsProd.any((c) => c['name'] == 'es_combo')) {
+        await db.execute('ALTER TABLE productos ADD COLUMN es_combo INTEGER DEFAULT 0');
+      }
+      await db.execute(
+        'CREATE TABLE IF NOT EXISTS combo_detalles (id INTEGER PRIMARY KEY AUTOINCREMENT, combo_id INTEGER, producto_id INTEGER, cantidad REAL, uuid TEXT)'
+      );
+    }
   }
 
   // --- GESTIÓN DE PROMOCIONES Y DÍAS DE PLAZA ---
@@ -3006,6 +3070,42 @@ CREATE TABLE roles_permisos(
     }
 
     return resultado;
+  }
+
+  // --- GESTIÓN DE COMBOS ---
+  Future<int> crearCombo(Map<String, dynamic> datosCombo, List<Map<String, dynamic>> componentes) async {
+    final db = await database;
+    int comboId = 0;
+    
+    await db.transaction((txn) async {
+      datosCombo['uuid'] = datosCombo['uuid'] ?? generateUuidV4();
+      datosCombo['es_combo'] = 1;
+      
+      comboId = await txn.insert('productos', datosCombo);
+
+      for (var comp in componentes) {
+        await txn.insert('combo_detalles', {
+          'combo_id': comboId,
+          'producto_id': comp['producto_id'],
+          'cantidad': comp['cantidad'],
+          'uuid': generateUuidV4(),
+        });
+      }
+    });
+
+    // TODO: Encolar sincronización si es necesario
+    return comboId;
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerDetallesCombo(int comboId) async {
+    final db = await database;
+    final res = await db.rawQuery('''
+      SELECT cd.*, p.nombre, p.precio_venta, p.imagen_path
+      FROM combo_detalles cd
+      INNER JOIN productos p ON p.id = cd.producto_id
+      WHERE cd.combo_id = ?
+    ''', [comboId]);
+    return res;
   }
 }
 

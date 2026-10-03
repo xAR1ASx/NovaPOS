@@ -18,6 +18,7 @@ import '../services/balanza_barcode_service.dart';
 import '../services/promociones_service.dart';
 import '../services/session_service.dart';
 import 'promociones_screen.dart';
+import 'combos_admin_screen.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -2130,6 +2131,22 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           color: Colors.orange,
                         ),
                         tooltip: _t("Inventario"),
+                      ),
+                      IconButton(
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const CombosAdminScreen(),
+                            ),
+                          );
+                          _cargarProductos();
+                        },
+                        icon: const Icon(
+                          Icons.card_giftcard,
+                          color: Colors.deepPurple,
+                        ),
+                        tooltip: _t("Combos y Ofertas"),
                       ),
                       IconButton(
                         onPressed: () => _abrirCajonMonedero(),
