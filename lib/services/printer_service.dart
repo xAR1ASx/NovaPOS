@@ -505,22 +505,46 @@ class PrinterService {
                   fontSize: 16,
                 ),
               ),
+              pw.SizedBox(height: 2),
               pw.Text(
-                "ARQUEO DE CAJA",
+                "CIERRE DE CAJA / ARQUEO Z",
                 style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
                   fontSize: 12,
                 ),
               ),
+              pw.SizedBox(height: 2),
               pw.Text(
-                DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
-                style: const pw.TextStyle(fontSize: 10),
+                "Fecha Emisión: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}",
+                style: const pw.TextStyle(fontSize: 9),
               ),
-              pw.Divider(),
-              _filaArqueo("Base", (cierre['base'] ?? 0)),
-              _filaArqueo("Ventas turno", (cierre['ventas_turno'] ?? 0)),
-              _filaArqueo("Ventas global", (cierre['ventas_turno_global'] ?? 0)),
+              if (cierre['fecha_inicio'] != null)
+                pw.Text(
+                  "Turno Desde: ${cierre['fecha_inicio'].toString().substring(0, 16).replaceAll('T', ' ')}",
+                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+                ),
+              pw.Divider(thickness: 1.5),
+
+              // SECCIÓN: VENTAS TOTALES Y DESGLOSE POR MÉTODO
+              pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Text(
+                  "VENTAS TOTALES DEL TURNO",
+                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+                ),
+              ),
+              pw.SizedBox(height: 3),
+              _filaArqueo("TOTAL FACTURADO", (cierre['ventas_turno_global'] ?? cierre['ventas_turno'] ?? 0), negrita: true),
               pw.Divider(borderStyle: pw.BorderStyle.dashed),
+
+              pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Text(
+                  "DESGLOSE POR MÉTODO DE PAGO:",
+                  style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800),
+                ),
+              ),
+              pw.SizedBox(height: 2),
               ...(() {
                 final d = cierre['detalle']?.toString() ?? '';
                 if (d.contains('METODOS:')) {
@@ -529,27 +553,76 @@ class PrinterService {
                     Map<String, dynamic> map = jsonDecode(jsonPart);
                     List<pw.Widget> rows = [];
                     map.forEach((k, v) {
-                      rows.add(_filaArqueo(" > $k", v));
+                      double montoMetodo = (v as num?)?.toDouble() ?? 0;
+                      if (montoMetodo > 0) {
+                        rows.add(_filaArqueo("  $k", montoMetodo));
+                      }
                     });
                     if (rows.isNotEmpty) {
-                      return [...rows, pw.Divider(borderStyle: pw.BorderStyle.dashed)];
+                      return rows;
                     }
                   } catch (_) {}
                 }
-                return <pw.Widget>[];
+                // Si no hay desglose en detalle, mostrar al menos ventas turno (efectivo)
+                return [
+                  _filaArqueo("  EFECTIVO", (cierre['ventas_turno'] ?? 0)),
+                ];
               })(),
-              _filaArqueo("Ingresos", (cierre['ingresos_turno'] ?? 0)),
-              _filaArqueo("Gastos", (cierre['gastos_turno'] ?? 0)),
-              _filaArqueo("Total sistema", (cierre['total_sistema'] ?? 0)),
-              _filaArqueo("Real contado", (cierre['real_contado'] ?? 0)),
-              _filaArqueo("Diferencia", (cierre['diferencia'] ?? 0)),
-              pw.Divider(),
-              pw.Text(
-                "Estado: ${cierre['estado'] ?? ''}",
-                style: pw.TextStyle(
-                  fontSize: 11,
-                  fontWeight: pw.FontWeight.bold,
+              pw.Divider(thickness: 1.5),
+
+              // SECCIÓN: CUADRE DE CAJA FÍSICA
+              pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Text(
+                  "CUADRE DE EFECTIVO EN CAJÓN",
+                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
                 ),
+              ),
+              pw.SizedBox(height: 3),
+              _filaArqueo("(+) Base inicial", (cierre['base'] ?? 0)),
+              _filaArqueo("(+) Ventas en efectivo", (cierre['ventas_turno'] ?? 0)),
+              _filaArqueo("(+) Ingresos / Refuerzos", (cierre['ingresos_turno'] ?? 0)),
+              _filaArqueo("(-) Gastos / Salidas", (cierre['gastos_turno'] ?? 0)),
+              pw.Divider(borderStyle: pw.BorderStyle.dashed),
+              _filaArqueo("(=) Total Esperado Sistema", (cierre['total_sistema'] ?? 0), negrita: true),
+              _filaArqueo("Real Contado por Cajero", (cierre['real_contado'] ?? 0), negrita: true),
+              _filaArqueo("Diferencia (Sobrante/Falta)", (cierre['diferencia'] ?? 0), negrita: true),
+              pw.Divider(thickness: 1.5),
+
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.black, width: 1),
+                ),
+                child: pw.Text(
+                  "ESTADO CUADRE: ${cierre['estado'] ?? 'OK'}",
+                  style: pw.TextStyle(
+                    fontSize: 11,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+              pw.SizedBox(height: 30),
+
+              // FIRMAS DE AUDITORÍA
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    children: [
+                      pw.Container(width: 80, height: 1, color: PdfColors.black),
+                      pw.SizedBox(height: 3),
+                      pw.Text("Firma Cajero", style: const pw.TextStyle(fontSize: 8)),
+                    ],
+                  ),
+                  pw.Column(
+                    children: [
+                      pw.Container(width: 80, height: 1, color: PdfColors.black),
+                      pw.SizedBox(height: 3),
+                      pw.Text("Firma Administrador", style: const pw.TextStyle(fontSize: 8)),
+                    ],
+                  ),
+                ],
               ),
               pw.SizedBox(height: 20),
             ],
@@ -577,19 +650,25 @@ class PrinterService {
     }
   }
 
-  pw.Widget _filaArqueo(String label, dynamic valor) {
+  pw.Widget _filaArqueo(String label, dynamic valor, {bool negrita = false}) {
     double v = (valor as num?)?.toDouble() ?? 0;
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 2),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 11)),
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              fontSize: 10,
+              fontWeight: negrita ? pw.FontWeight.bold : pw.FontWeight.normal,
+            ),
+          ),
           pw.Text(
             formater.format(v),
             style: pw.TextStyle(
-              fontSize: 11,
-              fontWeight: pw.FontWeight.bold,
+              fontSize: 10,
+              fontWeight: negrita ? pw.FontWeight.bold : pw.FontWeight.bold,
             ),
           ),
         ],

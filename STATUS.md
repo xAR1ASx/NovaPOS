@@ -1,9 +1,14 @@
 # NovaPOS - Estado del Proyecto y Siguientes Pasos
 
-**Fecha de última actualización:** 2026-10-01
-**Versión Actual:** 1.2.0
+**Fecha de última actualización:** 2026-10-03
+**Versión Actual:** 1.5.0
 
 ## 🎯 Hitos Completados
+- [x] **Auditoría Integral y Suite de Pruebas de Caja**: 42 pruebas automatizadas en `flutter test` pasando al 100%.
+- [x] **Inyecciones de Dinero en Caja**: Botón nativo de "INGRESAR DINERO" para registrar bases adicionales, préstamos o inyecciones de capital.
+- [x] **Asistente Inteligente de Pago de Pedidos con Fondos Insuficientes**: Resuelve el caso de pedidos mayores al saldo en caja mediante la operación atómica `registrarIngresoYGasto` (ingreso + pago en una sola transacción SQLite).
+- [x] **Tirilla de Cierre / Arqueo Z Completa**: Desglose contable exacto por método de pago (Efectivo, Nequi, Daviplata, Tarjeta, Transferencia, Crédito), segregación de pagos mixtos sin ambigüedad y firmas de auditoría.
+- [x] **Conexión Directa de Impresión de Cierre**: Modal interactivo de éxito que permite imprimir la tirilla Z inmediatamente tras confirmar el cierre.
 - [x] Migración a **Sqflite v10** para compatibilidad con Windows y Android.
 - [x] Sincronización **Offline-First** (SQLite -> Firestore) optimizada para Blaze Plan.
 - [x] Subida de imágenes a **Cloudinary** segregada por negocioId.

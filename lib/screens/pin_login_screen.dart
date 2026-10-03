@@ -49,7 +49,6 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
   String _pin = '';
   bool _cargando = true;
   String? _error;
-  int _intentosFallidos = 0;
   bool _bloqueado = false;
   int _segundosBloqueo = 0;
   bool _soloPin = false;

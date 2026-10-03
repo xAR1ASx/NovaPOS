@@ -6,18 +6,23 @@ NovaPOS combina una arquitectura local ultrarrápida impulsada por **SQLite (100
 
 ---
 
-## 🚀 Estado Actual del Proyecto (Versión 1.4.0)
+## 🚀 Estado Actual del Proyecto (Versión 1.5.0)
 
-El sistema se encuentra en su versión **1.4.0**, completamente blindado con seguridad nativa, arquitectura escalable y nuevas funcionalidades financieras. Modificaciones recientes incluyen:
+El sistema se encuentra en su versión **1.5.0**, completamente blindado con seguridad nativa, auditoría integral y un módulo de caja y arqueo financiero de alto rendimiento. Modificaciones recientes incluyen:
 
-* **Sistema de Combos y Ofertas (Nuevo)**: Módulo nativo especializado para crear paquetes promocionales (Ej. "Arroz + Aceite" o "Anchetas"). Se venden como un solo ítem en el Punto de Venta, pero el sistema descuenta de forma inteligente y paralela el inventario exacto de cada producto que lo compone (funciona también para anulaciones y devoluciones parciales).
-* **Protección Estricta de Mermas**: El módulo de registro de mermas y desperdicios ha sido blindado y bloqueado exclusivamente para el usuario `ADMIN`, erradicando cualquier manipulación del inventario o pérdidas fantasma por parte de los cajeros.
-* **Devolución Parcial de Artículos**: Ya no es necesario anular toda la venta; se puede devolver una fracción o unidad específica de un ticket, regresando el inventario automáticamente y ajustando caja/cartera.
-* **Desglose de Métodos de Pago en Arqueo**: La tirilla de cierre de caja (Z) ahora detalla de manera exacta los ingresos segregados por Efectivo, Nequi, Daviplata, Tarjeta y Transferencia (incluso separando automáticamente las porciones de los pagos mixtos).
-* **Identificadores Visuales de Pago**: El historial de ventas incorpora iconografía y colores dedicados para cada método de pago, permitiendo auditoría visual en milisegundos.
-* **Seguridad Estricta de Precios (H-01 Plus)**: Nivel militar. Un CAJERO ya no puede manipular o inyectar descuentos. El backend intercepta la venta, va a la BD oculta, evalúa las promociones del día y recalcula el importe exacto.
-* **Arquitectura Offline-First y Multi-Caja**: Funciona de forma totalmente autónoma sin internet. Lee y guarda todo localmente a velocidad nativa. Al volver la conexión, Firebase sube los deltas (mermas, ventas, cierres) en ráfagas.
-* **Seguridad Nativa Android (Kiosk Mode)**: Integración con Android Device Admin (reestructuración de recursos en Manifest). Bloquea la tablet en una "Pantalla Roja" impidiendo salir al menú si se incumple el pago de licencia o queda offline 72h.
+* **Inyección de Capital y Refuerzos de Caja**: Nuevo botón nativo de "INGRESAR DINERO" para registrar aportes, préstamos, inyecciones de socios o bases extras en cualquier momento del turno.
+* **Asistente Inteligente de Pago de Pedidos con Fondos Insuficientes**: Si llega un pedido de proveedor (ej. $300.000) y en caja solo hay una base menor (ej. $150.000), el sistema guía al cajero para inyectar el faltante y un colchón opcional, registrando la entrada y la salida en una **única transacción atómica** de SQLite (`registrarIngresoYGasto`) para evitar descuadres o cajas en negativo.
+* **Tirilla de Cierre / Arqueo Z Completa y con Firmas**: Rediseño contable formal de la tirilla térmica con:
+  * Total facturado del turno.
+  * Desglose exacto y segregado por método de pago (Efectivo, Nequi, Daviplata, Tarjeta, Transferencia, Crédito), dividiendo limpiamente los pagos mixtos.
+  * Cuadre de efectivo físico: Base inicial (+) Ventas en efectivo (+) Ingresos (-) Gastos (=) Total esperado vs. Real contado y diferencia.
+  * Líneas para firma del cajero y del administrador.
+* **Impresión Inmediata al Cerrar Turno**: Modal interactivo de confirmación que permite imprimir o reimprimir la tirilla Z con un solo toque desde la pantalla de caja o desde el historial.
+* **Sistema de Combos y Ofertas**: Módulo nativo especializado para crear paquetes promocionales (Ej. "Arroz + Aceite" o "Anchetas"). Se venden como un solo ítem en el Punto de Venta, pero el sistema descuenta de forma inteligente y paralela el inventario exacto de cada producto que lo compone.
+* **Protección Estricta de Mermas**: El módulo de registro de mermas y desperdicios ha sido blindado y bloqueado exclusivamente para el usuario `ADMIN`.
+* **Devolución Parcial de Artículos**: Se puede devolver una fracción o unidad específica de un ticket, regresando el inventario automáticamente y ajustando caja/cartera.
+* **Seguridad Estricta de Precios (H-01 Plus)**: El backend intercepta la venta, va a la BD oculta, evalúa las promociones del día y recalcula el importe exacto.
+* **Banco de Pruebas Automatizadas (42 Tests)**: Test suite integral verificando el 100% de la lógica de negocio, balanzas, promociones, permisos, cálculo de caja y cierre Z.
 
 ---
 

@@ -5,20 +5,11 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:excel/excel.dart' hide Border;
 import '../database/db_helper.dart';
-import '../services/locale_service.dart';
-
-String _t(String es) => LocaleService().esEspanol ? es : es;
 
 class ExcelExportService {
   ExcelExportService._();
   static final ExcelExportService _instance = ExcelExportService._();
   factory ExcelExportService() => _instance;
-
-  static final _currencyFormat = NumberFormat.currency(
-    locale: 'es_CO',
-    symbol: '\$',
-    decimalDigits: 0,
-  );
 
   /// Obtiene la carpeta oficial de exportación dentro de Documentos del usuario
   Future<Directory> obtenerCarpetaReportes() async {

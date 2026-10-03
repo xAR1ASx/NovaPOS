@@ -16,6 +16,27 @@ class DBHelper {
   static Database? _database;
   static void Function()? onDatoEncolado;
 
+  @visibleForTesting
+  static void setDatabaseForTesting(Database? db) {
+    _database = db;
+  }
+
+  @visibleForTesting
+  Future<Database> initMemoryDBForTesting() async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    final db = await databaseFactory.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: 11,
+        onCreate: _createDB,
+        onUpgrade: _upgradeDB,
+      ),
+    );
+    _database = db;
+    return db;
+  }
+
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDB();
@@ -655,6 +676,21 @@ CREATE TABLE roles_permisos(
       final abierta = await verificarCajaAbiertaHoy();
       if (!abierta) throw Exception('No hay un turno abierto para cerrar');
     }
+    if (tipo == 'INGRESO' || tipo == 'GASTO') {
+      if (monto.isNaN || monto.isInfinite || monto <= 0) {
+        throw Exception('El monto debe ser mayor a cero');
+      }
+      final abierta = await verificarCajaAbiertaHoy();
+      if (!abierta) {
+        throw Exception('Debe abrir la caja antes de registrar movimientos');
+      }
+    }
+    if (tipo == 'GASTO') {
+      final disponible = (await obtenerResumenCaja())['total_en_caja'] ?? 0;
+      if (monto > disponible + 0.005) {
+        throw Exception('Fondos insuficientes en caja');
+      }
+    }
 
     return await db.insert('caja_movimientos', {
       'fecha': DateTime.now().toIso8601String(),
@@ -663,6 +699,57 @@ CREATE TABLE roles_permisos(
       'descripcion': descripcion,
       'usuario_id': usuarioId,
     });
+  }
+
+  /// Ingresa efectivo a la caja (refuerzo) y paga un gasto en UNA sola
+  /// transacción: o quedan registrados los dos movimientos o ninguno.
+  ///
+  /// Caso típico: llega un pedido de $300.000 y en caja solo hay $150.000.
+  /// Se ingresa el faltante (más un colchón opcional) y se registra el pago,
+  /// de modo que el efectivo restante queda visible y auditable.
+  Future<Map<String, dynamic>> registrarIngresoYGasto({
+    required double ingreso,
+    required double gasto,
+    required String descripcionIngreso,
+    required String descripcionGasto,
+    required int usuarioId,
+  }) async {
+    if (ingreso.isNaN || ingreso.isInfinite || ingreso <= 0 ||
+        gasto.isNaN || gasto.isInfinite || gasto <= 0) {
+      throw Exception('El monto debe ser mayor a cero');
+    }
+    if (!await verificarCajaAbiertaHoy()) {
+      throw Exception('Debe abrir la caja antes de registrar movimientos');
+    }
+    final disponible = (await obtenerResumenCaja())['total_en_caja'] ?? 0;
+    if (disponible + ingreso + 0.005 < gasto) {
+      throw Exception('Fondos insuficientes en caja');
+    }
+    final db = await database;
+    late int ingresoId;
+    late int gastoId;
+    await db.transaction((txn) async {
+      ingresoId = await txn.insert('caja_movimientos', {
+        'fecha': DateTime.now().toIso8601String(),
+        'tipo': 'INGRESO',
+        'monto': ingreso,
+        'descripcion': descripcionIngreso,
+        'usuario_id': usuarioId,
+      });
+      gastoId = await txn.insert('caja_movimientos', {
+        'fecha': DateTime.now().toIso8601String(),
+        'tipo': 'GASTO',
+        'monto': gasto,
+        'descripcion': descripcionGasto,
+        'usuario_id': usuarioId,
+      });
+    });
+    return {
+      'exito': true,
+      'ingreso_id': ingresoId,
+      'gasto_id': gastoId,
+      'total_en_caja': disponible + ingreso - gasto,
+    };
   }
 
   /// Crea o actualiza el usuario local ligado al UID de Firebase. Devuelve su id.
@@ -800,23 +887,33 @@ CREATE TABLE roles_permisos(
       }
       final totalSistema = (baseTurno + ventas + ingresos) - gastos;
 
-      // --- EXTRAER DESGLOSE DE MÉTODOS DE PAGO ---
+      // --- EXTRAER DESGLOSE DE MÉTODOS DE PAGO EXACTO ---
       final breakdownRes = await txn.rawQuery(
         "SELECT metodo_pago, SUM(total) as total FROM ventas WHERE fecha >= ? AND anulada = 0 GROUP BY metodo_pago",
         [fi],
       );
       Map<String, double> metodos = {};
       for (var row in breakdownRes) {
-        metodos[row['metodo_pago'].toString()] = (row['total'] as num).toDouble();
+        final mp = row['metodo_pago'].toString();
+        if (mp != 'MIXTO') {
+          metodos[mp] = (row['total'] as num).toDouble();
+        }
       }
       for (var row in mixtasGlobal) {
         final d = row['metodo_pago_detalle']?.toString();
         if (d != null && d.isNotEmpty) {
           try {
             final parsed = jsonDecode(d);
-            if (parsed is Map && parsed['digital'] != null) {
-              String nombreDig = (parsed['metodo_digital'] ?? 'DIGITAL').toString();
-              metodos[nombreDig] = (metodos[nombreDig] ?? 0) + (parsed['digital'] as num).toDouble();
+            if (parsed is Map) {
+              if (parsed['efectivo'] != null) {
+                final ef = (parsed['efectivo'] as num).toDouble();
+                metodos['EFECTIVO'] = (metodos['EFECTIVO'] ?? 0) + ef;
+              }
+              if (parsed['digital'] != null) {
+                String nombreDig = (parsed['metodo_digital'] ?? 'DIGITAL').toString().toUpperCase();
+                final dig = (parsed['digital'] as num).toDouble();
+                metodos[nombreDig] = (metodos[nombreDig] ?? 0) + dig;
+              }
             }
           } catch (_) {}
         }
@@ -831,10 +928,11 @@ CREATE TABLE roles_permisos(
         'descripcion': detalle, // Para el movimiento dejamos el detalle normal
         'usuario_id': usuarioId,
       });
-      await txn.insert('cierres_caja', {
-        'fecha': DateTime.now().toIso8601String(),
+      final fechaCierreNow = DateTime.now().toIso8601String();
+      final idCierre = await txn.insert('cierres_caja', {
+        'fecha': fechaCierreNow,
         'fecha_inicio': fi,
-        'fecha_fin': DateTime.now().toIso8601String(),
+        'fecha_fin': fechaCierreNow,
         'base': baseTurno,
         'ventas_turno': ventas,
         'ventas_turno_global': ventasGlobal,
@@ -847,8 +945,17 @@ CREATE TABLE roles_permisos(
         'usuario_id': usuarioId,
         'detalle': nuevoDetalle,
       });
+
+      final cierreCreado = (await txn.query(
+        'cierres_caja',
+        where: 'id = ?',
+        whereArgs: [idCierre],
+        limit: 1,
+      )).first;
+
       return {
         'exito': true,
+        'cierre': cierreCreado,
         'total_sistema': totalSistema,
         'ventas_turno_global': ventasGlobal,
       };

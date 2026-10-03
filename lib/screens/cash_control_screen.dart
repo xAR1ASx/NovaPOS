@@ -5,6 +5,7 @@ import '../database/db_helper.dart';
 import '../services/cash_service.dart';
 import '../services/session_service.dart';
 import '../services/auto_backup_service.dart';
+import '../services/printer_service.dart';
 import '../utils/numero.dart';
 import '../services/locale_service.dart';
 import 'cierre_history_screen.dart';
@@ -14,14 +15,40 @@ String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 const Map<String, String> _mapEn = {
   'Iniciar Turno': 'Start Shift',
   'Registrar Salida': 'Register Expense',
+  'Registrar Salida / Gasto': 'Register Expense',
+  'Ingresar Dinero / Base Extra': 'Add Cash / Extra Base',
+  'Ingresar Dinero': 'Add Cash',
+  'INGRESAR': 'ADD CASH',
+  'INGRESAR DINERO': 'ADD CASH',
+  'Ingresos': 'Income / Injections',
   'Disponible': 'Available',
   'Monto': 'Amount',
   'Detalle / Motivo': 'Detail / Reason',
   'Base inicial': 'Initial base',
   'Ej: Pago Domicilio': 'E.g.: Home Delivery',
+  'Ej: Base adicional, pago pedido, préstamo': 'E.g.: Additional base, order payment, loan',
   'Cancelar': 'Cancel',
   '🚫 Fondos insuficientes en caja': '🚫 Insufficient funds in cash drawer',
   'GUARDAR': 'SAVE',
+  'INICIAR TURNO / ABRIR CAJA': 'START SHIFT / OPEN CASH DRAWER',
+  'REGISTRAR GASTO': 'REGISTER EXPENSE',
+  'IMPRIMIR TIRILLA DE CIERRE (Z)': 'PRINT CLOSURE RECEIPT (Z)',
+  'Tirilla de Cierre': 'Closure Receipt',
+  'LISTO / SALIR': 'DONE / EXIT',
+  'Total Ventas Turno:': 'Total Shift Sales:',
+  'Efectivo Contado:': 'Cash Counted:',
+  'Estado del Cuadre:': 'Balance Status:',
+  '⚠️ Fondos Insuficientes para este Pago': '⚠️ Insufficient Funds for this Payment',
+  'En caja solo hay:': 'Cash in drawer is only:',
+  'Monto del pedido / gasto:': 'Order / expense amount:',
+  'Faltante para cubrir el gasto:': 'Missing amount to cover expense:',
+  'Dinero a ingresar (refuerzo)': 'Cash to inject (reinforcement)',
+  'Saldo final estimado en caja:': 'Estimated final cash drawer balance:',
+  'Motivo del refuerzo / ingreso': 'Reason for cash reinforcement',
+  'INGRESAR Y PAGAR PEDIDO': 'INJECT CASH & PAY ORDER',
+  'El ingreso debe ser al menos de:': 'Cash injection must be at least:',
+  '✅ Refuerzo y pago de pedido registrados correctamente': '✅ Cash reinforcement and order payment registered successfully',
+  '✅ Movimiento registrado correctamente': '✅ Movement registered successfully',
   '📝 Anotar Gasto Olvidado': '📝 Record Forgotten Expense',
   'Detalle': 'Detail',
   'REGISTRAR': 'REGISTER',
@@ -80,6 +107,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
   double _ventas = 0;
   double _ventasGlobal = 0;
   double _gastos = 0;
+  double _ingresosExtra = 0;
   double _totalEnCajaSistema = 0;
 
   List<Map<String, dynamic>> _movimientos = [];
@@ -106,22 +134,50 @@ class _CashControlScreenState extends State<CashControlScreen> {
 
     if (!mounted) return;
     setState(() {
-      _base = resumen['base']!;
-      _ventas = resumen['ventas_efectivo']!;
-      _ventasGlobal = resumen['ventas_global']!;
-      _gastos = resumen['gastos']!;
-      _totalEnCajaSistema = resumen['total_en_caja']!;
+      _base = resumen['base'] ?? 0;
+      _ventas = resumen['ventas_efectivo'] ?? 0;
+      _ventasGlobal = resumen['ventas_global'] ?? 0;
+      _gastos = resumen['gastos'] ?? 0;
+      _ingresosExtra = resumen['ingresos_extra'] ?? 0;
+      _totalEnCajaSistema = resumen['total_en_caja'] ?? 0;
       _movimientos = lista;
       _cajaAbierta = estaAbierta;
       _cargando = false; // Desactivamos carga
     });
   }
 
-  // --- LOGICA: APERTURA Y GASTOS ---
+  // --- LOGICA: APERTURA, INGRESOS Y GASTOS ---
   void _mostrarDialogoMovimiento(String tipo) {
     final TextEditingController montoCtrl = TextEditingController();
     final TextEditingController descCtrl = TextEditingController();
-    bool esApertura = tipo == 'APERTURA';
+    final bool esApertura = tipo == 'APERTURA';
+    final bool esIngreso = tipo == 'INGRESO';
+
+    String titulo;
+    IconData icono;
+    Color colorPrimario;
+    Color colorFondoAvatar;
+    String hintTexto;
+
+    if (esApertura) {
+      titulo = _t("Iniciar Turno");
+      icono = Icons.wb_sunny;
+      colorPrimario = Colors.blue.shade800;
+      colorFondoAvatar = Colors.blue.shade100;
+      hintTexto = _t("Base inicial");
+    } else if (esIngreso) {
+      titulo = _t("Ingresar Dinero / Base Extra");
+      icono = Icons.add_circle;
+      colorPrimario = Colors.green.shade800;
+      colorFondoAvatar = Colors.green.shade100;
+      hintTexto = _t("Ej: Base adicional, pago pedido, préstamo");
+    } else {
+      titulo = _t("Registrar Salida / Gasto");
+      icono = Icons.money_off;
+      colorPrimario = Colors.orange.shade800;
+      colorFondoAvatar = Colors.orange.shade100;
+      hintTexto = _t("Ej: Pago Domicilio");
+    }
 
     showDialog(
       context: context,
@@ -130,14 +186,16 @@ class _CashControlScreenState extends State<CashControlScreen> {
         title: Row(
           children: [
             CircleAvatar(
-              backgroundColor: esApertura ? Colors.blue[100] : Colors.red[100],
-              child: Icon(
-                esApertura ? Icons.wb_sunny : Icons.money_off,
-                color: esApertura ? Colors.blue : Colors.red,
-              ),
+              backgroundColor: colorFondoAvatar,
+              child: Icon(icono, color: colorPrimario),
             ),
             const SizedBox(width: 10),
-            Text(esApertura ? _t("Iniciar Turno") : _t("Registrar Salida")),
+            Expanded(
+              child: Text(
+                titulo,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
           ],
         ),
         content: Column(
@@ -148,18 +206,25 @@ class _CashControlScreenState extends State<CashControlScreen> {
                 padding: const EdgeInsets.all(10),
                 margin: const EdgeInsets.only(bottom: 10),
                 decoration: BoxDecoration(
-                  color: Colors.red[50],
+                  color: esIngreso ? Colors.green[50] : Colors.orange[50],
                   borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: (esIngreso ? Colors.green : Colors.orange).withOpacity(0.3),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.info, color: Colors.red, size: 16),
+                    Icon(
+                      Icons.info,
+                      color: esIngreso ? Colors.green[800] : Colors.orange[800],
+                      size: 16,
+                    ),
                     const SizedBox(width: 5),
                     Expanded(
-child: Text(
-                          '${_t("Disponible")}: ${formater.format(_totalEnCajaSistema)}',
-                          style: const TextStyle(
-                          color: Colors.red,
+                      child: Text(
+                        '${_t("Disponible")}: ${formater.format(_totalEnCajaSistema)}',
+                        style: TextStyle(
+                          color: esIngreso ? Colors.green[800] : Colors.orange[800],
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),
@@ -186,7 +251,7 @@ child: Text(
               controller: descCtrl,
               decoration: InputDecoration(
                 labelText: _t("Detalle / Motivo"),
-                hintText: esApertura ? _t("Base inicial") : _t("Ej: Pago Domicilio"),
+                hintText: hintTexto,
                 prefixIcon: const Icon(Icons.description),
                 border: const OutlineInputBorder(
                   borderRadius: BorderRadius.all(Radius.circular(12)),
@@ -202,24 +267,28 @@ child: Text(
           ),
           ElevatedButton(
             onPressed: () async {
-              // Aceptamos punto de miles y coma decimal (formato colombiano)
               double? m = parseNumero(montoCtrl.text);
 
               if (m != null && m > 0) {
-                if (!esApertura && m > _totalEnCajaSistema) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(_t("🚫 Fondos insuficientes en caja")),
-                      backgroundColor: Colors.red,
-                    ),
+                // Caso: Salida de dinero superior al saldo disponible
+                if (!esApertura && !esIngreso && m > _totalEnCajaSistema) {
+                  Navigator.pop(ctx);
+                  _mostrarDialogoInyectarYPagar(
+                    gastoMonto: m,
+                    gastoDescripcion: descCtrl.text.trim().isEmpty
+                        ? _t("Pago de Pedido / Gasto")
+                        : descCtrl.text.trim(),
                   );
                   return;
                 }
+
                 try {
                   await _cashService.registrarMovimiento(
                     tipo: tipo,
                     monto: m,
-                    descripcion: descCtrl.text,
+                    descripcion: descCtrl.text.trim().isEmpty
+                        ? (esIngreso ? 'Ingreso de Efectivo' : (esApertura ? 'Base inicial' : 'Gasto de caja'))
+                        : descCtrl.text.trim(),
                   );
                 } catch (e) {
                   if (mounted) {
@@ -232,12 +301,21 @@ child: Text(
                   }
                   return;
                 }
-                Navigator.pop(ctx);
+                if (ctx.mounted) Navigator.pop(ctx);
                 _cargarDatosCaja();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('✅ ${_t("Movimiento registrado correctamente")}'),
+                      backgroundColor: Colors.green.shade700,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: esApertura ? Colors.blue[800] : Colors.red[800],
+              backgroundColor: colorPrimario,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               shape: RoundedRectangleBorder(
@@ -247,6 +325,214 @@ child: Text(
             child: Text(_t("GUARDAR")),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Asistente inteligente para cuando llega un pedido/gasto mayor al dinero en caja.
+  /// Permite inyectar la cantidad faltante (o más) y pagar el pedido en una sola operación atómica.
+  void _mostrarDialogoInyectarYPagar({
+    required double gastoMonto,
+    required String gastoDescripcion,
+  }) {
+    final double faltanteMinimo = (gastoMonto - _totalEnCajaSistema).clamp(0, double.infinity);
+    final TextEditingController ingresoCtrl = TextEditingController(
+      text: faltanteMinimo.toInt().toString(),
+    );
+    final TextEditingController motivoIngresoCtrl = TextEditingController(
+      text: "Inyección para pago: $gastoDescripcion",
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          double ingresoIngresado = parseNumero(ingresoCtrl.text) ?? 0;
+          double saldoFinalEstimado = (_totalEnCajaSistema + ingresoIngresado) - gastoMonto;
+          bool esValido = (_totalEnCajaSistema + ingresoIngresado + 0.005) >= gastoMonto && ingresoIngresado > 0;
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.amber.shade100,
+                  child: Icon(Icons.account_balance_wallet, color: Colors.amber.shade900),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _t("⚠️ Fondos Insuficientes para este Pago"),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade300),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(_t("En caja solo hay:"), style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                              Text(formater.format(_totalEnCajaSistema), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(_t("Monto del pedido / gasto:"), style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                              Text(formater.format(gastoMonto), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 14)),
+                            ],
+                          ),
+                          const Divider(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(_t("Faltante para cubrir el gasto:"), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.brown)),
+                              Text(formater.format(faltanteMinimo), style: TextStyle(fontWeight: FontWeight.bold, color: Colors.brown.shade800, fontSize: 15)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "Para no quedar sin saldo en caja, ingresa la cantidad faltante más un colchón para continuar operando:",
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: ingresoCtrl,
+                      keyboardType: TextInputType.number,
+                      autofocus: true,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
+                      decoration: InputDecoration(
+                        labelText: _t("Dinero a ingresar (refuerzo)"),
+                        prefixIcon: const Icon(Icons.add_circle, color: Colors.green),
+                        border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+                        filled: true,
+                        fillColor: Colors.green.shade50.withOpacity(0.5),
+                      ),
+                      onChanged: (_) => setStateDialog(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: motivoIngresoCtrl,
+                      decoration: InputDecoration(
+                        labelText: _t("Motivo del refuerzo / ingreso"),
+                        prefixIcon: const Icon(Icons.description),
+                        border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: saldoFinalEstimado >= 0 ? Colors.green.shade100.withOpacity(0.5) : Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: saldoFinalEstimado >= 0 ? Colors.green.shade300 : Colors.red.shade300),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _t("Saldo final estimado en caja:"),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: saldoFinalEstimado >= 0 ? Colors.green.shade900 : Colors.red.shade900,
+                            ),
+                          ),
+                          Text(
+                            formater.format(saldoFinalEstimado),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: saldoFinalEstimado >= 0 ? Colors.green.shade900 : Colors.red.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!esValido)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          "${_t('El ingreso debe ser al menos de:')} ${formater.format(faltanteMinimo)}",
+                          style: const TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(_t("Cancelar"), style: const TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.check_circle, size: 18),
+                label: Text(_t("INGRESAR Y PAGAR PEDIDO")),
+                onPressed: esValido
+                    ? () async {
+                        try {
+                          await _cashService.registrarIngresoYGasto(
+                            ingreso: ingresoIngresado,
+                            gasto: gastoMonto,
+                            descripcionIngreso: motivoIngresoCtrl.text.trim().isEmpty
+                                ? "Inyección para pago de pedido"
+                                : motivoIngresoCtrl.text.trim(),
+                            descripcionGasto: gastoDescripcion,
+                          );
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          _cargarDatosCaja();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(_t("✅ Refuerzo y pago de pedido registrados correctamente")),
+                                backgroundColor: Colors.green.shade700,
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('🚫 ${_t(e.toString())}'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade800,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -558,7 +844,7 @@ child: Text(
                           "Cierre: Sistema ${_totalEnCajaSistema.toInt()} | Real ${dineroReal.toInt()} | Global ${_ventasGlobal.toInt()} | Estado: $estado";
 
                       // CIERRE TRANSACCIONAL: movimiento CIERRE + registro formal
-                      await dbHelper.cerrarTurno(
+                      final resCierre = await dbHelper.cerrarTurno(
                         base: 0,
                         realContado: dineroReal,
                         diferencia: diferencia,
@@ -576,12 +862,18 @@ child: Text(
                       if (!context.mounted) return;
                       Navigator.pop(context);
                       _cargarDatosCaja();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(_t("✅ Turno Cerrado Correctamente")),
-                          backgroundColor: Colors.purple,
-                        ),
-                      );
+
+                      final cierreCreado = resCierre['cierre'] as Map<String, dynamic>?;
+                      if (cierreCreado != null && mounted) {
+                        _mostrarDialogoExitoCierre(cierreCreado);
+                      } else if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(_t("✅ Turno Cerrado Correctamente")),
+                            backgroundColor: Colors.purple,
+                          ),
+                        );
+                      }
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -609,6 +901,114 @@ child: Text(
           },
         );
       },
+    );
+  }
+
+  /// Diálogo modal tras el cierre de turno que permite imprimir la tirilla Z
+  void _mostrarDialogoExitoCierre(Map<String, dynamic> cierre) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Column(
+          children: [
+            const CircleAvatar(
+              radius: 26,
+              backgroundColor: Colors.purple,
+              child: Icon(Icons.check, color: Colors.white, size: 30),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _t("✅ Turno Cerrado Correctamente"),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.purple.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.purple.shade200),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_t("Total Ventas Turno:"), style: const TextStyle(fontSize: 13)),
+                      Text(
+                        formater.format(cierre['ventas_turno_global'] ?? cierre['ventas_turno'] ?? 0),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_t("Efectivo Contado:"), style: const TextStyle(fontSize: 13)),
+                      Text(
+                        formater.format(cierre['real_contado'] ?? 0),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_t("Estado del Cuadre:"), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(
+                        cierre['estado'] ?? 'OK',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: cierre['estado'] == 'OK' ? Colors.green.shade800 : Colors.red.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.print, size: 20),
+                label: Text(
+                  _t("IMPRIMIR TIRILLA DE CIERRE (Z)"),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo.shade800,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () async {
+                  await PrinterService().imprimirArqueo(cierre);
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              _t("LISTO / SALIR"),
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -716,9 +1116,14 @@ child: Text(
                               Colors.blueAccent,
                             ),
                             _miniResumen(
-                              _t("Ventas caja"),
+                              _t("Ventas"),
                               _ventas,
                               Colors.greenAccent,
+                            ),
+                            _miniResumen(
+                              _t("Ingresos"),
+                              _ingresosExtra,
+                              Colors.tealAccent,
                             ),
                             _miniResumen(
                               _t("Gastos"),
@@ -728,7 +1133,7 @@ child: Text(
                           ],
                         ),
                       if (_cajaAbierta) ...[
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
                         Text(
                           '${_t("Global (todas las cajas)")}: '
                           '${formater.format(_ventasGlobal)}',
@@ -742,42 +1147,79 @@ child: Text(
                   ),
                 ),
 
-                // BOTONES
+                // BOTONES PRINCIPALES DE CAJA
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: !_cajaAbierta
-                              ? () => _mostrarDialogoMovimiento('APERTURA')
-                              : null,
-                          icon: const Icon(Icons.wb_sunny),
-                          label: Text(_t("ABRIR")),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
+                  child: !_cajaAbierta
+                      ? SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _mostrarDialogoMovimiento('APERTURA'),
+                            icon: const Icon(Icons.wb_sunny, size: 22),
+                            label: Text(
+                              _t("INICIAR TURNO / ABRIR CAJA"),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              backgroundColor: Colors.blue.shade800,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
                           ),
+                        )
+                      : Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _mostrarDialogoMovimiento('INGRESO'),
+                                icon: const Icon(Icons.add_circle, size: 20),
+                                label: Text(
+                                  _t("INGRESAR DINERO"),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  backgroundColor: Colors.green.shade700,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _mostrarDialogoMovimiento('GASTO'),
+                                icon: const Icon(Icons.money_off, size: 20),
+                                label: Text(
+                                  _t("REGISTRAR GASTO"),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  backgroundColor: Colors.orange.shade800,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _cajaAbierta
-                              ? () => _mostrarDialogoMovimiento('GASTO')
-                              : null,
-                          icon: const Icon(Icons.output),
-                          label: Text(_t("GASTO")),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
                 if (_cajaAbierta)
                   Padding(

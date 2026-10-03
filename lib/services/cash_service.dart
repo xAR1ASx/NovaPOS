@@ -44,4 +44,31 @@ class CashService {
       usuarioId,
     );
   }
+
+  /// Ingresa efectivo a la caja y paga un gasto en una sola operación atómica.
+  /// Pensado para pedidos/pagos mayores al efectivo disponible.
+  Future<Map<String, dynamic>> registrarIngresoYGasto({
+    required double ingreso,
+    required double gasto,
+    required String descripcionIngreso,
+    required String descripcionGasto,
+  }) async {
+    if (!PermissionService.can('CAJA_MOVIMIENTOS')) {
+      throw Exception(
+        'No tienes permiso para realizar esta operación de caja.',
+      );
+    }
+    final usuarioId = SessionService.userId();
+    if (usuarioId == null) {
+      throw Exception('No hay un usuario autenticado.');
+    }
+    return await _dbHelper.registrarIngresoYGasto(
+      ingreso: ingreso,
+      gasto: gasto,
+      descripcionIngreso: descripcionIngreso,
+      descripcionGasto: descripcionGasto,
+      usuarioId: usuarioId,
+    );
+  }
 }
+

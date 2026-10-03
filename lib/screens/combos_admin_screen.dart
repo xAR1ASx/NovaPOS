@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/session_service.dart';
 import '../services/locale_service.dart';
-import 'inventory_screen.dart'; // Just in case, though maybe we can use a custom picker
 
 String _t(String es) => LocaleService().esEspanol ? es : es;
 

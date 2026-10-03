@@ -3,9 +3,6 @@ import 'package:flutter/services.dart';
 import '../database/db_helper.dart';
 import '../services/promociones_service.dart';
 import '../services/session_service.dart';
-import '../services/locale_service.dart';
-
-String _t(String es) => LocaleService().esEspanol ? es : es;
 
 class PromocionesScreen extends StatefulWidget {
   const PromocionesScreen({super.key});
