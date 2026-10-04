@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/session_service.dart';
 import '../services/locale_service.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : es;
 
@@ -95,9 +96,10 @@ class _CombosAdminScreenState extends State<CombosAdminScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t("Gestión de Combos 🎁")),
-        backgroundColor: Colors.deepPurple[800],
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.deepPurple[800],
         foregroundColor: Colors.white,
       ),
       body: _cargando
@@ -248,9 +250,10 @@ class _CrearComboScreenState extends State<_CrearComboScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t("Crear Combo")),
-        backgroundColor: Colors.deepPurple[800],
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.deepPurple[800],
         foregroundColor: Colors.white,
       ),
       body: Padding(

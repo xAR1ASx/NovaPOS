@@ -19,6 +19,7 @@ import '../services/promociones_service.dart';
 import '../services/session_service.dart';
 import 'promociones_screen.dart';
 import 'combos_admin_screen.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -989,10 +990,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 const SizedBox(height: 5),
                 Text(
                   formater.format(total),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 36,
-                    color: Color(0xFF1A1F2B),
+                    color: context.textPrimary,
                   ),
                 ),
               ],
@@ -1069,7 +1070,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.orange[50],
+                          color: context.isDarkMode
+                              ? Colors.orange.withOpacity(0.15)
+                              : Colors.orange[50],
                           borderRadius: BorderRadius.circular(15),
                           border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                         ),
@@ -1100,7 +1103,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.blueGrey[50],
+                          color: context.isDarkMode
+                              ? const Color(0xFF263345)
+                              : Colors.blueGrey[50],
                           borderRadius: BorderRadius.circular(15),
                           border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.3)),
                         ),
@@ -1221,7 +1226,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                         children: [
                           ActionChip(
                             label: const Text("Exacto"),
-                            backgroundColor: Colors.green[50],
+                            backgroundColor: context.isDarkMode ? const Color(0xFF064E3B) : Colors.green[50],
                             onPressed: () {
                               pagoCtrl.text = total.toInt().toString();
                               st(() {});
@@ -1270,7 +1275,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                           prefixIcon: const Icon(Icons.attach_money),
                           filled: true,
-                          fillColor: Colors.grey[50],
+                          fillColor: context.inputBg,
                         ),
                         onChanged: (val) => st(() {}),
                       ),
@@ -1552,6 +1557,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   }
 
   Widget _btn(String label) {
+    final isDark = context.isDarkMode;
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.all(4.0),
@@ -1560,12 +1566,12 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
           borderRadius: BorderRadius.circular(15),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.cardBg,
               borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: Colors.grey.withOpacity(0.2)),
+              border: Border.all(color: context.borderSubtle),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
+                  color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.1),
                   blurRadius: 5,
                   offset: const Offset(0, 3),
                 ),
@@ -1574,10 +1580,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
             child: Center(
               child: Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF1A1F2B),
+                  color: context.textPrimary,
                 ),
               ),
             ),
@@ -1592,8 +1598,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+        color: context.cardBg,
+        border: Border(bottom: BorderSide(color: context.borderSubtle)),
       ),
       child: Row(
         children: [
@@ -1603,9 +1609,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
               children: [
                 Text(
                   item['nombre'],
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
+                    color: context.textPrimary,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -1614,20 +1621,20 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   children: [
                     Text(
                       "${formater.format(item['precio'])} ${_t('x unit')}",
-                      style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                      style: TextStyle(color: context.textSecondary, fontSize: 11),
                     ),
                     if (item['descuento_aplicado'] != null && (item['descuento_aplicado'] as num) > 0) ...[
                       const SizedBox(width: 4),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
-                          color: Colors.amber.shade100,
+                          color: context.isDarkMode ? Colors.amber.shade900.withOpacity(0.3) : Colors.amber.shade100,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           "🏷️ -${formater.format(item['descuento_aplicado'])}",
                           style: TextStyle(
-                            color: Colors.amber.shade900,
+                            color: context.isDarkMode ? Colors.amber.shade300 : Colors.amber.shade900,
                             fontWeight: FontWeight.bold,
                             fontSize: 10,
                           ),
@@ -1656,9 +1663,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 alignment: Alignment.center,
                 child: Text(
                   "${item['cantidad']}",
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
+                    color: context.textPrimary,
                   ),
                 ),
               ),
@@ -1680,9 +1688,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
             children: [
               Text(
                 formater.format(item['subtotal']),
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
+                  color: context.textPrimary,
                 ),
               ),
               const SizedBox(height: 5),
@@ -1811,12 +1820,15 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.amber.shade300, width: 1.2),
+        border: Border.all(
+          color: context.isDarkMode ? Colors.amber.shade700 : Colors.amber.shade300,
+          width: 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.amber.withOpacity(0.08),
+            color: Colors.amber.withOpacity(context.isDarkMode ? 0.05 : 0.08),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -1833,19 +1845,19 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
               children: [
                 const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
                 const SizedBox(width: 6),
-                const Text(
+                Text(
                   "FAVORITOS DE ACCESO RÁPIDO (TOP 12)",
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.4,
-                    color: Color(0xFF1A1F2B),
+                    color: context.textPrimary,
                   ),
                 ),
                 const Spacer(),
                 Text(
                   "${_favoritos.length} productos",
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 11, color: context.textSecondary),
                 ),
                 const SizedBox(width: 4),
                 InkWell(
@@ -1963,10 +1975,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                               const SizedBox(height: 3),
                               Text(
                                 p['nombre'] ?? '',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 10,
-                                  color: Color(0xFF1A1F2B),
+                                  color: context.textPrimary,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -2049,7 +2061,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     double totalPagar = _calcularTotalPagar();
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
+      backgroundColor: context.scaffoldBg,
       body: Row(
         children: [
           // PANEL IZQUIERDO (PRODUCTOS)
@@ -2064,18 +2076,21 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: context.cardBg,
                     boxShadow: [
-                      BoxShadow(color: Colors.black12, blurRadius: 5),
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: context.isDarkMode ? 0.2 : 0.05),
+                        blurRadius: 5,
+                      ),
                     ],
                   ),
                   child: Row(
                     children: [
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.arrow_back_ios_new,
-                          color: Color(0xFF1A1F2B),
+                          color: context.textPrimary,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -2111,7 +2126,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                               borderSide: BorderSide.none,
                             ),
                             filled: true,
-                            fillColor: Colors.grey[100],
+                            fillColor: context.inputBg,
                           ),
                         ),
                       ),
@@ -2170,7 +2185,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 Container(
                   height: 50,
                   width: double.infinity,
-                  color: Colors.white,
+                  color: context.cardBg,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(
@@ -2197,14 +2212,14 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                       bool isFav = cat == "⭐ FAVORITOS";
 
                       Color fondoColor = isSelected
-                          ? (isFav ? Colors.amber.shade800 : const Color(0xFF1A1F2B))
-                          : (isFav ? Colors.amber.shade50 : (Colors.grey[100] ?? Colors.grey));
+                          ? (isFav ? Colors.amber.shade800 : (context.isDarkMode ? Colors.green.shade700 : const Color(0xFF1A1F2B)))
+                          : (isFav ? (context.isDarkMode ? Colors.amber.shade900.withOpacity(0.3) : Colors.amber.shade50) : context.chipBg);
                       Color bordeColor = isSelected
                           ? Colors.transparent
-                          : (isFav ? Colors.amber.shade300 : (Colors.grey[300] ?? Colors.grey));
+                          : (isFav ? (context.isDarkMode ? Colors.amber.shade700 : Colors.amber.shade300) : context.borderSubtle);
                       Color textoColor = isSelected
                           ? Colors.white
-                          : (isFav ? Colors.amber.shade900 : Colors.black87);
+                          : (isFav ? (context.isDarkMode ? Colors.amber.shade300 : Colors.amber.shade900) : context.textPrimary);
 
                       return Padding(
                         padding: const EdgeInsets.only(right: 8.0),
@@ -2274,17 +2289,17 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: context.cardBg,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: stockBajo
-                                  ? Colors.red.withOpacity(0.3)
-                                  : Colors.grey.withOpacity(0.1),
+                                  ? Colors.red.withOpacity(0.5)
+                                  : context.borderSubtle,
                               width: stockBajo ? 1.5 : 1,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.grey.withOpacity(0.05),
+                                color: Colors.black.withValues(alpha: context.isDarkMode ? 0.2 : 0.05),
                                 blurRadius: 10,
                                 offset: const Offset(0, 5),
                               ),
@@ -2366,9 +2381,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                       child: Text(
                                         p['nombre'],
                                         textAlign: TextAlign.center,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 12,
+                                          color: context.textPrimary,
                                         ),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
@@ -2385,8 +2401,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                 ),
                                 decoration: BoxDecoration(
                                   color: stockBajo
-                                      ? Colors.red[50]
-                                      : Colors.blue[50],
+                                      ? (context.isDarkMode ? Colors.red.shade900.withOpacity(0.3) : Colors.red[50])
+                                      : (context.isDarkMode ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue[50]),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -2395,8 +2411,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
                                     color: stockBajo
-                                        ? Colors.red
-                                        : Colors.blue[800],
+                                        ? (context.isDarkMode ? Colors.red.shade300 : Colors.red)
+                                        : (context.isDarkMode ? Colors.blue.shade300 : Colors.blue[800]),
                                   ),
                                 ),
                               ),
@@ -2446,7 +2462,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                 Text(
                                   formater.format(p['precio_venta']),
                                   style: TextStyle(
-                                    color: Colors.green[800],
+                                    color: context.isDarkMode ? Colors.green.shade400 : Colors.green[800],
                                     fontWeight: FontWeight.w900,
                                     fontSize: 13,
                                   ),
@@ -2468,10 +2484,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
             flex: 35,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: context.cardBg,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: context.isDarkMode ? 0.2 : 0.05),
                     blurRadius: 10,
                     offset: const Offset(-5, 0),
                   ),
@@ -2481,7 +2497,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 children: [
                   Container(
                     height: 50,
-                    color: const Color(0xFFF0F2F5),
+                    color: context.scaffoldBg,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
                       itemCount: _sessions.length + 1,
@@ -2506,7 +2522,11 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                             width: 100,
                             margin: const EdgeInsets.only(right: 1),
                             decoration: BoxDecoration(
-                              color: isActive ? Colors.white : Colors.grey[200],
+                              color: isActive
+                                  ? context.cardBg
+                                  : (context.isDarkMode
+                                      ? const Color(0xFF161F2E)
+                                      : Colors.grey[200]),
                               borderRadius: const BorderRadius.vertical(
                                 top: Radius.circular(10),
                               ),
@@ -2523,8 +2543,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                           fontWeight: FontWeight.bold,
                                           fontSize: 11,
                                           color: isActive
-                                              ? Colors.black
-                                              : Colors.grey,
+                                              ? context.textPrimary
+                                              : context.textSecondary,
                                         ),
                                       ),
                                       Text(
@@ -2533,7 +2553,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                           fontSize: 10,
                                           color: isActive
                                               ? Colors.green
-                                              : Colors.grey,
+                                              : context.textSecondary,
                                         ),
                                       ),
                                     ],
@@ -2561,14 +2581,14 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    color: Colors.green[50],
+                    color: context.isDarkMode ? const Color(0xFF064E3B) : Colors.green[50],
                     width: double.infinity,
                     child: Text(
                       "🛒 ${_t('Carrito')} (${_t('Cliente')} ${_currentSessionIndex + 1})",
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: Colors.green,
+                        color: context.isDarkMode ? const Color(0xFF6EE7B7) : Colors.green,
                         fontSize: 16,
                       ),
                     ),
@@ -2605,7 +2625,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0F2F5),
+                      color: context.scaffoldBg,
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(20),
                       ),
@@ -2619,10 +2639,10 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                             vertical: 10,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: context.cardBg,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: Colors.grey.withOpacity(0.3),
+                              color: context.borderSubtle,
                             ),
                           ),
                           child: Row(
@@ -2630,17 +2650,18 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                             children: [
                               Text(
                                 _t("COD:"),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.grey,
+                                  color: context.textSecondary,
                                 ),
                               ),
                               Text(
                                 _codigoTeclado.isEmpty ? "---" : _codigoTeclado,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                   letterSpacing: 2,
+                                  color: context.textPrimary,
                                 ),
                               ),
                             ],
@@ -2690,12 +2711,14 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                           ),
                                           child: Container(
                                             decoration: BoxDecoration(
-                                              color: Colors.red[50],
+                                              color: context.isDarkMode
+                                                  ? Colors.red.shade900.withOpacity(0.3)
+                                                  : Colors.red[50],
                                               borderRadius:
                                                   BorderRadius.circular(15),
                                               border: Border.all(
                                                 color: Colors.red.withOpacity(
-                                                  0.2,
+                                                  0.3,
                                                 ),
                                               ),
                                             ),
@@ -2757,10 +2780,14 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                               vertical: 5,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.deepOrange.shade50,
+                              color: context.isDarkMode
+                                  ? Colors.deepOrange.shade900.withOpacity(0.3)
+                                  : Colors.deepOrange.shade50,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: Colors.deepOrange.shade200,
+                                color: context.isDarkMode
+                                    ? Colors.deepOrange.shade700
+                                    : Colors.deepOrange.shade200,
                               ),
                             ),
                             child: Row(
@@ -2774,7 +2801,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.deepOrange.shade800,
+                                        color: context.isDarkMode
+                                            ? Colors.deepOrange.shade300
+                                            : Colors.deepOrange.shade800,
                                       ),
                                     ),
                                   ],
@@ -2784,7 +2813,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w900,
-                                    color: Colors.deepOrange.shade800,
+                                    color: context.isDarkMode
+                                        ? Colors.deepOrange.shade300
+                                        : Colors.deepOrange.shade800,
                                   ),
                                 ),
                               ],
@@ -2795,17 +2826,18 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           children: [
                             Text(
                               _t("TOTAL:"),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
+                                color: context.textPrimary,
                               ),
                             ),
                             Text(
                               formater.format(totalPagar),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 24,
-                                color: Color(0xFF1A1F2B),
+                                color: context.textPrimary,
                               ),
                             ),
                           ],
@@ -2820,7 +2852,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                     ? _cancelarVentaActual
                                     : null,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white,
+                                  backgroundColor: context.isDarkMode
+                                      ? const Color(0xFF271A1E)
+                                      : Colors.white,
                                   foregroundColor: Colors.red,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 15,
@@ -2842,7 +2876,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                               child: ElevatedButton(
                                 onPressed: totalPagar > 0 ? _mostrarPago : null,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1A1F2B),
+                                  backgroundColor: const Color(0xFF10B981),
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 15,
@@ -2850,8 +2884,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
-                                  elevation: 5,
-                                  shadowColor: Colors.black45,
+                                  elevation: 4,
                                 ),
                                 child: Text(
                                   _t("COBRAR"),

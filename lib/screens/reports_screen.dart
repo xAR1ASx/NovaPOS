@@ -4,6 +4,7 @@ import '../database/db_helper.dart';
 import '../services/permission_service.dart';
 import '../services/locale_service.dart';
 import '../services/excel_export_service.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -168,9 +169,16 @@ class _ReportsScreenState extends State<ReportsScreen>
       lastDate: DateTime.now(),
       builder: (context, child) {
         return Theme(
-          data: ThemeData.light().copyWith(
-            colorScheme: const ColorScheme.light(primary: Color(0xFF1A1F2B)),
-          ),
+          data: context.isDarkMode
+              ? ThemeData.dark().copyWith(
+                  colorScheme: const ColorScheme.dark(
+                    primary: Colors.orange,
+                    surface: Color(0xFF1F2937),
+                  ),
+                )
+              : ThemeData.light().copyWith(
+                  colorScheme: const ColorScheme.light(primary: Color(0xFF1A1F2B)),
+                ),
           child: child!,
         );
       },
@@ -239,20 +247,21 @@ class _ReportsScreenState extends State<ReportsScreen>
   Widget build(BuildContext context) {
     if (!PermissionService.can('REPORTES_VER')) {
       return Scaffold(
+        backgroundColor: context.scaffoldBg,
         appBar: AppBar(
           title: Text(_t('Inteligencia de Negocio')),
-          backgroundColor: const Color(0xFF1A1F2B),
+          backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : const Color(0xFF1A1F2B),
         ),
         body: Center(
-          child: Text(_t('No tienes permiso para ver los reportes')),
+          child: Text(_t('No tienes permiso para ver los reportes'), style: TextStyle(color: context.textPrimary)),
         ),
       );
     }
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t('Inteligencia de Negocio')),
-        backgroundColor: const Color(0xFF1A1F2B),
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : const Color(0xFF1A1F2B),
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -329,9 +338,9 @@ class _ReportsScreenState extends State<ReportsScreen>
                     vertical: 15,
                     horizontal: 10,
                   ),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE0E0E0),
-                    borderRadius: BorderRadius.vertical(
+                  decoration: BoxDecoration(
+                    color: context.isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFE0E0E0),
+                    borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(10),
                     ),
                   ),
@@ -342,7 +351,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                         child: Text(
                           _t('Concepto'),
                           style: TextStyle(
-                            color: Colors.grey[800],
+                            color: context.textPrimary,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -353,7 +362,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                           _t('HOY'),
                           textAlign: TextAlign.right,
                           style: TextStyle(
-                            color: Colors.blue[900],
+                            color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue[900],
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -364,7 +373,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                           _t('MES'),
                           textAlign: TextAlign.right,
                           style: TextStyle(
-                            color: Colors.blue[900],
+                            color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue[900],
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -375,7 +384,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                           _t('AÑO'),
                           textAlign: TextAlign.right,
                           style: TextStyle(
-                            color: Colors.blue[900],
+                            color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue[900],
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -435,7 +444,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                         _mes['utilidad_neta']!,
                         _anio['utilidad_neta']!,
                         esNegrita: true,
-                        color: Colors.black,
+                        color: context.textPrimary,
                         fontSize: 15,
                       ),
                     ],
@@ -477,7 +486,7 @@ class _ReportsScreenState extends State<ReportsScreen>
       children: [
         // Selector de Fechas
         Container(
-          color: Colors.white,
+          color: context.cardBg,
           padding: const EdgeInsets.all(10),
           child: Wrap(
             spacing: 8,
@@ -493,14 +502,16 @@ class _ReportsScreenState extends State<ReportsScreen>
                 label: Text(_t('Rango')),
                 avatar: const Icon(Icons.date_range, size: 16),
                 backgroundColor: _rangoSeleccionado == "Rango"
-                    ? Colors.orange[100]
-                    : Colors.grey[100],
+                    ? (context.isDarkMode ? Colors.orange.shade900.withOpacity(0.4) : Colors.orange[100])
+                    : context.chipBg,
                 onPressed: _seleccionarRangoManual,
               ),
               if (_cajeros.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(left: 10, top: 2),
                   child: DropdownButton<int>(
+                    dropdownColor: context.cardBg,
+                    style: TextStyle(color: context.textPrimary),
                     value: _cajeroIdFiltro,
                     isDense: true,
                     underline: const SizedBox.shrink(),
@@ -621,11 +632,11 @@ class _ReportsScreenState extends State<ReportsScreen>
                               return ListTile(
                                 dense: true,
                                 leading: CircleAvatar(
-                                  backgroundColor: Colors.blue[50],
+                                  backgroundColor: context.isDarkMode ? const Color(0xFF1E293B) : Colors.blue[50],
                                   child: Text(
                                     "${index + 1}",
                                     style: TextStyle(
-                                      color: Colors.blue[900],
+                                      color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue[900],
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -679,7 +690,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                                     trailing: Text(formater.format(c['total'])),
                                     subtitle: LinearProgressIndicator(
                                       value: porcentaje,
-                                      backgroundColor: Colors.grey[200],
+                                      backgroundColor: context.isDarkMode ? const Color(0xFF374151) : Colors.grey[200],
                                       color: Colors.orange,
                                       minHeight: 5,
                                       borderRadius: BorderRadius.circular(5),
@@ -764,12 +775,15 @@ class _ReportsScreenState extends State<ReportsScreen>
       avatar: Icon(
         icon,
         size: 17,
-        color: selected ? Colors.orangeAccent : Colors.grey[600],
+        color: selected
+            ? Colors.orangeAccent
+            : (context.isDarkMode ? Colors.grey[400] : Colors.grey[600]),
       ),
       selected: selected,
-      selectedColor: const Color(0xFF1A1F2B),
+      selectedColor: context.isDarkMode ? const Color(0xFF374151) : const Color(0xFF1A1F2B),
+      backgroundColor: context.chipBg,
       labelStyle: TextStyle(
-        color: selected ? Colors.white : Colors.black,
+        color: selected ? Colors.white : context.textPrimary,
         fontWeight: FontWeight.bold,
       ),
       onSelected: (v) => _aplicarFiltroDetalle(label),
@@ -812,7 +826,7 @@ class _ReportsScreenState extends State<ReportsScreen>
     TextStyle estilo = TextStyle(
       fontSize: fontSize,
       fontWeight: esNegrita ? FontWeight.w900 : FontWeight.normal,
-      color: color ?? Colors.black87,
+      color: color ?? (context.isDarkMode ? Colors.white70 : Colors.black87),
     );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -820,7 +834,7 @@ class _ReportsScreenState extends State<ReportsScreen>
         children: [
           Expanded(
             flex: 3,
-            child: Text(label, style: estilo.copyWith(color: Colors.black87)),
+            child: Text(label, style: estilo.copyWith(color: context.textPrimary)),
           ),
           Expanded(
             flex: 2,
@@ -855,9 +869,14 @@ class _ReportsScreenState extends State<ReportsScreen>
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.cardBg,
         borderRadius: BorderRadius.circular(10),
-        border: Border(left: BorderSide(color: color, width: 5)),
+        border: Border(
+          left: BorderSide(color: color, width: 5),
+          top: BorderSide(color: context.borderSubtle),
+          right: BorderSide(color: context.borderSubtle),
+          bottom: BorderSide(color: context.borderSubtle),
+        ),
         boxShadow: [
           BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5),
         ],
@@ -873,7 +892,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                 child: Text(
                   titulo,
                   style: TextStyle(
-                    color: Colors.grey[700],
+                    color: context.textSecondary,
                     fontWeight: FontWeight.bold,
                     fontSize: 11,
                   ),
@@ -884,10 +903,10 @@ class _ReportsScreenState extends State<ReportsScreen>
           const SizedBox(height: 10),
           Text(
             formater.format(valor),
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w900,
               fontSize: 18,
-              color: Colors.black87,
+              color: context.textPrimary,
             ),
           ),
         ],

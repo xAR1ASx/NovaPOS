@@ -4,6 +4,7 @@
 **Versión Actual:** 1.5.0
 
 ## 🎯 Hitos Completados
+- [x] **Modo Oscuro Global y Sistema de Temas Unificado**: Soporte total Claro/Oscuro en el 100% de las pantallas y componentes, contraste asegurado y tipografía adaptable.
 - [x] **Auditoría Integral y Suite de Pruebas de Caja**: 42 pruebas automatizadas en `flutter test` pasando al 100%.
 - [x] **Inyecciones de Dinero en Caja**: Botón nativo de "INGRESAR DINERO" para registrar bases adicionales, préstamos o inyecciones de capital.
 - [x] **Asistente Inteligente de Pago de Pedidos con Fondos Insuficientes**: Resuelve el caso de pedidos mayores al saldo en caja mediante la operación atómica `registrarIngresoYGasto` (ingreso + pago en una sola transacción SQLite).

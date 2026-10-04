@@ -5,6 +5,7 @@ import '../services/session_service.dart';
 import '../services/balanza_service.dart';
 import '../utils/numero.dart';
 import '../services/locale_service.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -355,12 +356,13 @@ class _MermasScreenState extends State<MermasScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(
           _t('Mermas y Bajas de Inventario'),
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.orange.shade800,
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.orange.shade800,
         foregroundColor: Colors.white,
       ),
       body: _cargando
@@ -372,7 +374,7 @@ class _MermasScreenState extends State<MermasScreen> {
                     horizontal: 20,
                     vertical: 16,
                   ),
-                  color: Colors.orange.shade50,
+                  color: context.isDarkMode ? Colors.orange.shade900.withOpacity(0.3) : Colors.orange.shade50,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -383,7 +385,7 @@ class _MermasScreenState extends State<MermasScreen> {
                             _t('Total Pérdidas'),
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.orange.shade900,
+                              color: context.isDarkMode ? Colors.orangeAccent : Colors.orange.shade900,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -393,7 +395,7 @@ class _MermasScreenState extends State<MermasScreen> {
                             style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.w900,
-                              color: Colors.red.shade800,
+                              color: context.isDarkMode ? Colors.redAccent : Colors.red.shade800,
                             ),
                           ),
                         ],

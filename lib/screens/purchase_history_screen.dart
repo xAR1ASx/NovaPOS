@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/locale_service.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -57,7 +58,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: context.cardBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -80,9 +81,10 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                       children: [
                         Text(
                           "${_t('Compra #')}${compra['id']}",
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
+                            color: context.textPrimary,
                           ),
                         ),
                         Text(
@@ -90,7 +92,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                                   compra['proveedor'].toString().isNotEmpty
                               ? "${_t('Prov:')} ${compra['proveedor']}"
                               : _t('Proveedor: General'),
-                          style: TextStyle(color: Colors.grey[600]),
+                          style: TextStyle(color: context.textSecondary),
                         ),
                       ],
                     ),
@@ -186,9 +188,10 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t('Historial de Compras')),
-        backgroundColor: Colors.brown[800],
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.brown[800],
         foregroundColor: Colors.white,
       ),
       body: _cargando
@@ -199,14 +202,14 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Icons.history_edu, // Icono diferente para variar
+                    Icons.history_edu,
                     size: 80,
-                    color: Colors.grey[300],
+                    color: context.borderSubtle,
                   ),
                   const SizedBox(height: 10),
                   Text(
                     _t('No hay compras registradas aún'),
-                    style: const TextStyle(color: Colors.grey),
+                    style: TextStyle(color: context.textSecondary),
                   ),
                 ],
               ),
@@ -232,8 +235,8 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                       vertical: 5,
                     ),
                     leading: CircleAvatar(
-                      backgroundColor: Colors.brown[100],
-                      child: Icon(Icons.inventory_2, color: Colors.brown[800]),
+                      backgroundColor: context.isDarkMode ? Colors.brown.shade900.withOpacity(0.4) : Colors.brown[100],
+                      child: Icon(Icons.inventory_2, color: context.isDarkMode ? Colors.amber.shade200 : Colors.brown[800]),
                     ),
                     title: Text(
                       "${_t('Compra #')}${c['id']}",
@@ -248,7 +251,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                           ).format(DateTime.parse(c['fecha'])),
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey[600],
+                            color: context.textSecondary,
                           ),
                         ),
                         const SizedBox(height: 4),

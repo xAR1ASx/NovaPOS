@@ -1206,12 +1206,12 @@ class _SettingsScreenState extends State<SettingsScreen>
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                border: Border.all(color: Colors.grey.shade300),
+                color: context.isDarkMode ? const Color(0xFF1E293B) : Colors.grey.shade50,
+                border: Border.all(color: context.borderSubtle),
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withOpacity(context.isDarkMode ? 0.3 : 0.04),
                     blurRadius: 6,
                     offset: const Offset(0, 3),
                   ),
@@ -1222,48 +1222,50 @@ class _SettingsScreenState extends State<SettingsScreen>
                 children: [
                   Text(
                     nombre,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                       letterSpacing: 0.5,
+                      color: context.textPrimary,
                     ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 2),
-                  Text(nit, style: const TextStyle(fontSize: 10)),
+                  Text(nit, style: TextStyle(fontSize: 10, color: context.textSecondary)),
                   Text(
                     regimen,
-                    style: TextStyle(fontSize: 9, color: Colors.grey.shade700),
+                    style: TextStyle(fontSize: 9, color: context.textSecondary),
                   ),
                   Text(
                     direccion,
-                    style: const TextStyle(fontSize: 9),
+                    style: TextStyle(fontSize: 9, color: context.textSecondary),
                     textAlign: TextAlign.center,
                   ),
-                  Text(ciudad, style: const TextStyle(fontSize: 9)),
-                  Text(telefono, style: const TextStyle(fontSize: 9)),
+                  Text(ciudad, style: TextStyle(fontSize: 9, color: context.textSecondary)),
+                  Text(telefono, style: TextStyle(fontSize: 9, color: context.textSecondary)),
                   const Divider(thickness: 1, height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         "Ticket #0001 (BORRADOR)",
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.bold,
+                          color: context.textPrimary,
                         ),
                       ),
                       Text(
                         DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
-                        style: const TextStyle(fontSize: 9),
+                        style: TextStyle(fontSize: 9, color: context.textSecondary),
                       ),
                     ],
                   ),
-                  const Align(
+                  Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
                       "Cajero: Administrador | Caja: 01",
-                      style: TextStyle(fontSize: 8, color: Colors.black54),
+                      style: TextStyle(fontSize: 8, color: context.textSecondary),
                     ),
                   ),
                   const Divider(thickness: 1, height: 16),
@@ -1621,9 +1623,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: const Text("Configuración Total"),
-        backgroundColor: Colors.blueGrey[800],
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.blueGrey[800],
         foregroundColor: Colors.white,
         bottom: TabBar(
           controller: _tabController,

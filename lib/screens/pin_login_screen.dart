@@ -10,6 +10,7 @@ import '../services/sync_service.dart';
 import '../services/license_monitor.dart';
 import '../database/db_helper.dart';
 import 'home_screen.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -287,7 +288,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: context.scaffoldBg,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -300,13 +301,13 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.green.shade50,
+                      color: context.isDarkMode ? Colors.green.shade900.withOpacity(0.3) : Colors.green.shade50,
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       Icons.store,
                       size: 56,
-                      color: Colors.green.shade700,
+                      color: context.isDarkMode ? Colors.greenAccent : Colors.green.shade700,
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -314,7 +315,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                     'NovaPOS',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: Colors.green.shade800,
+                          color: context.isDarkMode ? Colors.greenAccent : Colors.green.shade800,
                         ),
                   ),
                   const SizedBox(height: 8),
@@ -322,12 +323,12 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.person, size: 16, color: Colors.grey.shade500),
+                        Icon(Icons.person, size: 16, color: context.textSecondary),
                         const SizedBox(width: 4),
                         Text(
                           _emailGuardado,
                           style: TextStyle(
-                            color: Colors.grey.shade600,
+                            color: context.textSecondary,
                             fontSize: 13,
                           ),
                         ),
@@ -337,7 +338,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                           child: Text(
                             'Cambiar',
                             style: TextStyle(
-                              color: Colors.blue.shade600,
+                              color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue.shade600,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
@@ -354,7 +355,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                             ? _t('Ingresa tu PIN para acceder')
                             : _t('Ingresa tu correo y PIN'),
                     style: TextStyle(
-                      color: _bloqueado ? Colors.red : Colors.grey.shade600,
+                      color: _bloqueado ? Colors.redAccent : context.textSecondary,
                       fontSize: 14,
                     ),
                   ),
@@ -415,9 +416,13 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
           height: 16,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: lleno ? Colors.green.shade700 : Colors.grey.shade200,
+            color: lleno
+                ? Colors.green.shade700
+                : (context.isDarkMode ? const Color(0xFF374151) : Colors.grey.shade200),
             border: Border.all(
-              color: lleno ? Colors.green.shade700 : Colors.grey.shade400,
+              color: lleno
+                  ? Colors.green.shade700
+                  : (context.isDarkMode ? const Color(0xFF4B5563) : Colors.grey.shade400),
               width: 2,
             ),
           ),
@@ -472,12 +477,18 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
               },
         style: ElevatedButton.styleFrom(
           backgroundColor: esEntrar
-              ? (_pin.length >= 6 ? Colors.green.shade700 : Colors.grey.shade300)
-              : Colors.grey.shade100,
-          foregroundColor: esEntrar ? Colors.white : Colors.black87,
+              ? (_pin.length >= 6
+                  ? Colors.green.shade700
+                  : (context.isDarkMode ? const Color(0xFF374151) : Colors.grey.shade300))
+              : (context.isDarkMode ? const Color(0xFF1E293B) : Colors.grey.shade100),
+          foregroundColor: esEntrar ? Colors.white : context.textPrimary,
           elevation: esEntrar ? 2 : 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: context.borderSubtle,
+              width: 1,
+            ),
           ),
         ),
         child: Text(
@@ -488,8 +499,8 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
             color: esEntrar
                 ? (_pin.length >= 6 ? Colors.white : Colors.grey.shade500)
                 : tecla == 'C'
-                    ? Colors.red
-                    : Colors.black87,
+                    ? (context.isDarkMode ? Colors.redAccent.shade100 : Colors.red)
+                    : context.textPrimary,
           ),
         ),
       ),

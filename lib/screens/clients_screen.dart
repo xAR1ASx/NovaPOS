@@ -4,6 +4,7 @@ import '../database/db_helper.dart';
 import '../services/session_service.dart';
 import '../services/locale_service.dart';
 import '../utils/numero.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -238,9 +239,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t("Clientes")),
-        backgroundColor: Colors.purple[800],
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.purple[800],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _crearCliente,

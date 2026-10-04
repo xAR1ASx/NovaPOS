@@ -19,6 +19,7 @@ import 'pin_login_screen.dart';
 import 'users_screen.dart';
 import 'promociones_screen.dart';
 import '../services/locale_service.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -206,14 +207,14 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
+      backgroundColor: context.scaffoldBg,
 
       appBar: AppBar(
         title: const Text(
           "NovaPOS",
           style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5),
         ),
-        backgroundColor: const Color(0xFF1A1F2B), // Dark Navy
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : const Color(0xFF1A1F2B),
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -250,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       "${_t('Bienvenido')} ${SessionService.userName()}",
                       style: TextStyle(
                         fontSize: 16,
-                        color: Colors.grey[600],
+                        color: context.textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -259,10 +260,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     Text(
                       _t('Panel de Control'),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1F2B),
+                        color: context.textPrimary,
                       ),
                     ),
                   ],
@@ -273,11 +274,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: context.cardBg,
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: context.borderSubtle),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: context.isDarkMode ? 0.2 : 0.05),
                         blurRadius: 10,
                       ),
                     ],
@@ -286,17 +288,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Text(
                         DateFormat('MMMM').format(DateTime.now()).toUpperCase(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
+                          color: context.textSecondary,
                         ),
                       ),
                       Text(
                         DateFormat('d').format(DateTime.now()),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Colors.blue,
+                          color: context.isDarkMode ? Colors.blue.shade400 : Colors.blue,
                         ),
                       ),
                     ],
@@ -586,20 +589,21 @@ class _HomeScreenState extends State<HomeScreen> {
     Color color, {
     bool isAlert = false,
   }) {
+    final isDark = context.isDarkMode;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.cardBg,
           borderRadius: BorderRadius.circular(20),
           border: isAlert
-              ? Border.all(color: Colors.red.withOpacity(0.5), width: 1.5)
-              : Border.all(color: Colors.transparent),
+              ? Border.all(color: Colors.red.withOpacity(0.6), width: 1.5)
+              : Border.all(color: context.borderSubtle),
           boxShadow: [
             BoxShadow(
               color: isAlert
-                  ? Colors.red.withOpacity(0.1)
-                  : Colors.grey.withOpacity(0.05),
+                  ? Colors.red.withOpacity(0.15)
+                  : (isDark ? Colors.black26 : Colors.grey.withOpacity(0.05)),
               blurRadius: 15,
               offset: const Offset(0, 5),
             ),
@@ -611,7 +615,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withOpacity(isDark ? 0.22 : 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: color, size: 24),
@@ -622,14 +626,14 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
-                color: Colors.grey[800],
+                color: context.textPrimary,
               ),
             ),
             Text(
               title,
               style: TextStyle(
                 fontSize: 11,
-                color: Colors.grey[500],
+                color: context.textSecondary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -646,19 +650,23 @@ class _HomeScreenState extends State<HomeScreen> {
     Color color,
     VoidCallback onTap,
   ) {
+    final isDark = context.isDarkMode;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.cardBg,
           borderRadius: BorderRadius.circular(20),
           // Borde sutil del color del icono
-          border: Border.all(color: color.withOpacity(0.15), width: 1.5),
+          border: Border.all(
+            color: color.withOpacity(isDark ? 0.35 : 0.15),
+            width: 1.5,
+          ),
           // Sombra "Glow" del color del icono
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.15), // Luz de color
+              color: color.withOpacity(isDark ? 0.25 : 0.15), // Luz de color
               blurRadius: 12,
               offset: const Offset(0, 6),
               spreadRadius: 0,
@@ -674,7 +682,10 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
-                  colors: [color.withOpacity(0.1), color.withOpacity(0.2)],
+                  colors: [
+                    color.withOpacity(isDark ? 0.25 : 0.1),
+                    color.withOpacity(isDark ? 0.40 : 0.2),
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -688,7 +699,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w800, // Letra más gruesa
-                color: Colors.grey[700],
+                color: context.textPrimary,
                 letterSpacing: 0.5,
               ),
             ),

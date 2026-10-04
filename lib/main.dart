@@ -57,22 +57,8 @@ class NovaPOSApp extends StatelessWidget {
                     GlobalCupertinoLocalizations.delegate,
                   ],
                   themeMode: themeMode,
-                  theme: ThemeData(
-                    primarySwatch: Colors.green,
-                    useMaterial3: true,
-                    visualDensity: esTablet
-                        ? VisualDensity.comfortable
-                        : VisualDensity.standard,
-                    scaffoldBackgroundColor: const Color(0xFFF5F5F5),
-                  ),
-                  darkTheme: ThemeData(
-                    primarySwatch: Colors.green,
-                    brightness: Brightness.dark,
-                    useMaterial3: true,
-                    visualDensity: esTablet
-                        ? VisualDensity.comfortable
-                        : VisualDensity.standard,
-                  ),
+                  theme: AppTheme.lightTheme(esTablet),
+                  darkTheme: AppTheme.darkTheme(esTablet),
               builder: (context, child) {
                 return MediaQuery(
                   data: MediaQuery.of(context).copyWith(

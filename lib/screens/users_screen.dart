@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../services/pin_auth_service.dart';
 import '../services/session_service.dart';
 import '../services/locale_service.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -337,9 +338,10 @@ class _UsersScreenState extends State<UsersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t('Gestionar Usuarios')),
-        backgroundColor: Colors.green.shade700,
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.green.shade700,
         foregroundColor: Colors.white,
       ),
       floatingActionButton: FloatingActionButton(
@@ -354,16 +356,16 @@ class _UsersScreenState extends State<UsersScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.people_outline, size: 64, color: Colors.grey.shade400),
+                      Icon(Icons.people_outline, size: 64, color: context.borderSubtle),
                       const SizedBox(height: 16),
                       Text(
                         _t('No hay usuarios'),
-                        style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
+                        style: TextStyle(fontSize: 18, color: context.textSecondary),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         _t('Toca + para crear el primer usuario'),
-                        style: TextStyle(color: Colors.grey.shade500),
+                        style: TextStyle(color: context.textSecondary),
                       ),
                     ],
                   ),
@@ -379,8 +381,8 @@ class _UsersScreenState extends State<UsersScreen> {
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: esAdmin
-                              ? Colors.green.shade100
-                              : Colors.blue.shade100,
+                              ? (context.isDarkMode ? Colors.green.shade900.withOpacity(0.4) : Colors.green.shade100)
+                              : (context.isDarkMode ? Colors.blue.shade900.withOpacity(0.4) : Colors.blue.shade100),
                           child: Icon(
                             esAdmin ? Icons.admin_panel_settings : Icons.person,
                             color: esAdmin ? Colors.green.shade700 : Colors.blue,
@@ -392,7 +394,7 @@ class _UsersScreenState extends State<UsersScreen> {
                         ),
                         subtitle: Text(
                           '${u['email'] ?? ''}  •  ${esAdmin ? _t('Admin') : _t('Cajero')}',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                          style: TextStyle(color: context.textSecondary, fontSize: 12),
                         ),
                         trailing: PopupMenuButton(
                           itemBuilder: (ctx) => [

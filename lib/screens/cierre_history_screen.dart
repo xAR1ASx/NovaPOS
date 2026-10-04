@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import '../services/printer_service.dart';
 import '../services/locale_service.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -50,7 +51,7 @@ class _CierreHistoryScreenState extends State<CierreHistoryScreen> {
   void _verDetalle(Map<String, dynamic> c) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: context.cardBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -65,7 +66,11 @@ class _CierreHistoryScreenState extends State<CierreHistoryScreen> {
               children: [
                 Text(
                   _t("Detalle del Cierre"),
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: context.textPrimary,
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
@@ -168,11 +173,11 @@ class _CierreHistoryScreenState extends State<CierreHistoryScreen> {
         children: [
           Text(
             label,
-            style: TextStyle(color: Colors.grey[700]),
+            style: TextStyle(color: context.textSecondary),
           ),
           Text(
             valor,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+            style: TextStyle(fontWeight: FontWeight.bold, color: context.textPrimary),
           ),
         ],
       ),
@@ -182,9 +187,10 @@ class _CierreHistoryScreenState extends State<CierreHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t("Historial de Cierres")),
-        backgroundColor: Colors.indigo[800],
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.indigo[800],
         foregroundColor: Colors.white,
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
@@ -202,12 +208,12 @@ class _CierreHistoryScreenState extends State<CierreHistoryScreen> {
                   Icon(
                     Icons.history_toggle_off,
                     size: 80,
-                    color: Colors.grey[300],
+                    color: context.borderSubtle,
                   ),
                   const SizedBox(height: 10),
                   Text(
                     _t("No hay cierres registrados"),
-                    style: TextStyle(color: Colors.grey[500]),
+                    style: TextStyle(color: context.textSecondary),
                   ),
                 ],
               ),

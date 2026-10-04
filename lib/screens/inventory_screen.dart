@@ -13,6 +13,7 @@ import 'mermas_screen.dart';
 import '../services/excel_export_service.dart';
 import '../services/sync_service.dart';
 import '../services/session_service.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -681,11 +682,11 @@ class _InventoryScreenState extends State<InventoryScreen>
 
         return ListTile(
           leading: CircleAvatar(
-            backgroundColor: Colors.grey[200],
+            backgroundColor: context.isDarkMode ? const Color(0xFF1E293B) : Colors.grey[200],
             backgroundImage: imgProvider,
             child: tieneFoto
                 ? null
-                : const Icon(Icons.image_not_supported, color: Colors.grey),
+                : Icon(Icons.image_not_supported, color: context.textSecondary),
           ),
           title: Text(
             p['nombre'],
@@ -777,13 +778,16 @@ class _InventoryScreenState extends State<InventoryScreen>
             padding: const EdgeInsets.all(10),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.blue[50],
+              color: context.isDarkMode ? Colors.blue.shade900.withOpacity(0.35) : Colors.blue[50],
               borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: context.isDarkMode ? Colors.blue.shade700 : Colors.transparent,
+              ),
             ),
             child: Text(
               _idEdicion == null ? _t("NUEVO PRODUCTO") : _t("EDITAR PRODUCTO"),
               style: TextStyle(
-                color: Colors.blue[900],
+                color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue[900],
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -799,9 +803,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  color: Colors.grey[200],
+                  color: context.isDarkMode ? const Color(0xFF1E293B) : Colors.grey[200],
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey[400]!),
+                  border: Border.all(color: context.borderSubtle),
                   image: () {
                     if (_imagenPathActual == null || _imagenPathActual!.isEmpty) {
                       return null;
@@ -1025,9 +1029,10 @@ class _InventoryScreenState extends State<InventoryScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t("Gestión de Inventario")),
-        backgroundColor: Colors.orange[800],
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.orange[800],
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -1129,7 +1134,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                       borderRadius: BorderRadius.circular(10),
                     ),
                     filled: true,
-                    fillColor: Colors.grey[100],
+                    fillColor: context.inputBg,
                   ),
                 ),
               ),

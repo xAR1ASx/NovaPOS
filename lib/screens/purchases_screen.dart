@@ -6,6 +6,7 @@ import '../services/locale_service.dart';
 import '../services/session_service.dart';
 import 'purchase_history_screen.dart';
 import '../utils/numero.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -263,9 +264,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.blue[50],
+                        color: context.isDarkMode ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue[50],
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.blue.shade100),
+                        border: Border.all(color: context.isDarkMode ? Colors.blue.shade700 : Colors.blue.shade100),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -276,7 +277,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                               const SizedBox(width: 6),
                               Text(
                                 _t('📦 CANTIDAD ENTRANTE'),
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue),
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue),
                               ),
                             ],
                           ),
@@ -328,7 +329,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                             alignment: Alignment.centerRight,
                             child: Text(
                               "${_t('Total Entrante:')} ${cantidadEntrante.toStringAsFixed(1)} ${producto['es_pesable'] == 1 ? 'Kg' : 'Unds'}",
-                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                              style: TextStyle(fontWeight: FontWeight.bold, color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue.shade900),
                             ),
                           ),
                         ],
@@ -341,9 +342,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.green[50],
+                        color: context.isDarkMode ? Colors.green.shade900.withOpacity(0.3) : Colors.green[50],
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.green.shade200),
+                        border: Border.all(color: context.isDarkMode ? Colors.green.shade700 : Colors.green.shade200),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,7 +355,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                               const SizedBox(width: 6),
                               Text(
                                 _t('💰 COSTO DE ESTE PRODUCTO EN LA FACTURA'),
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.green[900]),
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: context.isDarkMode ? Colors.greenAccent : Colors.green[900]),
                               ),
                             ],
                           ),
@@ -407,16 +408,16 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: context.cardBg,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(_t('NUEVO COSTO PROM. PONDERADO:'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                Text(_t('NUEVO COSTO PROM. PONDERADO:'), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: context.textPrimary)),
                                 Text(
                                   formater.format(costoPromedioPonderado),
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.green[800]),
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: context.isDarkMode ? Colors.greenAccent : Colors.green[800]),
                                 ),
                               ],
                             ),
@@ -431,9 +432,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.orange[50],
+                        color: context.isDarkMode ? Colors.orange.shade900.withOpacity(0.3) : Colors.orange[50],
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.orange.shade200),
+                        border: Border.all(color: context.isDarkMode ? Colors.orange.shade700 : Colors.orange.shade200),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,7 +445,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                               const SizedBox(width: 6),
                               Text(
                                 _t('📈 PRECIO DE VENTA Y MARGEN'),
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.orange[900]),
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: context.isDarkMode ? Colors.orangeAccent : Colors.orange[900]),
                               ),
                             ],
                           ),
@@ -460,8 +461,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   label: Text("+$p%", style: const TextStyle(fontSize: 11)),
                                   backgroundColor: porcentajeGananciaCtrl.text == p.toString()
-                                      ? Colors.orange[200]
-                                      : Colors.white,
+                                      ? (context.isDarkMode ? Colors.orange.shade800 : Colors.orange[200])
+                                      : context.chipBg,
                                 ),
                               );
                             }).toList(),
@@ -814,9 +815,10 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     final double totalSuma = _sumaSubtotales;
 
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t('Ingreso de Pedidos (Factura de Compra)')),
-        backgroundColor: Colors.brown[700],
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.brown[700],
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -836,7 +838,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
           // 1. CABECERA DE LA FACTURA
           Container(
             padding: const EdgeInsets.all(12),
-            color: Colors.white,
+            color: context.cardBg,
             child: Row(
               children: [
                 Expanded(
@@ -894,7 +896,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     : null,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 filled: true,
-                fillColor: Colors.grey[100],
+                fillColor: context.inputBg,
                 isDense: true,
               ),
             ),
@@ -906,9 +908,10 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
               constraints: const BoxConstraints(maxHeight: 220),
               margin: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: context.cardBg,
                 borderRadius: BorderRadius.circular(8),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))],
+                border: Border.all(color: context.borderSubtle),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(context.isDarkMode ? 0.4 : 0.08), blurRadius: 8, offset: const Offset(0, 4))],
               ),
               child: ListView.separated(
                 shrinkWrap: true,
@@ -952,13 +955,13 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
           // 3. ENCABEZADO DE LA LISTA DE PRODUCTOS CARGADOS EN ESTA FACTURA
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            color: Colors.grey[200],
+            color: context.isDarkMode ? const Color(0xFF1E293B) : Colors.grey[200],
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   "${_t('📦 Productos en esta Factura')} (${_incomingItems.length})",
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.brown[900], fontSize: 13),
+                  style: TextStyle(fontWeight: FontWeight.bold, color: context.isDarkMode ? Colors.amber.shade200 : Colors.brown[900], fontSize: 13),
                 ),
                 if (_incomingItems.isNotEmpty)
                   TextButton.icon(
@@ -979,16 +982,16 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey[350]),
+                        Icon(Icons.receipt_long_outlined, size: 64, color: context.borderSubtle),
                         const SizedBox(height: 10),
                         Text(
                           _t('Aún no has agregado productos a esta factura.'),
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.grey[700]),
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: context.textPrimary),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           _t('Usa el buscador arriba para agregar el primer producto del pedido.'),
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          style: TextStyle(fontSize: 12, color: context.textSecondary),
                         ),
                       ],
                     ),
@@ -1028,7 +1031,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                                     children: [
                                       Text(
                                         item['nombre'],
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: context.textPrimary),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -1039,26 +1042,35 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                                         children: [
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(4)),
+                                            decoration: BoxDecoration(
+                                              color: context.isDarkMode ? Colors.blue.shade900.withOpacity(0.35) : Colors.blue[50],
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
                                             child: Text(
                                               "Entran: ${cant.toStringAsFixed(1)} ${item['es_pesable'] == 1 ? 'Kg' : 'Und'}",
-                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue[900]),
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue[900]),
                                             ),
                                           ),
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(4)),
+                                            decoration: BoxDecoration(
+                                              color: context.isDarkMode ? Colors.green.shade900.withOpacity(0.35) : Colors.green[50],
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
                                             child: Text(
                                               "Costo: ${formater.format(subtotal)} (${formater.format(unitCosto)}/u)",
-                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green[900]),
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: context.isDarkMode ? Colors.greenAccent : Colors.green[900]),
                                             ),
                                           ),
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(4)),
+                                            decoration: BoxDecoration(
+                                              color: context.isDarkMode ? Colors.orange.shade900.withOpacity(0.35) : Colors.orange[50],
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
                                             child: Text(
                                               "+${item['porcentaje_ganancia']}% ➔ Venta: ${formater.format(nuevoPrecio)}",
-                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange[900]),
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: context.isDarkMode ? Colors.orangeAccent : Colors.orange[900]),
                                             ),
                                           ),
                                         ],
@@ -1100,8 +1112,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -4))],
+              color: context.cardBg,
+              border: Border(top: BorderSide(color: context.borderSubtle)),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(context.isDarkMode ? 0.3 : 0.08), blurRadius: 8, offset: const Offset(0, -4))],
             ),
             child: Row(
               children: [
@@ -1114,12 +1127,12 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                         children: [
                           Text(
                             _t('TOTAL FACTURA:'),
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey),
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: context.textSecondary),
                           ),
                           const SizedBox(width: 8),
                           Text(
                             formater.format(totalSuma),
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.brown[900]),
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: context.isDarkMode ? Colors.amber.shade300 : Colors.brown[900]),
                           ),
                         ],
                       ),

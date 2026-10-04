@@ -4,6 +4,7 @@ import '../database/db_helper.dart';
 import '../services/locale_service.dart';
 import '../services/permission_service.dart';
 import '../services/session_service.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -221,7 +222,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     if (!mounted) return;
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: context.cardBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -235,9 +236,10 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
               children: [
                 Text(
                   "${_t('Venta #')}${venta['id']}",
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
+                    color: context.textPrimary,
                   ),
                 ),
                 IconButton(
@@ -250,7 +252,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
               DateFormat(
                 'dd MMM yyyy - hh:mm a',
               ).format(DateTime.parse(venta['fecha'])),
-              style: TextStyle(color: Colors.grey[600]),
+              style: TextStyle(color: context.textSecondary),
             ),
             const Divider(),
             Expanded(
@@ -394,9 +396,10 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     );
 
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t('Historial de Ventas')),
-        backgroundColor: Colors.teal[800],
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.teal[800],
         foregroundColor: Colors.white,
       ),
       body: Column(
@@ -404,7 +407,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
           // 1. BARRA DE FILTROS
           Container(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-            color: Colors.white,
+            color: context.cardBg,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -415,7 +418,9 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                   onPressed: _seleccionarRangoManual,
                   icon: Icon(
                     Icons.calendar_month,
-                    color: _filtroActual == "Rango" ? Colors.teal : Colors.grey,
+                    color: _filtroActual == "Rango"
+                        ? Colors.tealAccent
+                        : (context.isDarkMode ? Colors.grey[400] : Colors.grey),
                   ),
                   tooltip: _t('Calendario'),
                 ),
@@ -427,14 +432,14 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
-            color: Colors.teal[50],
+            color: context.isDarkMode ? Colors.teal.shade900.withOpacity(0.3) : Colors.teal[50],
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   "$ventasValidas ${_t('Ventas')}",
                   style: TextStyle(
-                    color: Colors.teal[800],
+                    color: context.isDarkMode ? Colors.tealAccent : Colors.teal[800],
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -443,7 +448,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
-                    color: Colors.teal[900],
+                    color: context.isDarkMode ? Colors.tealAccent : Colors.teal[900],
                   ),
                 ),
               ],
@@ -552,12 +557,12 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                             ).format(DateTime.parse(v['fecha'])),
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.grey[700],
+                              color: context.textSecondary,
                             ),
                           ),
-                          trailing: const Icon(
+                          trailing: Icon(
                             Icons.chevron_right,
-                            color: Colors.grey,
+                            color: context.textSecondary,
                           ),
                           onTap: () => _verDetalleVenta(v),
                         ),
@@ -577,13 +582,13 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.teal : Colors.grey[100],
+          color: isSelected ? Colors.teal : context.chipBg,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           _t(label),
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black87,
+            color: isSelected ? Colors.white : context.textPrimary,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
           ),
         ),

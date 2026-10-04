@@ -10,6 +10,7 @@ NovaPOS combina una arquitectura local ultrarrápida impulsada por **SQLite (100
 
 El sistema se encuentra en su versión **1.5.0**, completamente blindado con seguridad nativa, auditoría integral y un módulo de caja y arqueo financiero de alto rendimiento. Modificaciones recientes incluyen:
 
+* **Modo Oscuro Global y Sistema de Temas Dinámico**: Implementación completa de temas Claro y Oscuro para el 100% de la aplicación. Con `ThemeContextExtension` y diseño de contraste óptimo en todas las pantallas (Home, POS, Caja, Inventario, Compras, Mermas, Combos, Reportes Financieros, Historiales, Usuarios y Login por PIN), garantizando legibilidad total sin textos perdidos o ilegibles.
 * **Inyección de Capital y Refuerzos de Caja**: Nuevo botón nativo de "INGRESAR DINERO" para registrar aportes, préstamos, inyecciones de socios o bases extras en cualquier momento del turno.
 * **Asistente Inteligente de Pago de Pedidos con Fondos Insuficientes**: Si llega un pedido de proveedor (ej. $300.000) y en caja solo hay una base menor (ej. $150.000), el sistema guía al cajero para inyectar el faltante y un colchón opcional, registrando la entrada y la salida en una **única transacción atómica** de SQLite (`registrarIngresoYGasto`) para evitar descuadres o cajas en negativo.
 * **Tirilla de Cierre / Arqueo Z Completa y con Firmas**: Rediseño contable formal de la tirilla térmica con:

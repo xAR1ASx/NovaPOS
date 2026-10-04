@@ -9,6 +9,7 @@ import '../services/printer_service.dart';
 import '../utils/numero.dart';
 import '../services/locale_service.dart';
 import 'cierre_history_screen.dart';
+import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -206,17 +207,21 @@ class _CashControlScreenState extends State<CashControlScreen> {
                 padding: const EdgeInsets.all(10),
                 margin: const EdgeInsets.only(bottom: 10),
                 decoration: BoxDecoration(
-                  color: esIngreso ? Colors.green[50] : Colors.orange[50],
+                  color: esIngreso
+                      ? (context.isDarkMode ? Colors.green.shade900.withOpacity(0.25) : Colors.green[50])
+                      : (context.isDarkMode ? Colors.orange.shade900.withOpacity(0.25) : Colors.orange[50]),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: (esIngreso ? Colors.green : Colors.orange).withOpacity(0.3),
+                    color: (esIngreso ? Colors.green : Colors.orange).withOpacity(0.4),
                   ),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.info,
-                      color: esIngreso ? Colors.green[800] : Colors.orange[800],
+                      color: esIngreso
+                          ? (context.isDarkMode ? Colors.green.shade300 : Colors.green[800])
+                          : (context.isDarkMode ? Colors.orange.shade300 : Colors.orange[800]),
                       size: 16,
                     ),
                     const SizedBox(width: 5),
@@ -224,7 +229,9 @@ class _CashControlScreenState extends State<CashControlScreen> {
                       child: Text(
                         '${_t("Disponible")}: ${formater.format(_totalEnCajaSistema)}',
                         style: TextStyle(
-                          color: esIngreso ? Colors.green[800] : Colors.orange[800],
+                          color: esIngreso
+                              ? (context.isDarkMode ? Colors.green.shade300 : Colors.green[800])
+                              : (context.isDarkMode ? Colors.orange.shade300 : Colors.orange[800]),
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),
@@ -378,16 +385,22 @@ class _CashControlScreenState extends State<CashControlScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.amber.shade50,
+                        color: context.isDarkMode
+                            ? Colors.amber.shade900.withOpacity(0.2)
+                            : Colors.amber.shade50,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.amber.shade300),
+                        border: Border.all(
+                          color: context.isDarkMode
+                              ? Colors.amber.shade700
+                              : Colors.amber.shade300,
+                        ),
                       ),
                       child: Column(
                         children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(_t("En caja solo hay:"), style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                              Text(_t("En caja solo hay:"), style: TextStyle(fontSize: 13, color: context.textPrimary)),
                               Text(formater.format(_totalEnCajaSistema), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                             ],
                           ),
@@ -395,7 +408,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(_t("Monto del pedido / gasto:"), style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                              Text(_t("Monto del pedido / gasto:"), style: TextStyle(fontSize: 13, color: context.textPrimary)),
                               Text(formater.format(gastoMonto), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 14)),
                             ],
                           ),
@@ -403,17 +416,31 @@ class _CashControlScreenState extends State<CashControlScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(_t("Faltante para cubrir el gasto:"), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.brown)),
-                              Text(formater.format(faltanteMinimo), style: TextStyle(fontWeight: FontWeight.bold, color: Colors.brown.shade800, fontSize: 15)),
+                              Text(
+                                _t("Faltante para cubrir el gasto:"),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: context.isDarkMode ? Colors.amber.shade300 : Colors.brown,
+                                ),
+                              ),
+                              Text(
+                                formater.format(faltanteMinimo),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: context.isDarkMode ? Colors.amber.shade200 : Colors.brown.shade800,
+                                  fontSize: 15,
+                                ),
+                              ),
                             ],
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     Text(
                       "Para no quedar sin saldo en caja, ingresa la cantidad faltante más un colchón para continuar operando:",
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                      style: TextStyle(fontSize: 12, color: context.textSecondary),
                     ),
                     const SizedBox(height: 10),
                     TextField(
@@ -426,7 +453,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
                         prefixIcon: const Icon(Icons.add_circle, color: Colors.green),
                         border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                         filled: true,
-                        fillColor: Colors.green.shade50.withOpacity(0.5),
+                        fillColor: context.isDarkMode ? Colors.green.shade900.withOpacity(0.2) : Colors.green.shade50.withOpacity(0.5),
                       ),
                       onChanged: (_) => setStateDialog(() {}),
                     ),
@@ -443,9 +470,15 @@ class _CashControlScreenState extends State<CashControlScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
-                        color: saldoFinalEstimado >= 0 ? Colors.green.shade100.withOpacity(0.5) : Colors.red.shade50,
+                        color: saldoFinalEstimado >= 0
+                            ? (context.isDarkMode ? Colors.green.shade900.withOpacity(0.25) : Colors.green.shade100.withOpacity(0.5))
+                            : (context.isDarkMode ? Colors.red.shade900.withOpacity(0.25) : Colors.red.shade50),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: saldoFinalEstimado >= 0 ? Colors.green.shade300 : Colors.red.shade300),
+                        border: Border.all(
+                          color: saldoFinalEstimado >= 0
+                              ? (context.isDarkMode ? Colors.green.shade700 : Colors.green.shade300)
+                              : (context.isDarkMode ? Colors.red.shade700 : Colors.red.shade300),
+                        ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -455,7 +488,9 @@ class _CashControlScreenState extends State<CashControlScreen> {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: saldoFinalEstimado >= 0 ? Colors.green.shade900 : Colors.red.shade900,
+                              color: saldoFinalEstimado >= 0
+                                  ? (context.isDarkMode ? Colors.green.shade300 : Colors.green.shade900)
+                                  : (context.isDarkMode ? Colors.red.shade300 : Colors.red.shade900),
                             ),
                           ),
                           Text(
@@ -609,17 +644,16 @@ class _CashControlScreenState extends State<CashControlScreen> {
             }
 
             return AlertDialog(
-              backgroundColor: Colors.grey[50],
+              backgroundColor: context.cardBg,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
-              // Aquí quité el 'const' para solucionar el error de constante inválida
               title: Column(
                 children: [
                   const Icon(Icons.lock_clock, size: 50, color: Colors.purple),
                   Text(
                     _t("Cierre de Turno"),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: context.textPrimary),
                   ),
                 ],
               ),
@@ -634,7 +668,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
                         padding: const EdgeInsets.all(10),
                         margin: const EdgeInsets.only(bottom: 12),
                         decoration: BoxDecoration(
-                          color: Colors.indigo[50],
+                          color: context.isDarkMode ? const Color(0xFF1E2640) : Colors.indigo[50],
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
@@ -643,15 +677,15 @@ class _CashControlScreenState extends State<CashControlScreen> {
                             Text(
                               _t("Ventas globales (todas las cajas)"),
                               style: TextStyle(
-                                color: Colors.indigo[800],
+                                color: context.isDarkMode ? Colors.indigo.shade200 : Colors.indigo[800],
                                 fontSize: 12,
                               ),
                             ),
                             Text(
                               formater.format(_ventasGlobal),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: Colors.indigo,
+                                color: context.isDarkMode ? Colors.indigo.shade300 : Colors.indigo,
                               ),
                             ),
                           ],
@@ -660,10 +694,10 @@ class _CashControlScreenState extends State<CashControlScreen> {
                       Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: context.cardSubtle,
                           borderRadius: BorderRadius.circular(15),
                           border: Border.all(
-                            color: Colors.purple.withOpacity(0.3),
+                            color: context.isDarkMode ? Colors.purple.shade700 : Colors.purple.withOpacity(0.3),
                           ),
                         ),
                         child: Row(
@@ -671,7 +705,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
                           children: [
                             Text(
                               _t("El sistema espera:"),
-                              style: const TextStyle(color: Colors.grey),
+                              style: TextStyle(color: context.textSecondary),
                             ),
                             Text(
                               formater.format(_totalEnCajaSistema),
@@ -686,14 +720,13 @@ class _CashControlScreenState extends State<CashControlScreen> {
                       ),
                       const SizedBox(height: 20),
                       TextField(
-                        controller:
-                            realController, // Aquí usamos la variable que definimos arriba
+                        controller: realController,
                         keyboardType: TextInputType.number,
                         autofocus: true,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
-                          color: Colors.black87,
+                          color: context.textPrimary,
                         ),
                         textAlign: TextAlign.center,
                         decoration: InputDecoration(
@@ -702,7 +735,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
                           border: const OutlineInputBorder(),
                           prefixIcon: const Icon(Icons.money),
                           filled: true,
-                          fillColor: Colors.white,
+                          fillColor: context.inputBg,
                         ),
                         onChanged: (val) => setStateDialog(() {}),
                       ),
@@ -932,19 +965,19 @@ class _CashControlScreenState extends State<CashControlScreen> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.purple.shade50,
+                color: context.isDarkMode ? Colors.purple.shade900.withOpacity(0.3) : Colors.purple.shade50,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.purple.shade200),
+                border: Border.all(color: context.isDarkMode ? Colors.purple.shade700 : Colors.purple.shade200),
               ),
               child: Column(
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(_t("Total Ventas Turno:"), style: const TextStyle(fontSize: 13)),
+                      Text(_t("Total Ventas Turno:"), style: TextStyle(fontSize: 13, color: context.textPrimary)),
                       Text(
                         formater.format(cierre['ventas_turno_global'] ?? cierre['ventas_turno'] ?? 0),
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: context.textPrimary),
                       ),
                     ],
                   ),
@@ -952,10 +985,10 @@ class _CashControlScreenState extends State<CashControlScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(_t("Efectivo Contado:"), style: const TextStyle(fontSize: 13)),
+                      Text(_t("Efectivo Contado:"), style: TextStyle(fontSize: 13, color: context.textPrimary)),
                       Text(
                         formater.format(cierre['real_contado'] ?? 0),
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: context.textPrimary),
                       ),
                     ],
                   ),
@@ -963,13 +996,15 @@ class _CashControlScreenState extends State<CashControlScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(_t("Estado del Cuadre:"), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(_t("Estado del Cuadre:"), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: context.textPrimary)),
                       Text(
                         cierre['estado'] ?? 'OK',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
-                          color: cierre['estado'] == 'OK' ? Colors.green.shade800 : Colors.red.shade800,
+                          color: cierre['estado'] == 'OK'
+                              ? (context.isDarkMode ? Colors.greenAccent : Colors.green.shade800)
+                              : (context.isDarkMode ? Colors.redAccent : Colors.red.shade800),
                         ),
                       ),
                     ],
@@ -1004,7 +1039,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
             onPressed: () => Navigator.pop(ctx),
             child: Text(
               _t("LISTO / SALIR"),
-              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+              style: TextStyle(fontWeight: FontWeight.bold, color: context.textSecondary),
             ),
           ),
         ],
@@ -1014,12 +1049,22 @@ class _CashControlScreenState extends State<CashControlScreen> {
 
   // Helpers de Color
   Color differenceColorBg(double diff) {
+    if (context.isDarkMode) {
+      if (diff == 0) return Colors.green.shade900.withOpacity(0.35);
+      if (diff > 0) return Colors.blue.shade900.withOpacity(0.35);
+      return Colors.red.shade900.withOpacity(0.35);
+    }
     if (diff == 0) return Colors.green[50]!;
     if (diff > 0) return Colors.blue[50]!;
     return Colors.red[50]!;
   }
 
   Color differenceColorText(double diff) {
+    if (context.isDarkMode) {
+      if (diff == 0) return Colors.greenAccent.shade200;
+      if (diff > 0) return Colors.lightBlueAccent.shade100;
+      return Colors.redAccent.shade100;
+    }
     if (diff == 0) return Colors.green[800]!;
     if (diff > 0) return Colors.blue[800]!;
     return Colors.red[800]!;
@@ -1033,10 +1078,10 @@ class _CashControlScreenState extends State<CashControlScreen> {
     Color estadoColor = _cajaAbierta ? Colors.green : Colors.red;
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: context.scaffoldBg,
       appBar: AppBar(
         title: Text(_t("Gestión de Efectivo")),
-        backgroundColor: Colors.indigo[800],
+        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.indigo[800],
         foregroundColor: Colors.white,
         centerTitle: true,
         elevation: 0,
@@ -1071,13 +1116,19 @@ class _CashControlScreenState extends State<CashControlScreen> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: _cajaAbierta
-                          ? [Colors.blue.shade900, Colors.blue.shade600]
-                          : [Colors.grey.shade800, Colors.grey.shade600],
+                          ? (context.isDarkMode
+                              ? [const Color(0xFF1E3A8A), const Color(0xFF1E40AF)]
+                              : [Colors.blue.shade900, Colors.blue.shade600])
+                          : (context.isDarkMode
+                              ? [const Color(0xFF1F2937), const Color(0xFF374151)]
+                              : [Colors.grey.shade800, Colors.grey.shade600]),
                     ),
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.blue.withOpacity(0.3),
+                        color: context.isDarkMode
+                            ? Colors.black.withOpacity(0.3)
+                            : Colors.blue.withOpacity(0.3),
                         blurRadius: 15,
                         offset: const Offset(0, 10),
                       ),
@@ -1254,8 +1305,8 @@ class _CashControlScreenState extends State<CashControlScreen> {
                         icon: const Icon(Icons.history),
                         label: Text(_t("VER HISTORIAL DE CIERRES")),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.indigo[800],
-                          side: BorderSide(color: Colors.indigo[800]!),
+                          foregroundColor: context.isDarkMode ? Colors.indigo.shade200 : Colors.indigo[800],
+                          side: BorderSide(color: context.isDarkMode ? Colors.indigo.shade400 : Colors.indigo[800]!),
                         ),
                       ),
                     ),
@@ -1315,25 +1366,38 @@ class _CashControlScreenState extends State<CashControlScreen> {
                       }
 
                       return Card(
-                        elevation: esCredito
-                            ? 0
-                            : 2, // Menos sombra si es crédito (menos importante)
+                        elevation: esCredito ? 0 : 2,
                         color: esCredito
-                            ? Colors.grey[100]
-                            : Colors.white, // Fondo grisáceo si es crédito
+                            ? (context.isDarkMode ? const Color(0xFF1E293B) : Colors.grey[100])
+                            : context.cardBg,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: context.borderSubtle,
+                            width: 1,
+                          ),
+                        ),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: colorItem.withOpacity(0.1),
+                            backgroundColor: colorItem.withOpacity(0.15),
                             child: Icon(iconItem, color: colorItem),
                           ),
                           title: Text(
                             mov['tipo'].toString().replaceAll(
                               '_',
                               ' ',
-                            ), // Quita el guion bajo visualmente
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: context.textPrimary,
+                            ),
                           ),
-                          subtitle: Text(mov['descripcion'] ?? ""),
+                          subtitle: Text(
+                            mov['descripcion'] ?? "",
+                            style: TextStyle(
+                              color: context.textSecondary,
+                            ),
+                          ),
                           trailing: Text(
                             formater.format(mov['monto']),
                             style: TextStyle(
