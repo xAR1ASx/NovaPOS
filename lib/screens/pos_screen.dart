@@ -93,6 +93,9 @@ const Map<String, String> _mapEn = {
   'TOTAL:': 'TOTAL:',
   'COBRAR': 'CHARGE',
   'OK': 'OK',
+  'está agotado (sin stock)': 'is out of stock',
+  'no tiene stock disponible.': 'has no stock available.',
+  'AGOTADO': 'OUT OF STOCK',
   'Debe abrir la caja antes de vender': 'You must open the register before selling',
   'Debe seleccionar un cliente válido': 'You must select a valid customer',
   'El cliente seleccionado ya no existe': 'The selected customer no longer exists',
@@ -132,6 +135,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   List<String> _categorias = ["TODO", "⭐ FAVORITOS"];
   String _categoriaActual = "TODO";
   List<Map<String, dynamic>> _promocionesActivas = [];
+  bool _permitirStockNegativo = false;
   VoidCallback? _syncListener;
 
   @override
@@ -335,11 +339,13 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     final data = await DBHelper().getProducts();
     final favs = await DBHelper().obtenerProductosFavoritos(limit: 12);
     final promos = await PromocionesService().obtenerPromocionesActivasHoy();
+    final permitirStockNeg = await DBHelper().permitirStockNegativo();
     if (mounted) {
       setState(() {
         _products = data;
         _favoritos = favs;
         _promocionesActivas = promos;
+        _permitirStockNegativo = permitirStockNeg;
         if (_categoriaActual == "⭐ FAVORITOS") {
           _filteredProducts = favs;
         } else if (_categoriaActual == "TODO") {
@@ -347,6 +353,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
         } else {
           _filteredProducts =
               data.where((p) => p['categoria'] == _categoriaActual).toList();
+        }
+        if (_searchController.text.isNotEmpty) {
+          _filtrar(_searchController.text);
         }
       });
     }
@@ -553,6 +562,37 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   }
 
   void _modificarCantidadItem(int index, double cambio) {
+    if (cambio > 0 && !_permitirStockNegativo) {
+      final item = _currentCart[index];
+      final prodId = item['id'];
+      final prods = _products.where((p) => p['id'] == prodId);
+      if (prods.isNotEmpty) {
+        final prod = prods.first;
+        final double stock = (prod['stock_actual'] as num?)?.toDouble() ?? 0.0;
+        final double factorPack = (item['contenido_pack'] as num?)?.toDouble() ?? 1.0;
+        double cantActualTotal = 0.0;
+        for (var i in _currentCart) {
+          if (i['id'] == prodId) {
+            double f = (i['contenido_pack'] as num?)?.toDouble() ?? 1.0;
+            cantActualTotal += (i['cantidad'] as num).toDouble() * f;
+          }
+        }
+        if (cantActualTotal + (cambio * factorPack) > stock) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                "⚠️ Máximo stock alcanzado (${stock % 1 == 0 ? stock.toInt() : stock.toStringAsFixed(2)}) para '${item['nombre']}'",
+              ),
+              backgroundColor: Colors.orange.shade900,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+      }
+    }
+
     setState(() {
       double n = _currentCart[index]['cantidad'] + cambio;
       if (n <= 0.01) {
@@ -571,6 +611,57 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     String? nombreEspecial,
     double packSize = 1.0,
   }) {
+    final double stock = (p['stock_actual'] as num?)?.toDouble() ?? 0.0;
+    if (stock <= 0 && !_permitirStockNegativo) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.block, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text("⚠️ '${p['nombre']}' ${_t('no tiene stock disponible.')}"),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red.shade800,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!_permitirStockNegativo) {
+      double cantActualEnCarrito = 0.0;
+      for (var i in _currentCart) {
+        if (i['id'] == p['id']) {
+          double f = (i['contenido_pack'] as num?)?.toDouble() ?? 1.0;
+          cantActualEnCarrito += (i['cantidad'] as num).toDouble() * f;
+        }
+      }
+      double cantRequerida = cantidad * packSize;
+      if (cantActualEnCarrito + cantRequerida > stock) {
+        if (mounted) {
+          final String unidad = p['es_pesable'] == 1 ? 'Kg' : 'und';
+          final String stockTxt = stock % 1 == 0 ? stock.toInt().toString() : stock.toStringAsFixed(2);
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                "⚠️ Stock insuficiente para '${p['nombre']}'. Disponible: $stockTxt $unidad",
+              ),
+              backgroundColor: Colors.orange.shade900,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+    }
+
     // Si no se pasó un precio especial (ej. presentaciones / packs),
     // verificar si aplica una promoción o Día de Plaza activo
     final promoInfo = precioEspecial == null
@@ -629,6 +720,31 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   }
 
   void _onSelect(Map<String, dynamic> p) async {
+    final double stock = (p['stock_actual'] as num?)?.toDouble() ?? 0.0;
+    if (stock <= 0 && !_permitirStockNegativo) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.block, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "⚠️ '${p['nombre']}' ${_t('está agotado (sin stock)')}",
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red.shade800,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
     final packs = await DBHelper().obtenerPresentaciones(p['id']);
     if (packs.isEmpty) {
       if (p['es_pesable'] == 1) {
@@ -1891,6 +2007,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                 itemCount: _favoritos.length,
                 itemBuilder: (ctx, idx) {
                   final p = _favoritos[idx];
+                  final double stock = (p['stock_actual'] as num?)?.toDouble() ?? 0;
+                  final bool sinStock = stock <= 0 && !_permitirStockNegativo;
                   final imgPath = (p['imagen_path'] ?? '').toString();
                   final bool esAsset = imgPath.startsWith('assets/');
                   final bool tieneFoto = imgPath.isNotEmpty &&
@@ -1911,91 +2029,135 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
-                        onTap: () => _onSelect(p),
-                        onLongPress: () => _mostrarMenuFavorito(p),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 88,
-                          padding: const EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                            color: enPromo
-                                ? const Color(0xFFFFF7ED)
-                                : const Color(0xFFFFFDF5),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: enPromo
-                                  ? Colors.deepOrange.shade300
-                                  : Colors.amber.shade200,
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 38,
-                                height: 38,
-                                decoration: BoxDecoration(
-                                  color: enPromo
-                                      ? Colors.deepOrange.shade50
-                                      : Colors.amber.shade50,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(25),
-                                  child: tieneFoto
-                                      ? (esAsset
-                                          ? Image.asset(
-                                              imgPath,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) =>
-                                                  const Icon(Icons.star,
-                                                      size: 18,
-                                                      color: Colors.amber),
-                                            )
-                                          : Image.file(
-                                              File(imgPath),
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) =>
-                                                  const Icon(Icons.star,
-                                                      size: 18,
-                                                      color: Colors.amber),
-                                            ))
-                                      : Icon(
-                                          esPesable
-                                              ? Icons.scale
-                                              : Icons.shopping_basket,
-                                          size: 18,
-                                          color: enPromo
-                                              ? Colors.deepOrange.shade700
-                                              : Colors.amber.shade800,
+                        onTap: sinStock
+                            ? () {
+                                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(Icons.block, color: Colors.white, size: 20),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            "⚠️ '${p['nombre']}' ${_t('está agotado (sin stock)')}",
+                                          ),
                                         ),
-                                ),
+                                      ],
+                                    ),
+                                    backgroundColor: Colors.red.shade800,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            : () => _onSelect(p),
+                        onLongPress: sinStock ? null : () => _mostrarMenuFavorito(p),
+                        borderRadius: BorderRadius.circular(12),
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          opacity: sinStock ? 0.50 : 1.0,
+                          child: Container(
+                            width: 88,
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: sinStock
+                                  ? (context.isDarkMode ? const Color(0xFF1E232B) : const Color(0xFFE2E8F0).withValues(alpha: 0.6))
+                                  : (enPromo
+                                      ? const Color(0xFFFFF7ED)
+                                      : const Color(0xFFFFFDF5)),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: sinStock
+                                    ? (context.isDarkMode ? Colors.white12 : Colors.grey.shade400)
+                                    : (enPromo
+                                        ? Colors.deepOrange.shade300
+                                        : Colors.amber.shade200),
+                                width: 1,
                               ),
-                              const SizedBox(height: 3),
-                              Text(
-                                p['nombre'] ?? '',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 10,
-                                  color: context.textPrimary,
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: sinStock
+                                        ? (context.isDarkMode ? Colors.white10 : Colors.grey.shade200)
+                                        : (enPromo
+                                            ? Colors.deepOrange.shade50
+                                            : Colors.amber.shade50),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(25),
+                                    child: ColorFiltered(
+                                      colorFilter: sinStock
+                                          ? const ColorFilter.mode(Colors.grey, BlendMode.saturation)
+                                          : const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
+                                      child: tieneFoto
+                                          ? (esAsset
+                                              ? Image.asset(
+                                                  imgPath,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, __, ___) =>
+                                                      Icon(Icons.star,
+                                                          size: 18,
+                                                          color: sinStock ? Colors.grey : Colors.amber),
+                                                )
+                                              : Image.file(
+                                                  File(imgPath),
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, __, ___) =>
+                                                      Icon(Icons.star,
+                                                          size: 18,
+                                                          color: sinStock ? Colors.grey : Colors.amber),
+                                                ))
+                                          : Icon(
+                                              esPesable
+                                                  ? Icons.scale
+                                                  : Icons.shopping_basket,
+                                              size: 18,
+                                              color: sinStock
+                                                  ? Colors.grey
+                                                  : (enPromo
+                                                      ? Colors.deepOrange.shade700
+                                                      : Colors.amber.shade800),
+                                            ),
+                                    ),
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                              ),
-                              Text(
-                                "${enPromo ? '🔥 ' : ''}${formater.format(precioEfectivo)}${esPesable ? '/Kg' : ''}",
-                                style: TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: enPromo
-                                      ? Colors.deepOrange.shade800
-                                      : Colors.green.shade800,
+                                const SizedBox(height: 3),
+                                Text(
+                                  p['nombre'] ?? '',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 10,
+                                    color: sinStock
+                                        ? (context.isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600)
+                                        : context.textPrimary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
                                 ),
-                                maxLines: 1,
-                              ),
-                            ],
+                                Text(
+                                  sinStock
+                                      ? _t("AGOTADO")
+                                      : "${enPromo ? '🔥 ' : ''}${formater.format(precioEfectivo)}${esPesable ? '/Kg' : ''}",
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: sinStock
+                                        ? Colors.grey.shade600
+                                        : (enPromo
+                                            ? Colors.deepOrange.shade800
+                                            : Colors.green.shade800),
+                                  ),
+                                  maxLines: 1,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -2274,7 +2436,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                       final promoDesc = PromocionesService().calcularDescuentoProducto(p, _promocionesActivas);
                       double stock =
                           (p['stock_actual'] as num?)?.toDouble() ?? 0;
-                      bool stockBajo = stock <= 5;
+                      final bool sinStock = stock <= 0 && !_permitirStockNegativo;
+                      bool stockBajo = stock > 0 && stock <= 5;
                       String stockTexto = stock % 1 == 0
                           ? stock.toInt().toString()
                           : stock.toString();
@@ -2284,191 +2447,240 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                           (esAsset || File(imgPath).existsSync());
 
                       return InkWell(
-                        onTap: () => _onSelect(p),
-                        onLongPress: () => _mostrarMenuFavorito(p),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: context.cardBg,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: stockBajo
-                                  ? Colors.red.withOpacity(0.5)
-                                  : context.borderSubtle,
-                              width: stockBajo ? 1.5 : 1,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: context.isDarkMode ? 0.2 : 0.05),
-                                blurRadius: 10,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 50,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  color:
-                                      (p['es_pesable'] == 1
-                                              ? Colors.green
-                                              : Colors.orange)
-                                          .withOpacity(0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: tieneFoto
-                                    ? ClipRRect(
-                                        borderRadius: BorderRadius.circular(50),
-                                        child: esAsset
-                                            ? Image.asset(
-                                                imgPath,
-                                                fit: BoxFit.cover,
-                                                cacheWidth: 150,
-                                                errorBuilder:
-                                                    (context, error, stackTrace) {
-                                                  return const Icon(
-                                                    Icons.broken_image,
-                                                    size: 20,
-                                                    color: Colors.grey,
-                                                  );
-                                                },
-                                              )
-                                            : Image.file(
-                                                File(imgPath),
-                                                fit: BoxFit.cover,
-                                                cacheWidth: 150,
-                                                errorBuilder:
-                                                    (context, error, stackTrace) {
-                                                  return const Icon(
-                                                    Icons.broken_image,
-                                                    size: 20,
-                                                    color: Colors.grey,
-                                                  );
-                                                },
-                                              ),
-                                      )
-                                    : Icon(
-                                        p['es_pesable'] == 1
-                                            ? Icons.scale
-                                            : Icons.local_grocery_store,
-                                        color: p['es_pesable'] == 1
-                                            ? Colors.green
-                                            : Colors.orange,
-                                        size: 24,
-                                      ),
-                              ),
-                              const SizedBox(height: 8),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (p['es_favorito'] == 1) ...[
-                                      const Icon(
-                                        Icons.star,
-                                        size: 13,
-                                        color: Colors.amber,
-                                      ),
-                                      const SizedBox(width: 2),
-                                    ],
-                                    Flexible(
-                                      child: Text(
-                                        p['nombre'],
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: context.textPrimary,
+                        onTap: sinStock
+                            ? () {
+                                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(Icons.block, color: Colors.white, size: 20),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            "⚠️ '${p['nombre']}' ${_t('está agotado (sin stock)')}",
+                                          ),
                                         ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
+                                      ],
                                     ),
-                                  ],
-                                ),
+                                    backgroundColor: Colors.red.shade800,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            : () => _onSelect(p),
+                        onLongPress: sinStock ? null : () => _mostrarMenuFavorito(p),
+                        borderRadius: BorderRadius.circular(20),
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          opacity: sinStock ? 0.50 : 1.0,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: sinStock
+                                  ? (context.isDarkMode ? const Color(0xFF1E232B) : const Color(0xFFE2E8F0).withValues(alpha: 0.6))
+                                  : context.cardBg,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: sinStock
+                                    ? (context.isDarkMode ? Colors.white12 : Colors.grey.shade400)
+                                    : (stockBajo
+                                        ? Colors.red.withValues(alpha: 0.5)
+                                        : context.borderSubtle),
+                                width: sinStock ? 1.0 : (stockBajo ? 1.5 : 1),
                               ),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
+                              boxShadow: sinStock
+                                  ? []
+                                  : [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: context.isDarkMode ? 0.2 : 0.05),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 5),
+                                      ),
+                                    ],
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    color: sinStock
+                                        ? (context.isDarkMode ? Colors.white10 : Colors.grey.shade200)
+                                        : (p['es_pesable'] == 1
+                                                ? Colors.green
+                                                : Colors.orange)
+                                            .withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: tieneFoto
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(50),
+                                          child: ColorFiltered(
+                                            colorFilter: sinStock
+                                                ? const ColorFilter.mode(Colors.grey, BlendMode.saturation)
+                                                : const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
+                                            child: esAsset
+                                                ? Image.asset(
+                                                    imgPath,
+                                                    fit: BoxFit.cover,
+                                                    cacheWidth: 150,
+                                                    errorBuilder:
+                                                        (context, error, stackTrace) {
+                                                      return const Icon(
+                                                        Icons.broken_image,
+                                                        size: 20,
+                                                        color: Colors.grey,
+                                                      );
+                                                    },
+                                                  )
+                                                : Image.file(
+                                                    File(imgPath),
+                                                    fit: BoxFit.cover,
+                                                    cacheWidth: 150,
+                                                    errorBuilder:
+                                                        (context, error, stackTrace) {
+                                                      return const Icon(
+                                                        Icons.broken_image,
+                                                        size: 20,
+                                                        color: Colors.grey,
+                                                      );
+                                                    },
+                                                  ),
+                                          ),
+                                        )
+                                      : Icon(
+                                          p['es_pesable'] == 1
+                                              ? Icons.scale
+                                              : Icons.local_grocery_store,
+                                          color: sinStock
+                                              ? Colors.grey
+                                              : (p['es_pesable'] == 1
+                                                  ? Colors.green
+                                                  : Colors.orange),
+                                          size: 24,
+                                        ),
                                 ),
-                                decoration: BoxDecoration(
-                                  color: stockBajo
-                                      ? (context.isDarkMode ? Colors.red.shade900.withOpacity(0.3) : Colors.red[50])
-                                      : (context.isDarkMode ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue[50]),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  "${_t('Stock')}: $stockTexto",
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: stockBajo
-                                        ? (context.isDarkMode ? Colors.red.shade300 : Colors.red)
-                                        : (context.isDarkMode ? Colors.blue.shade300 : Colors.blue[800]),
+                                const SizedBox(height: 8),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (p['es_favorito'] == 1) ...[
+                                        Icon(
+                                          Icons.star,
+                                          size: 13,
+                                          color: sinStock ? Colors.grey : Colors.amber,
+                                        ),
+                                        const SizedBox(width: 2),
+                                      ],
+                                      Flexible(
+                                        child: Text(
+                                          p['nombre'],
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: sinStock
+                                                ? (context.isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600)
+                                                : context.textPrimary,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                              if (promoDesc != null) ...[
+                                const SizedBox(height: 4),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                  margin: const EdgeInsets.only(bottom: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: Colors.deepOrange,
+                                    color: sinStock
+                                        ? (context.isDarkMode ? Colors.grey.shade800 : Colors.grey.shade300)
+                                        : (stockBajo
+                                            ? (context.isDarkMode ? Colors.red.shade900.withValues(alpha: 0.3) : Colors.red[50])
+                                            : (context.isDarkMode ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue[50])),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
-                                    "🔥 -${promoDesc['porcentaje'].toInt()}%",
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9,
+                                    sinStock
+                                        ? _t("AGOTADO")
+                                        : "${_t('Stock')}: $stockTexto",
+                                    style: TextStyle(
+                                      fontSize: 10,
                                       fontWeight: FontWeight.bold,
+                                      color: sinStock
+                                          ? (context.isDarkMode ? Colors.grey.shade300 : Colors.grey.shade800)
+                                          : (stockBajo
+                                              ? (context.isDarkMode ? Colors.red.shade300 : Colors.red)
+                                              : (context.isDarkMode ? Colors.blue.shade300 : Colors.blue[800])),
                                     ),
                                   ),
                                 ),
-                              ],
-                              const SizedBox(height: 3),
-                              if (promoDesc != null) ...[
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      formater.format(promoDesc['precio_con_descuento']),
+                                if (promoDesc != null && !sinStock) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    margin: const EdgeInsets.only(bottom: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.deepOrange,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      "🔥 -${promoDesc['porcentaje'].toInt()}%",
                                       style: const TextStyle(
-                                        color: Colors.deepOrange,
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 13,
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      formater.format(p['precio_venta']),
-                                      style: const TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 10,
-                                        decoration: TextDecoration.lineThrough,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ] else ...[
-                                Text(
-                                  formater.format(p['precio_venta']),
-                                  style: TextStyle(
-                                    color: context.isDarkMode ? Colors.green.shade400 : Colors.green[800],
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 13,
                                   ),
-                                ),
+                                ],
+                                const SizedBox(height: 3),
+                                if (promoDesc != null && !sinStock) ...[
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        formater.format(promoDesc['precio_con_descuento']),
+                                        style: const TextStyle(
+                                          color: Colors.deepOrange,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        formater.format(p['precio_venta']),
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 10,
+                                          decoration: TextDecoration.lineThrough,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ] else ...[
+                                  Text(
+                                    formater.format(p['precio_venta']),
+                                    style: TextStyle(
+                                      color: sinStock
+                                          ? Colors.grey.shade600
+                                          : (context.isDarkMode ? Colors.green.shade400 : Colors.green[800]),
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
                       );

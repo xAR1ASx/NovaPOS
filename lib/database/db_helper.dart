@@ -28,7 +28,7 @@ class DBHelper {
     final db = await databaseFactory.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(
-        version: 11,
+        version: 12,
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
       ),
@@ -58,7 +58,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 11,
+      version: 12,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -269,7 +269,7 @@ CREATE TABLE roles_permisos(
       "INSERT INTO configuracion (clave, valor) VALUES ('sync_activo', '1')",
     );
     await db.execute(
-      "INSERT INTO configuracion (clave, valor) VALUES ('permitir_stock_negativo', '1')",
+      "INSERT INTO configuracion (clave, valor) VALUES ('permitir_stock_negativo', '0')",
     );
     await db.execute(
       "INSERT INTO configuracion (clave, valor) VALUES ('promociones_activas', '1')",
@@ -1008,7 +1008,7 @@ CREATE TABLE roles_permisos(
       return {'exito': false, 'mensaje': 'Debe abrir la caja antes de vender'};
     }
     final cfg = await obtenerConfiguracion();
-    final permitirNegativo = (cfg['permitir_stock_negativo'] ?? '1') == '1';
+    final permitirNegativo = (cfg['permitir_stock_negativo'] ?? '0') == '1';
     if (metodo == 'CREDITO') {
       if (clienteId <= 0) {
         return {'exito': false, 'mensaje': 'Debe seleccionar un cliente válido'};
@@ -2834,6 +2834,11 @@ CREATE TABLE roles_permisos(
         'CREATE TABLE IF NOT EXISTS combo_detalles (id INTEGER PRIMARY KEY AUTOINCREMENT, combo_id INTEGER, producto_id INTEGER, cantidad REAL, uuid TEXT)'
       );
     }
+    if (oldVersion < 12) {
+      await db.execute(
+        "UPDATE configuracion SET valor = '0' WHERE clave = 'permitir_stock_negativo'",
+      );
+    }
   }
 
   // --- GESTIÓN DE PROMOCIONES Y DÍAS DE PLAZA ---
@@ -2916,7 +2921,7 @@ CREATE TABLE roles_permisos(
   // --- CONFIGURACIÓN DE STOCK FLEXIBLE ---
   Future<bool> permitirStockNegativo() async {
     final cfg = await obtenerConfiguracion();
-    return (cfg['permitir_stock_negativo'] ?? '1') == '1';
+    return (cfg['permitir_stock_negativo'] ?? '0') == '1';
   }
 
   Future<void> guardarPermitirStockNegativo(bool permitir) async {

@@ -75,6 +75,8 @@ const Map<String, String> _mapEn = {
   'Buscar por nombre, PLU o barras...': 'Search by name, PLU or barcode...',
   'Crear nueva categoría': 'Create new category',
   'Nueva categoría': 'New category',
+  'Sin stock': 'Out of stock',
+  'Stock bajo': 'Low stock',
 };
 
 class InventoryScreen extends StatefulWidget {
@@ -680,6 +682,15 @@ class _InventoryScreenState extends State<InventoryScreen>
               : ResizeImage(FileImage(File(imgPath)), width: 100);
         }
 
+        final double stock = (p['stock_actual'] as num?)?.toDouble() ?? 0.0;
+        final bool esPesable = p['es_pesable'] == 1;
+        final String unidad = esPesable ? 'Kg' : 'und';
+        final String stockTexto = stock % 1 == 0
+            ? stock.toInt().toString()
+            : stock.toStringAsFixed(2);
+        final bool sinStock = stock <= 0;
+        final bool stockBajo = stock > 0 && stock <= 5;
+
         return ListTile(
           leading: CircleAvatar(
             backgroundColor: context.isDarkMode ? const Color(0xFF1E293B) : Colors.grey[200],
@@ -692,8 +703,72 @@ class _InventoryScreenState extends State<InventoryScreen>
             p['nombre'],
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          subtitle: Text(
-            "${p['categoria']} | \$${formater.format(p['precio_venta'])}",
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 4.0),
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                Text(
+                  "${p['categoria']} | ${formater.format(p['precio_venta'])}",
+                  style: TextStyle(
+                    color: context.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: sinStock
+                        ? (context.isDarkMode ? Colors.red.shade900.withOpacity(0.35) : Colors.red.shade50)
+                        : (stockBajo
+                            ? (context.isDarkMode ? Colors.orange.shade900.withOpacity(0.35) : Colors.orange.shade50)
+                            : (context.isDarkMode ? Colors.green.shade900.withOpacity(0.35) : Colors.green.shade50)),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: sinStock
+                          ? (context.isDarkMode ? Colors.red.shade400 : Colors.red.shade600)
+                          : (stockBajo
+                              ? (context.isDarkMode ? Colors.orange.shade400 : Colors.orange.shade600)
+                              : (context.isDarkMode ? Colors.green.shade400 : Colors.green.shade600)),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        sinStock
+                            ? Icons.error_outline
+                            : (stockBajo ? Icons.warning_amber_rounded : Icons.check_circle_outline),
+                        size: 13,
+                        color: sinStock
+                            ? (context.isDarkMode ? Colors.red.shade300 : Colors.red.shade700)
+                            : (stockBajo
+                                ? (context.isDarkMode ? Colors.orange.shade300 : Colors.orange.shade800)
+                                : (context.isDarkMode ? Colors.green.shade300 : Colors.green.shade800)),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        sinStock
+                            ? "${_t('Sin stock')} (0 $unidad)"
+                            : "${_t('Stock')}: $stockTexto $unidad",
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: sinStock
+                              ? (context.isDarkMode ? Colors.red.shade300 : Colors.red.shade700)
+                              : (stockBajo
+                                  ? (context.isDarkMode ? Colors.orange.shade300 : Colors.orange.shade800)
+                                  : (context.isDarkMode ? Colors.green.shade300 : Colors.green.shade800)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,

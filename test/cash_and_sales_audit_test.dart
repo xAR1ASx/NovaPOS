@@ -243,5 +243,62 @@ void main() {
       expect(historial.first['real_contado'], equals(100000.0));
       expect(historial.first['estado'], equals('OK'));
     });
+
+    test('6. Bloqueo estricto de venta cuando no hay stock (Arroz Diana con 0 stock)', () async {
+      await dbHelper.registrarMovimientoCaja('APERTURA', 50000.0, 'Base', 1);
+
+      // Crear Arroz Diana con stock 0
+      int prodId = await dbHelper.insertProduct({
+        'nombre': 'Arroz Diana 1kg',
+        'precio_costo': 3500.0,
+        'precio_venta': 4800.0,
+        'stock_actual': 0.0,
+        'categoria': 'Abarrotes',
+        'es_pesable': 0,
+      });
+
+      // 1. Con la configuración por defecto (permitir_stock_negativo = 0), debe bloquearse la venta
+      bool permitirNeg = await dbHelper.permitirStockNegativo();
+      expect(permitirNeg, isFalse);
+
+      var resVentaZero = await dbHelper.registrarVenta(
+        4800.0,
+        'EFECTIVO',
+        [
+          {
+            'id': prodId,
+            'nombre': 'Arroz Diana 1kg',
+            'cantidad': 1.0,
+            'precio': 4800.0,
+            'subtotal': 4800.0,
+          }
+        ],
+        usuarioId: 1,
+      );
+
+      expect(resVentaZero['exito'], isFalse);
+      expect(resVentaZero['mensaje'], contains('Stock insuficiente'));
+
+      // 2. Si se permite explícitamente stock negativo, entonces sí procesa
+      await dbHelper.guardarPermitirStockNegativo(true);
+      expect(await dbHelper.permitirStockNegativo(), isTrue);
+
+      var resVentaPermitida = await dbHelper.registrarVenta(
+        4800.0,
+        'EFECTIVO',
+        [
+          {
+            'id': prodId,
+            'nombre': 'Arroz Diana 1kg',
+            'cantidad': 1.0,
+            'precio': 4800.0,
+            'subtotal': 4800.0,
+          }
+        ],
+        usuarioId: 1,
+      );
+
+      expect(resVentaPermitida['exito'], isTrue);
+    });
   });
 }

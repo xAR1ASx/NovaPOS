@@ -67,7 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _estadoBalanza = "";
   bool _procesando = false;
   bool _syncActivo = true;
-  bool _permitirStockNegativo = true;
+  bool _permitirStockNegativo = false;
   final _cloudinaryCloudCtrl = TextEditingController();
   final _cloudinaryPresetCtrl = TextEditingController();
 
@@ -150,7 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _balanzaPuerto = config['balanza_puerto'] ?? "COM1";
       _balanzaVelocidad = config['balanza_velocidad'] ?? "9600";
       _syncActivo = config['sync_activo'] != '0';
-      _permitirStockNegativo = (config['permitir_stock_negativo'] ?? '1') == '1';
+      _permitirStockNegativo = (config['permitir_stock_negativo'] ?? '0') == '1';
       _cloudinaryCloudCtrl.text = config['cloudinary_cloud_name'] ?? "";
       _cloudinaryPresetCtrl.text = config['cloudinary_upload_preset'] ?? "";
 
