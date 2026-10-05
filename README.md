@@ -8,22 +8,43 @@ NovaPOS combina una arquitectura local ultrarrápida impulsada por **SQLite (100
 
 ## 🚀 Estado Actual del Proyecto (Versión 1.5.0)
 
-El sistema se encuentra en su versión **1.5.0**, completamente blindado con seguridad nativa, auditoría integral y un módulo de caja y arqueo financiero de alto rendimiento. Modificaciones recientes incluyen:
+El sistema se encuentra en su versión **1.5.0**, completamente blindado con seguridad nativa, auditoría integral, control estricto de inventarios y un módulo de caja y arqueo financiero de alto rendimiento. Modificaciones y capacidades destacadas:
 
-* **Modo Oscuro Global y Sistema de Temas Dinámico**: Implementación completa de temas Claro y Oscuro para el 100% de la aplicación. Con `ThemeContextExtension` y diseño de contraste óptimo en todas las pantallas (Home, POS, Caja, Inventario, Compras, Mermas, Combos, Reportes Financieros, Historiales, Usuarios y Login por PIN), garantizando legibilidad total sin textos perdidos o ilegibles.
-* **Inyección de Capital y Refuerzos de Caja**: Nuevo botón nativo de "INGRESAR DINERO" para registrar aportes, préstamos, inyecciones de socios o bases extras en cualquier momento del turno.
-* **Asistente Inteligente de Pago de Pedidos con Fondos Insuficientes**: Si llega un pedido de proveedor (ej. $300.000) y en caja solo hay una base menor (ej. $150.000), el sistema guía al cajero para inyectar el faltante y un colchón opcional, registrando la entrada y la salida en una **única transacción atómica** de SQLite (`registrarIngresoYGasto`) para evitar descuadres o cajas en negativo.
-* **Tirilla de Cierre / Arqueo Z Completa y con Firmas**: Rediseño contable formal de la tirilla térmica con:
-  * Total facturado del turno.
-  * Desglose exacto y segregado por método de pago (Efectivo, Nequi, Daviplata, Tarjeta, Transferencia, Crédito), dividiendo limpiamente los pagos mixtos.
-  * Cuadre de efectivo físico: Base inicial (+) Ventas en efectivo (+) Ingresos (-) Gastos (=) Total esperado vs. Real contado y diferencia.
-  * Líneas para firma del cajero y del administrador.
-* **Impresión Inmediata al Cerrar Turno**: Modal interactivo de confirmación que permite imprimir o reimprimir la tirilla Z con un solo toque desde la pantalla de caja o desde el historial.
-* **Sistema de Combos y Ofertas**: Módulo nativo especializado para crear paquetes promocionales (Ej. "Arroz + Aceite" o "Anchetas"). Se venden como un solo ítem en el Punto de Venta, pero el sistema descuenta de forma inteligente y paralela el inventario exacto de cada producto que lo compone.
-* **Protección Estricta de Mermas**: El módulo de registro de mermas y desperdicios ha sido blindado y bloqueado exclusivamente para el usuario `ADMIN`.
-* **Devolución Parcial de Artículos**: Se puede devolver una fracción o unidad específica de un ticket, regresando el inventario automáticamente y ajustando caja/cartera.
-* **Seguridad Estricta de Precios (H-01 Plus)**: El backend intercepta la venta, va a la BD oculta, evalúa las promociones del día y recalcula el importe exacto.
-* **Banco de Pruebas Automatizadas (42 Tests)**: Test suite integral verificando el 100% de la lógica de negocio, balanzas, promociones, permisos, cálculo de caja y cierre Z.
+* **Visualización Inmediata de Stock en Inventario**:
+  * Badges dinámicos de color integrados directamente en cada fila de producto sin necesidad de entrar a editarlo.
+  * Etiquetas visuales por nivel de existencia: **Sin stock (0 und/Kg)** en rojo, **Stock bajo (≤ 5)** en naranja y **Stock disponible** en verde.
+* **Bloqueo Inteligente de Productos Agotados en POS**:
+  * Los productos con stock en cero se atenúan automáticamente en escala de grises (50% de opacidad) y muestran la etiqueta destacada **AGOTADO**.
+  * Bloqueo total de venta: ni por clic táctil, ni por escaneo de código de barras, ni por entrada con teclado numérico se permite agregar productos sin inventario al carrito, emitiendo una alerta inmediata en pantalla.
+  * El control de `permitir_stock_negativo` viene deshabilitado por defecto (migración v12 en SQLite y ajustes).
+* **Tirilla de Cierre / Arqueo Z Completa y con Firmas**:
+  * Rediseño contable formal de la tirilla térmica (80 mm):
+    * **Encabezado**: Razón social del negocio, fecha/hora de emisión y período del turno (`Turno Desde`).
+    * **Ventas Totales**: Total facturado global del turno.
+    * **Desglose por Métodos de Pago**: Segregación limpia y exacta de montos recibidos en Efectivo, Nequi, Daviplata, Tarjeta, Transferencia y pagos mixtos.
+    * **Cuadre de Efectivo en Cajón (Flujo Físico)**: (+) Base inicial, (+) Ventas en efectivo, (+) Ingresos/Refuerzos, (-) Gastos/Salidas, (=) Total esperado en sistema vs. Real contado por cajero y Diferencia (Sobrante/Faltante).
+    * **Estado del Cuadre**: Recuadro destacado `ESTADO CUADRE: OK / DESCUADRE`.
+    * **Firmas de Auditoría**: Líneas para firma de Cajero y Administrador.
+* **Impresión Inmediata y Reimpresión de Cierre**:
+  * Modal interactivo al cerrar turno para imprimir la tirilla Z con un solo toque.
+  * Historial de cierres para auditar y reimprimir arqueos pasados en cualquier momento.
+* **Modo Oscuro Global y Sistema de Temas Dinámico**:
+  * Implementación completa de temas Claro y Oscuro para el 100% de la aplicación.
+  * Utiliza `ThemeContextExtension` con diseño de alto contraste en todas las pantallas (Home, POS, Caja, Inventario, Compras, Mermas, Combos, Reportes Financieros, Historiales, Usuarios y Login por PIN).
+* **Inyección de Capital y Refuerzos de Caja**:
+  * Botón nativo de "INGRESAR DINERO" para registrar aportes, préstamos, inyecciones de socios o bases extras en cualquier momento del turno.
+* **Asistente Inteligente de Pago de Pedidos con Fondos Insuficientes**:
+  * Guía interactiva si llega un pedido o gasto mayor al efectivo disponible en caja, registrando el refuerzo y la salida en una **única transacción atómica** de SQLite (`registrarIngresoYGasto`) para evitar descuadres.
+* **Sistema de Combos y Ofertas**:
+  * Módulo nativo para crear paquetes promocionales (ej. "Arroz + Aceite"). Se venden como un solo ítem en caja y descuentan simultáneamente el stock individual de cada producto componente.
+* **Protección Estricta de Mermas**:
+  * Registro de desperdicios/mermas protegido exclusivamente para el usuario `ADMIN`.
+* **Devolución Parcial de Artículos**:
+  * Permite devolver unidades o fracciones específicas de un ticket, reintegrando inventario y ajustando caja automáticamente.
+* **Seguridad Estricta de Precios (H-01 Plus)**:
+  * El backend intercepta la venta, valida en la BD oculta, evalúa promociones programadas del día y recalcula el importe exacto.
+* **Banco de Pruebas Automatizadas (44 Tests)**:
+  * Test suite integral verificando el 100% de la lógica de negocio: balanzas, promociones, permisos, cálculo de caja, arqueo Z y bloqueo de stock cero.
 
 ---
 
@@ -36,8 +57,8 @@ El sistema se encuentra en su versión **1.5.0**, completamente blindado con seg
 * **Multi-ticket & Pagos Mixtos**: Ventas en espera ilimitadas y soporte nativo para fraccionar un pago entre Efectivo y Digital (Nequi/Tarjeta).
 
 ### 📦 2. Inventario, Mermas y Nube
-* **Catálogo Maestro**: Precarga de referencias con PLU y conectividad a Cloudinary para fotos.
-* **Módulo de Mermas Inteligente**: Registro de pérdida de producto (maduración, avería, consumo). Permite tomar peso directo de la balanza, afecta el costo en la contabilidad y sincroniza a la nube.
+* **Catálogo Maestro y Stock Visual**: Existencias visibles en tiempo real con alertas de stock bajo y agotado.
+* **Módulo de Mermas Inteligente**: Registro de pérdida de producto (maduración, avería, consumo). Permite tomar peso directo de la balanza, afecta el costo en contabilidad y sincroniza a la nube.
 * **Recuperación Ante Desastres**: Si se rompe una tablet o PC, instalar la app en una nueva descarga automáticamente todo en 1 minuto (`_descargaInicial`).
 
 ### 🛡️ 3. Seguridad y Auditoría
@@ -72,6 +93,12 @@ flutter build windows --release
 # Compilar paquete APK Release para Tablet Android
 flutter build apk --release
 
-# Ejecutar banco de pruebas automatizadas (Test Suite)
+# Ejecutar banco de pruebas automatizadas (Test Suite: 44 tests)
 flutter test
 ```
+
+### 📁 Salida de Compilación e Instaladores
+
+Los instaladores generados se ubican en:
+* **Windows**: `installer/output/NovaPOS-Setup-1.5.0.exe`
+* **Android**: `installer/output/NovaPOS-1.5.0.apk` (o `build/app/outputs/flutter-apk/app-release.apk`)
