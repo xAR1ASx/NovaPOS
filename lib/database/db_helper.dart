@@ -61,17 +61,27 @@ class DBHelper {
     return _database!;
   }
 
+  /// Carpeta Documentos del usuario, donde vive la base. La carpeta temporal
+  /// solo se usa en las pruebas automáticas: en un equipo real, guardar ahí
+  /// abriría una base vacía y Windows podría borrarla.
+  static Future<Directory> _carpetaDocumentos() async {
+    try {
+      return await getApplicationDocumentsDirectory();
+    } catch (e) {
+      if (Platform.environment.containsKey('FLUTTER_TEST')) {
+        return Directory.systemTemp;
+      }
+      throw Exception(
+          'No se pudo acceder a la carpeta Documentos de este equipo ($e)');
+    }
+  }
+
   Future<Database> _initDB() async {
     if (Platform.isWindows || Platform.isLinux) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
-    Directory directory;
-    try {
-      directory = await getApplicationDocumentsDirectory();
-    } catch (_) {
-      directory = Directory.systemTemp;
-    }
+    final directory = await _carpetaDocumentos();
     final rutaCarpeta = Directory(join(directory.path, 'Sistema_Fruver_Data'));
     if (!await rutaCarpeta.exists()) {
       await rutaCarpeta.create(recursive: true);
@@ -3597,12 +3607,7 @@ CREATE TABLE roles_permisos(
     if (abierta != null && abierta.isNotEmpty && abierta != inMemoryDatabasePath) {
       return abierta;
     }
-    Directory directory;
-    try {
-      directory = await getApplicationDocumentsDirectory();
-    } catch (_) {
-      directory = Directory.systemTemp;
-    }
+    final directory = await _carpetaDocumentos();
     final rutaCarpeta = Directory(join(directory.path, 'Sistema_Fruver_Data'));
     return join(rutaCarpeta.path, 'mifruver_sistema_v12_imagenes_ok.db');
   }

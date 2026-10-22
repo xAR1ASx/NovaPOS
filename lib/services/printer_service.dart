@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
+import 'impresora_raw.dart';
 
 class PrinterService {
   final formater = NumberFormat.currency(
@@ -736,16 +737,24 @@ class PrinterService {
     }
   }
 
-  /// Envía un pulso / trabajo mínimo a la impresora térmica para activar
-  /// la apertura del cajón monedero conectado al puerto RJ11.
+  /// Abre el cajón monedero conectado por RJ11 a la impresora térmica.
+  /// En Windows manda la orden ESC/POS directa a la impresora elegida; si no
+  /// se puede, imprime un trabajo mínimo para los controladores que tienen
+  /// activada la opción "abrir cajón al imprimir".
   Future<bool> abrirCajon() async {
     try {
       final config = await DBHelper().obtenerConfiguracion();
       final directa = config['impresion_directa'] == '1';
       final impresoraNombre = (config['impresora_nombre'] ?? '').trim();
-      if (!directa || impresoraNombre.isEmpty) {
-        return false;
+      if (impresoraNombre.isEmpty) return false;
+      try {
+        if (ImpresoraRaw.enviar(impresoraNombre, ImpresoraRaw.pulsoCajon)) {
+          return true;
+        }
+      } catch (e) {
+        debugPrint('Cajón por orden directa: $e');
       }
+      if (!directa) return false;
       final printers = await Printing.listPrinters();
       final printer = printers.firstWhere(
         (p) => p.name == impresoraNombre,

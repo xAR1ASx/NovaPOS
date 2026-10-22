@@ -2120,7 +2120,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 SnackBar(
                                   content: Text(ok
                                       ? "✅ Señal enviada a la impresora para apertura de cajón"
-                                      : "⚠️ Selecciona una impresora y activa Impresión Directa para enviar la señal"),
+                                      : "⚠️ No se pudo enviar la señal. Elige la impresora de tickets y guarda la configuración"),
                                   backgroundColor: ok ? Colors.teal : Colors.orange,
                                 ),
                               );

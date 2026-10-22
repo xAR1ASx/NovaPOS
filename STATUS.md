@@ -1,9 +1,10 @@
 # NovaPOS - Estado del Proyecto y Siguientes Pasos
 
 **Fecha de última actualización:** 2026-10-22
-**Versión Actual:** 1.7.2
+**Versión Actual:** 1.7.3
 
 ## 🎯 Hitos Completados
+- [x] **v1.7.3**: cajón monedero con orden ESC/POS directa a la impresora y aviso claro (sin base vacía en carpeta temporal) si no se puede abrir la base de datos. 114 tests pasando.
 - [x] **v1.7.2 lista para producción**: Identificación multi-caja en tickets, apertura de cajón por software, reimpresión de tickets en historial, CI/CD GitHub Actions para Windows .exe, firma release en Android y detección de VC++ Redistributable. 112 tests pasando.
 - [x] **v1.7.1**: inicio de sesión sin internet con PIN cifrado, devoluciones para cajeros y correcciones de auditoría.
 - [x] **Centro Financiero v1.6.0**: Panorama, Resultados, Gastos y compras, Rentabilidad, Ventas, Control y Cierres de caja, con informe Excel del período.

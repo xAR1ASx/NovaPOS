@@ -2,6 +2,14 @@
 
 Todas las versiones notables de NovaPOS se documentan en este archivo.
 
+## [1.7.3] - 2026-10-22
+
+### Mejorado
+- **Cajón monedero por orden directa**: `PrinterService.abrirCajon()` envía el pulso ESC/POS (`ESC p`, pines 2 y 5) en modo RAW a la impresora de tickets mediante la cola de Windows (`ImpresoraRaw`). Ya no depende de que el controlador tenga activada la apertura del cajón; si la orden directa falla, usa el método anterior.
+
+### Corregido
+- Si no se puede acceder a la carpeta Documentos, la app ya no abre una base vacía en la carpeta temporal: el arranque muestra un aviso con el detalle y el botón REINTENTAR. La carpeta temporal queda solo para las pruebas automáticas.
+
 ## [1.7.2] - 2026-10-22
 
 ### Nuevo

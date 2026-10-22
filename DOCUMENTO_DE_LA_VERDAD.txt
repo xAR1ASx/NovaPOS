@@ -4,7 +4,7 @@
 ===============================================================================
 
 Versión del documento ..... 1.1
-Versión del sistema ....... 1.7.2 (base de datos local v14)
+Versión del sistema ....... 1.7.3 (base de datos local v14)
 Fecha ..................... 22 de octubre de 2026
 Repositorio ............... github.com/xAR1ASx/NovaPOS (rama main)
 
@@ -479,6 +479,17 @@ Principios:
 10. ÚLTIMOS CAMBIOS REALIZADOS
 ===============================================================================
 
+  Versión 1.7.3 (22-oct-2026) - Cajón monedero y protección de la base
+  - Mejorado: el cajón monedero abre con la orden directa de la impresora
+    térmica (ESC/POS, pines 2 y 5), sin depender de la configuración del
+    controlador de Windows. Basta con elegir la impresora de tickets en
+    Ajustes; si la orden directa no se puede enviar, se usa el método
+    anterior. No activar además "abrir cajón" en el controlador de la
+    impresora (abriría dos veces).
+  - Corregido: si Windows no deja abrir la carpeta Documentos, NovaPOS ya no
+    abre una base vacía en la carpeta temporal; muestra un aviso claro con
+    el detalle del error y el botón REINTENTAR.
+
   Versión 1.7.2 (22-oct-2026) - Salida a producción, hardware y CI/CD
   - Nuevo: reimpresión de tickets desde el Historial de Ventas.
   - Nuevo: apertura de cajón monedero por software (RJ11/impresora térmica).
@@ -592,7 +603,7 @@ Principios:
   compatibilidad; la versión real del esquema es 14).
 
   Comandos:
-    flutter test ........................ correr las 112 pruebas
+    flutter test ........................ correr las 114 pruebas
     flutter build windows --release ..... compilar para Windows
     flutter build apk --release ......... compilar para Android
     ISCC.exe installer\NovaPOS_setup.iss  generar el instalador
