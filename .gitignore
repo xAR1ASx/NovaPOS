@@ -52,6 +52,7 @@ key.properties
 
 # Instalador compilado (se genera con ISCC)
 /installer/output/
+/dist_windows/
 
 # Configuracion de Firebase (claves publicas del proyecto; NO se comparten)
 android/app/google-services.json
