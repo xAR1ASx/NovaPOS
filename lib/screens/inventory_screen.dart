@@ -13,6 +13,7 @@ import 'mermas_screen.dart';
 import '../services/excel_export_service.dart';
 import '../services/sync_service.dart';
 import '../services/session_service.dart';
+import '../services/permission_service.dart';
 import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
@@ -422,7 +423,7 @@ class _InventoryScreenState extends State<InventoryScreen>
           ),
           ElevatedButton(
             onPressed: () async {
-              final qty = parseNumero(qtyCtrl.text);
+              final qty = parseCantidad(qtyCtrl.text);
               final price = parseNumero(priceCtrl.text);
               if (nameCtrl.text.isNotEmpty &&
                   qty != null &&
@@ -473,7 +474,7 @@ class _InventoryScreenState extends State<InventoryScreen>
         return;
       }
       double precioCosto = parseNumero(_precioCostoCtrl.text) ?? 0;
-      double stock = parseNumero(_stockCtrl.text) ?? 0;
+      double stock = parseCantidad(_stockCtrl.text) ?? 0;
 
       if (precioVenta <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1103,6 +1104,16 @@ class _InventoryScreenState extends State<InventoryScreen>
   // ✅ EL MÉTODO BUILD ESTÁ AQUÍ CORRECTAMENTE CERRADO Y POSICIONADO
   @override
   Widget build(BuildContext context) {
+    if (!PermissionService.can('INVENTARIO_VER')) {
+      return Scaffold(
+        backgroundColor: context.scaffoldBg,
+        appBar: AppBar(title: const Text('Inventario')),
+        body: Center(
+          child: Text('Solo el administrador puede ver y editar el inventario.',
+              style: TextStyle(color: context.textPrimary)),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: context.scaffoldBg,
       appBar: AppBar(

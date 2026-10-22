@@ -61,13 +61,10 @@ void main() {
     await db.registrarMovimientoCaja('GASTO', 3000, 'Préstamo a Juan', 1, categoria: 'PRESTAMO');
     await db.registrarMerma(productoId: tomate, cantidad: 0.5, motivo: 'Maduró', usuarioId: 1);
 
-    // Cierre con 500 de faltante (como lo hace la pantalla de caja)
+    // Cierre con 500 de faltante (el descuadre queda en el cierre)
     final esperado = (await db.obtenerResumenCaja())['total_en_caja']!;
-    await db.registrarMovimientoCaja('GASTO', 500, 'Pérdida / Descuadre Cierre', 1, categoria: 'DESCUADRE');
     await db.cerrarTurno(
       realContado: esperado - 500,
-      diferencia: -500,
-      estado: 'FALTA',
       fechaInicio: (await db.obtenerFechaAperturaActual())!,
       usuarioId: 1,
     );
@@ -95,7 +92,7 @@ void main() {
   test('Gastos, compras y flujo de efectivo', () async {
     await diaCompleto();
     final g = await fin.gastosCompras(hoy);
-    expect(g.gastosPorCategoria.map((x) => x.clave), containsAll(['ARRIENDO', 'DESCUADRE']));
+    expect(g.gastosPorCategoria.map((x) => x.clave), ['ARRIENDO']); // el faltante no es un gasto
     expect(g.salidasNoGasto.single.clave, 'PRESTAMO');
     expect(g.entroVentas, 24000); // 20.000 + 4.000 cobrados en efectivo
     expect(g.salioDevoluciones, 6000); // 2.000 devolución + 4.000 anulación
@@ -150,5 +147,29 @@ void main() {
     expect(p.dias, 7);
     expect(p.anterior.desde, DateTime(2026, 10, 1));
     expect(p.anterior.hasta, DateTime(2026, 10, 7));
+  });
+
+  test('Tirilla Z coherente: esperado real, gastos sin el faltante y diferencia exacta', () async {
+    await db.registrarMovimientoCaja('APERTURA', 100000, 'Base', 1);
+    await db.registrarMovimientoCaja('GASTO', 5000, 'Bolsas', 1, categoria: 'INSUMOS');
+    final r = await db.cerrarTurno(
+      realContado: 94000, // faltan 1.000
+      diferencia: 0, // lo que diga la pantalla ya no manda: se calcula
+      estado: 'OK',
+      fechaInicio: (await db.obtenerFechaAperturaActual())!,
+      usuarioId: 1,
+    );
+    final c = r['cierre'] as Map<String, dynamic>;
+    expect(c['total_sistema'], 95000);
+    expect(c['gastos_turno'], 5000);
+    expect(c['real_contado'], 94000);
+    expect(c['diferencia'], -1000);
+    expect(c['estado'], 'FALTA');
+    // Base + ventas + ingresos − gastos = esperado
+    expect((c['base'] as num) + (c['ventas_turno'] as num) + (c['ingresos_turno'] as num) - (c['gastos_turno'] as num),
+        c['total_sistema']);
+    final res = await fin.resultados(hoy);
+    expect(res.faltantesCaja, 1000);
+    expect(res.gastos, 5000);
   });
 }

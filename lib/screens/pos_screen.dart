@@ -2200,7 +2200,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   );
                   final bool enPromo = promoFav != null;
                   final double precioEfectivo =
-                      enPromo ? (promoFav['precio_final'] as double) : precio;
+                      enPromo ? (promoFav['precio_con_descuento'] as num).toDouble() : precio;
 
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
@@ -2471,6 +2471,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                         ),
                       ),
                       const SizedBox(width: 10),
+                      // Inventario y combos solo para quien puede editarlos
+                      // (el cajero entraba por aquí a cambiar precios y stock).
+                      if (PermissionService.can('INVENTARIO_VER'))
                       IconButton(
                         onPressed: () async {
                           await Navigator.push(
@@ -2487,6 +2490,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                         ),
                         tooltip: _t("Inventario"),
                       ),
+                      if (PermissionService.can('INVENTARIO_VER'))
                       IconButton(
                         onPressed: () async {
                           await Navigator.push(

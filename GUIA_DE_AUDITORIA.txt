@@ -4,7 +4,7 @@
 ===============================================================================
 
 Fecha de la guía .......... 21 de octubre de 2026
-Versión a auditar ......... 1.7.0 (base de datos local v14)
+Versión a auditar ......... 1.7.1 (base de datos local v14)
 Documento relacionado ..... DOCUMENTO_DE_LA_VERDAD.txt
 
 Para qué sirve: revisar, con los equipos reales, que todo lo que se hizo
@@ -12,7 +12,7 @@ funciona como debe antes de instalarlo en clientes. Cada prueba dice qué hacer
 y qué debe pasar. Marque [OK] o [FALLA] y anote lo que vea. Si algo falla,
 anote el paso exacto, la hora y una foto de la pantalla.
 
-Las pruebas automáticas (101) ya pasan en el código (comando: flutter test).
+Las pruebas automáticas (112) ya pasan en el código (comando: flutter test).
 Esta guía es la prueba con hardware, internet y personas reales.
 
 
@@ -22,7 +22,7 @@ Esta guía es la prueba con hardware, internet y personas reales.
 
   Necesita:
   - 2 PCs con Windows 10/11 (Caja 1 y Caja 2). Ideal: además una tablet Android.
-  - Instalador NovaPOS-Setup-1.7.0.exe (compilado desde la rama main).
+  - Instalador NovaPOS-Setup-1.7.1.exe (compilado desde la rama main).
   - Un NEGOCIO DE PRUEBA en Firebase (no use el de un cliente real):
       * Authentication: usuario admin.prueba@... con PIN de 6 dígitos.
       * Firestore -> negocios -> documento nuevo: nombre, nit, direccion,
@@ -74,8 +74,17 @@ Esta guía es la prueba con hardware, internet y personas reales.
 
   2.1 PIN equivocado -> "PIN incorrecto". Tres veces -> bloqueo de 30 s.  [   ]
   2.2 Correo mal escrito (sin @) -> mensaje de correo mal escrito.        [   ]
-  2.3 Desconectar el internet y tratar de entrar -> mensaje de sin
-      conexión (hoy no se puede entrar sin internet; es un pendiente).    [   ]
+  2.3 Entrada sin internet: entrar una vez con internet, cerrar la app,
+      desconectar el internet y volver a entrar con el PIN.
+      Debe: entra y avisa "Entraste sin internet". Se puede vender.        [   ]
+  2.3b Con internet desconectado, PIN equivocado -> "PIN incorrecto".      [   ]
+  2.3c Un usuario que NUNCA entró en ese PC, sin internet -> mensaje de que
+      la primera vez debe entrar con internet.                             [   ]
+  2.3d Volver a conectar el internet (sin salir): en 1-2 minutos lo vendido
+      sin internet aparece en la otra caja.                                [   ]
+  2.3e En Firebase poner estado = bloqueada, desconectar el internet en la
+      caja (sin que se haya enterado aún) y entrar sin internet: entra. Al
+      volver el internet, en máximo 10 minutos se bloquea.                 [   ]
   2.4 En Firebase, poner esta_activo = false al usuario -> al entrar debe
       decir que el usuario está desactivado (NO "PIN incorrecto").
       Volver a poner true.                                               [   ]
@@ -123,13 +132,27 @@ Esta guía es la prueba con hardware, internet y personas reales.
   4.7 Cerrar turno: tocar CONFIRMAR sin escribir el conteo.
       Debe: NO cerrar y pedir el conteo.                                   [   ]
   4.8 Contar $129.000 (faltan $1.000) y cerrar. Imprimir la tirilla Z.
-      Debe: estado FALTANTE $1.000 y desglose por medio de pago.          [   ]
+      Debe: estado FALTA, Gastos = solo el gasto de $5.000 (el faltante NO
+      aparece como gasto), Total esperado = $130.000, Real = $129.000 y
+      Diferencia = -$1.000. La cuenta de la tirilla cuadra.               [   ]
   4.9 Abrir caja nueva con base $50.000. Anular la venta de 4.4 (de un
       turno ya cerrado). Debe avisar cuánto entregar ($25.000) y la caja
       queda en $25.000. El cierre anterior NO cambia.                     [   ]
   4.10 Intentar anular otra venta en efectivo mayor a lo que hay en la caja.
       Debe: rechazar por fondos insuficientes y no cambiar nada.          [   ]
 
+
+  4.11 Abono de un cliente con la caja CERRADA -> pide abrir la caja.     [   ]
+
+  Permisos del CAJERO (entrar con un usuario cajero):
+  4.12 En el POS NO aparecen los botones de Inventario ni Combos.          [   ]
+  4.13 Historial de ventas: puede DEVOLVER un artículo (pide motivo; sin
+      motivo no deja), pero NO aparece "ANULAR VENTA".                     [   ]
+  4.14 Clientes: no puede cambiar el cupo de crédito; un cliente que crea
+      queda con cupo $0.                                                   [   ]
+  4.15 Promoción activa sobre un producto favorito: el POS abre normal y
+      el favorito muestra el precio con descuento.                         [   ]
+  4.16 Merma de 0.750 kg (escrito con punto) -> se registra 0,75 kg.       [   ]
 
 -------------------------------------------------------------------------------
 5. CENTRO FINANCIERO

@@ -2,6 +2,27 @@
 
 Todas las versiones notables de NovaPOS se documentan en este archivo.
 
+## [1.7.1] - 2026-10-21
+
+### Nuevo
+- **Inicio de sesión sin internet**: un usuario que ya entró con internet en el equipo puede
+  volver a entrar con su PIN sin conexión (hasta 7 días). Se guarda una huella cifrada del PIN,
+  nunca el PIN. Respeta la licencia guardada (bloqueada, vencida y 72 h de los financiados) y al
+  volver el internet se reconecta sola a la nube.
+- **El cajero puede devolver artículos** (con motivo obligatorio, queda en Control); anular una
+  venta completa sigue siendo solo del administrador.
+
+### Corregido
+- El POS se caía cuando un producto favorito tenía una promoción activa.
+- El cajero podía entrar a Inventario y Combos desde el POS (precios y stock), subir el cupo de
+  crédito de un cliente y crear clientes con $500.000 de cupo.
+- "0.750" en kilos se leía como 750 (mermas, inventario, compras, devoluciones).
+- Un abono con la caja cerrada no quedaba en ningún turno: ahora exige la caja abierta.
+- Tirilla Z contradictoria con faltante/sobrante: ya no se registra un gasto o ingreso de ajuste;
+  la diferencia se calcula en el cierre y el Centro Financiero la toma de ahí.
+- Licencia: sin internet, la copia guardada de Firebase contaba como revisión exitosa y el bloqueo
+  de 72 horas nunca llegaba; ahora siempre se consulta el servidor.
+
 ## [1.7.0] - 2026-10-21
 
 ### Nuevo

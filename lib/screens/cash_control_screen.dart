@@ -936,22 +936,8 @@ class _CashControlScreenState extends State<CashControlScreen> {
                     }
                     final dbHelper = DBHelper();
                     try {
-                      // Ajustes automáticos de sobrantes/faltantes
-                      if (diferencia > 0) {
-                        await _cashService.registrarMovimiento(
-                          tipo: 'INGRESO',
-                          monto: diferencia,
-                          descripcion: "Ajuste Sobrante Automático",
-                          categoria: 'SOBRANTE',
-                        );
-                      } else if (diferencia < 0) {
-                        await _cashService.registrarMovimiento(
-                          tipo: 'GASTO',
-                          monto: diferencia.abs(),
-                          descripcion: "Pérdida / Descuadre Cierre",
-                          categoria: 'DESCUADRE',
-                        );
-                      }
+                      // El sobrante o faltante queda en el cierre (diferencia);
+                      // no se registran movimientos de ajuste.
 
                       String estado = diferencia == 0
                           ? "OK"

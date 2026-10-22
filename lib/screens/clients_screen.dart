@@ -93,7 +93,9 @@ class _ClientsScreenState extends State<ClientsScreen> {
                   'telefono': t.text,
                   'direccion': d.text,
                   'deuda_actual': 0,
-                  'cupo_credito': 500000,
+                  // Un cliente creado por el cajero no tiene cupo de fiado
+                  // hasta que el administrador se lo asigne.
+                  'cupo_credito': SessionService.userRole() == 'ADMIN' ? 500000 : 0,
                 });
                 Navigator.pop(c);
                 _cargarClientes();
@@ -107,6 +109,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
   }
 
   void _editarCupo(Map<String, dynamic> c) async {
+    if (SessionService.userRole() != 'ADMIN') return;
     final ctrl = TextEditingController(
       text: (c['cupo_credito'] ?? 0).toString(),
     );
@@ -182,11 +185,14 @@ class _ClientsScreenState extends State<ClientsScreen> {
                   "${_t('Cupo')}: ${formater.format(c['cupo_credito'] ?? 0)}",
                   style: const TextStyle(fontSize: 15, color: Colors.grey),
                 ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () => _editarCupo(c),
-                  child: const Icon(Icons.edit, size: 16, color: Colors.blueGrey),
-                ),
+                // Subir el cupo de crédito es decisión del dueño, no del cajero.
+                if (SessionService.userRole() == 'ADMIN') ...[
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _editarCupo(c),
+                    child: const Icon(Icons.edit, size: 16, color: Colors.blueGrey),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 20),

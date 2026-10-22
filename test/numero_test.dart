@@ -37,4 +37,19 @@ void main() {
       expect(parseNumero('10.000a'), null);
     });
   });
+
+  group('Cantidades (kilos y unidades)', () {
+    test('punto o coma son decimales', () {
+      expect(parseCantidad('0.750'), 0.75);
+      expect(parseCantidad('0,750'), 0.75);
+      expect(parseCantidad('1.5'), 1.5);
+      expect(parseCantidad('12.750'), 12.75);
+      expect(parseCantidad('3'), 3);
+      expect(parseCantidad(''), isNull);
+    });
+    test('montos que empiezan por cero son decimales', () {
+      expect(parseNumero('0.750'), 0.75);
+      expect(parseNumero('10.000'), 10000);
+    });
+  });
 }

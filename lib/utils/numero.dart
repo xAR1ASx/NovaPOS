@@ -17,6 +17,10 @@ double? parseNumero(String? texto) {
     t = t.replaceAll(',', '.');
   } else if (tienePunto) {
     final List<String> partes = t.split('.');
+    // "0.750" es decimal: ningún número en miles empieza por cero.
+    if (partes.length == 2 && (partes[0] == '0' || partes[0] == '-0' || partes[0].isEmpty)) {
+      return double.tryParse(t);
+    }
     if (partes.length > 2) {
       // Varios puntos = separador de miles.
       t = t.replaceAll('.', '');
@@ -28,4 +32,15 @@ double? parseNumero(String? texto) {
   }
 
   return double.tryParse(t);
+}
+
+/// Cantidades (kilos, unidades, stock): el punto y la coma son decimales,
+/// "0.750" y "0,750" son 0,75 kg y "1.5" es 1,5. Solo un número con ambos
+/// separadores ("1.234,5") se lee como en pesos.
+double? parseCantidad(String? texto) {
+  if (texto == null) return null;
+  final t = texto.trim();
+  if (t.isEmpty) return null;
+  if (t.contains(',') && t.contains('.')) return parseNumero(t);
+  return double.tryParse(t.replaceAll(',', '.'));
 }

@@ -1,7 +1,7 @@
 # NovaPOS - Estado del Proyecto y Siguientes Pasos
 
 **Fecha de última actualización:** 2026-10-21
-**Versión Actual:** 1.7.0
+**Versión Actual:** 1.7.1
 
 ## 🎯 Hitos Completados
 - [x] **v1.7.0 lista para entregar**: sincronización incremental (plan gratuito), balanza manual, asistente de primer uso, nombre de cajas, copias a USB/Drive, mensajes de login claros y 6 errores de varias cajas corregidos. 101 tests.

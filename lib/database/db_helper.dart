@@ -1042,6 +1042,11 @@ CREATE TABLE roles_permisos(
       final fi = turno['fecha'] as String;
       final t = await _calcularTurno(txn, fi, disp);
       final totalSistema = t['total_en_caja']!;
+      // La diferencia se calcula aquí (contado − esperado). Ya no se registra
+      // un gasto o ingreso de "ajuste" antes de cerrar: eso dejaba la tirilla
+      // Z con el faltante dentro de los gastos y el esperado igual a lo contado.
+      final dif = _redondear(realContado - totalSistema);
+      final estadoCalc = dif.abs() < 1 ? 'OK' : (dif > 0 ? 'SOBRA' : 'FALTA');
 
       // --- DESGLOSE EXACTO POR MÉTODO DE PAGO (todas las cajas) ---
       final ventasPeriodo = await txn.query(
@@ -1075,9 +1080,10 @@ CREATE TABLE roles_permisos(
         }
       }
       final desgloseJson = jsonEncode(metodos);
+      // AJUSTE:NO = cierre sin movimiento de ajuste (el descuadre está aquí).
       final nuevoDetalle = detalle.isEmpty
-          ? 'METODOS:$desgloseJson'
-          : '$detalle|METODOS:$desgloseJson';
+          ? 'AJUSTE:NO|METODOS:$desgloseJson'
+          : '$detalle|AJUSTE:NO|METODOS:$desgloseJson';
 
       filaMov = _filaMovCaja(
         tipo: 'CIERRE',
@@ -1099,8 +1105,8 @@ CREATE TABLE roles_permisos(
         'gastos_turno': t['gastos'],
         'total_sistema': totalSistema,
         'real_contado': realContado,
-        'diferencia': diferencia,
-        'estado': estado,
+        'diferencia': dif,
+        'estado': estadoCalc,
         'usuario_id': usuarioId,
         'detalle': nuevoDetalle,
         'uuid': generateUuidV4(),
@@ -2646,6 +2652,14 @@ CREATE TABLE roles_permisos(
     if (m <= 0) {
       return {'exito': false, 'mensaje': 'El monto del abono debe ser mayor a cero'};
     }
+    // El abono es efectivo que entra al cajón: con la caja cerrada no quedaba
+    // en ningún turno y el cuadre del día siguiente no lo veía.
+    if (!await verificarCajaAbiertaHoy()) {
+      return {
+        'exito': false,
+        'mensaje': 'Abra la caja para recibir el abono: el efectivo debe quedar en el turno',
+      };
+    }
     final filaCaja = _filaMovCaja(
       tipo: 'INGRESO',
       monto: m,
@@ -2946,7 +2960,7 @@ CREATE TABLE roles_permisos(
       await txn.delete('sync_pendientes');
       await txn.delete('sync_aplicados');
       await txn.delete('configuracion',
-          where: "clave IN ('sync_semilla', 'sync_semilla_finanzas', 'sync_negocio_id', 'sync_usuario_uid') OR clave LIKE 'img_url_%'");
+          where: "clave IN ('sync_semilla', 'sync_semilla_finanzas', 'sync_negocio_id', 'sync_usuario_uid') OR clave LIKE 'img_url_%' OR clave LIKE 'login_offline_%'");
       await txn.rawDelete(
         "DELETE FROM sqlite_sequence WHERE name IN ('ventas', 'productos', 'clientes', 'caja_movimientos', 'compras', 'detalle_compras', 'cierres_caja', 'movimientos_cartera', 'mermas', 'devoluciones', 'combo_detalles', 'promociones')",
       );

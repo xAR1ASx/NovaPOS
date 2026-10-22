@@ -52,9 +52,8 @@ void main() {
     await db.registrarMovimientoCaja('GASTO', 3000, 'Arriendo', 1, categoria: 'ARRIENDO');
     await db.registrarMerma(productoId: p, cantidad: 1, motivo: 'Daño', usuarioId: 1);
     final total = (await db.obtenerResumenCaja())['total_en_caja']!;
-    await db.registrarMovimientoCaja('GASTO', 500, 'Pérdida / Descuadre Cierre', 1, categoria: 'DESCUADRE');
     await db.cerrarTurno(
-        realContado: total - 500, diferencia: -500, estado: 'FALTA',
+        realContado: total - 500,
         fechaInicio: (await db.obtenerFechaAperturaActual())!, usuarioId: 1);
   }
 

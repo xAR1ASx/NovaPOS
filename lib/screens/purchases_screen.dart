@@ -170,8 +170,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setStateModal) {
-          double cajas = parseNumero(cantidadCajasCtrl.text) ?? 0;
-          double unids = parseNumero(unidadesPorCajaCtrl.text) ?? 1;
+          double cajas = parseCantidad(cantidadCajasCtrl.text) ?? 0;
+          double unids = parseCantidad(unidadesPorCajaCtrl.text) ?? 1;
           double cantidadEntrante = cajas * unids;
           double costoTotalFactura = parseNumero(costoTotalCtrl.text) ?? 0;
 

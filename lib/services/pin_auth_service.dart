@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -5,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../database/db_helper.dart';
+import 'login_offline_service.dart';
 import '../firebase_options.dart';
 
 class PinAuthService {
@@ -73,6 +75,8 @@ class PinAuthService {
 
   /// Cerrar sesion completa: firma fuera de Firebase y borra el archivo local
   static Future<void> cerrarSesion() async {
+    _timerReconexion?.cancel();
+    _pendienteReconexion = null;
     try {
       await _auth.signOut();
     } catch (e) {}
@@ -138,42 +142,103 @@ class PinAuthService {
   /// El PIN es el password real de la cuenta Firebase.
   /// Devuelve null si las credenciales son invalidas o el usuario no existe.
   static Future<Map<String, dynamic>?> loginConEmailPin(
-      String email, String pin) async {
-    try {
-      UserCredential cred = await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: pin,
-      );
-      return await _perfilParaLogin(cred.user!.uid);
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'invalid-credential' ||
-          e.code == 'wrong-password' ||
-          e.code == 'user-not-found') {
-        return null;
-      }
-      rethrow;
-    }
-  }
+      String email, String pin) =>
+      _entrar(email.trim(), pin);
 
   /// Login con solo PIN usando la sesion guardada (email en disco).
   static Future<Map<String, dynamic>?> loginConPin(String pin) async {
     String? email = await emailGuardado();
     if (email == null || email.isEmpty) return null;
+    return _entrar(email, pin);
+  }
 
+  /// Entra con internet; si no hay conexión, con la huella guardada en este
+  /// equipo (ver LoginOfflineService). Devuelve null si el PIN es incorrecto.
+  static Future<Map<String, dynamic>?> _entrar(String email, String pin) async {
     try {
-      UserCredential cred = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: pin,
-      );
-      return await _perfilParaLogin(cred.user!.uid);
+      final cred = await _auth.signInWithEmailAndPassword(email: email, password: pin);
+      final perfil = await _perfilParaLogin(cred.user!.uid);
+      await LoginOfflineService.recordar(email: email, pin: pin, perfil: perfil);
+      _pendienteReconexion = null;
+      return perfil;
     } on FirebaseAuthException catch (e) {
       if (e.code == 'invalid-credential' ||
           e.code == 'wrong-password' ||
           e.code == 'user-not-found') {
         return null;
       }
+      if (e.code == 'network-request-failed') return _entrarSinConexion(email, pin);
       rethrow;
+    } on ProblemaLogin catch (e) {
+      // Sin perfil o desactivado: tampoco puede entrar sin internet.
+      if (e.codigo == ProblemaLogin.sinPerfil || e.codigo == ProblemaLogin.inactivo) {
+        await LoginOfflineService.olvidar(email);
+      }
+      if (e.codigo == ProblemaLogin.sinConexion) return _entrarSinConexion(email, pin);
+      rethrow;
+    } on SocketException {
+      return _entrarSinConexion(email, pin);
     }
+  }
+
+  static Future<Map<String, dynamic>?> _entrarSinConexion(String email, String pin) async {
+    final r = await LoginOfflineService.entrar(email, pin);
+    switch (r.codigo) {
+      case ResultadoOffline.ok:
+        // El PIN queda solo en memoria para reconectarse a la nube al volver
+        // el internet.
+        _pendienteReconexion = (email: email, pin: pin);
+        return r.perfil;
+      case ResultadoOffline.pinIncorrecto:
+        return null;
+      case ResultadoOffline.vencido:
+        throw const ProblemaLogin(ProblemaLogin.offlineVencido);
+      default:
+        throw const ProblemaLogin(ProblemaLogin.sinCredencialOffline);
+    }
+  }
+
+  static ({String email, String pin})? _pendienteReconexion;
+
+  /// Si se entró sin internet: intenta iniciar sesión en la nube. true si lo
+  /// logró (entonces hay que reiniciar la sincronización).
+  static Future<bool> reconectarSiHaceFalta() async {
+    final p = _pendienteReconexion;
+    if (p == null) return false;
+    try {
+      final cred = await _auth.signInWithEmailAndPassword(email: p.email, password: p.pin);
+      final perfil = await _perfilParaLogin(cred.user!.uid);
+      await LoginOfflineService.recordar(email: p.email, pin: p.pin, perfil: perfil);
+      _pendienteReconexion = null;
+      return true;
+    } on ProblemaLogin catch (e) {
+      if (e.codigo == ProblemaLogin.sinPerfil || e.codigo == ProblemaLogin.inactivo) {
+        await LoginOfflineService.olvidar(p.email);
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool get sesionSinConexion => _pendienteReconexion != null;
+
+  static Timer? _timerReconexion;
+
+  /// Mientras se trabaja sin internet, cada minuto intenta conectarse a la
+  /// nube; al lograrlo llama [alConectar] (reiniciar sincronización y licencia).
+  static void iniciarReconexionAutomatica(Future<void> Function() alConectar) {
+    _timerReconexion?.cancel();
+    _timerReconexion = Timer.periodic(const Duration(minutes: 1), (t) async {
+      if (!sesionSinConexion) {
+        t.cancel();
+        return;
+      }
+      if (await reconectarSiHaceFalta()) {
+        t.cancel();
+        await alConectar();
+      }
+    });
   }
 
   /// Verificar el PIN actual del usuario conectado (para acciones sensibles)
@@ -204,6 +269,11 @@ class PinAuthService {
       }
 
       await _auth.currentUser!.updatePassword(nuevoPin);
+      final email = _auth.currentUser?.email;
+      final perfil = _auth.currentUser == null ? null : await _obtenerDocUsuario(_auth.currentUser!.uid);
+      if (email != null && perfil != null) {
+        await LoginOfflineService.recordar(email: email, pin: nuevoPin, perfil: perfil);
+      }
       return {'exito': true, 'mensaje': 'PIN actualizado correctamente'};
     } catch (e) {
       return {'exito': false, 'mensaje': 'Error al cambiar el PIN'};
@@ -445,6 +515,8 @@ class ProblemaLogin implements Exception {
   static const sinConexion = 'SIN_CONEXION';
   static const sinPermiso = 'SIN_PERMISO';
   static const limiteNube = 'LIMITE_NUBE';
+  static const sinCredencialOffline = 'SIN_CREDENCIAL_OFFLINE';
+  static const offlineVencido = 'OFFLINE_VENCIDO';
 
   final String codigo;
   const ProblemaLogin(this.codigo);
@@ -471,6 +543,12 @@ class ProblemaLogin implements Exception {
         return 'Este usuario no tiene un negocio asignado o no tiene permisos. Contacta a soporte.';
       case limiteNube:
         return 'La nube llegó a su límite de hoy. Intenta de nuevo más tarde o contacta a soporte.';
+      case sinCredencialOffline:
+        return 'No hay internet y este usuario nunca ha entrado en este equipo. '
+            'La primera vez hay que entrar con internet.';
+      case offlineVencido:
+        return 'Llevas más de ${LoginOfflineService.diasMaximos} días sin internet en este equipo. '
+            'Conéctate a internet para entrar.';
       default:
         return 'No hay conexión con la nube. Revisa el internet (Wi-Fi o cable) e intenta de nuevo.';
     }

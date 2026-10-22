@@ -485,6 +485,21 @@ class FinanzasService {
       }
     }
 
+    // Descuadres de cierres nuevos (sin movimiento de ajuste): se toman de la
+    // diferencia del cierre. Los viejos ya vienen como movimientos.
+    final descuadres = await db.rawQuery(
+        "SELECT diferencia FROM cierres_caja WHERE detalle LIKE '%AJUSTE:NO%' "
+        'AND fecha >= ? AND fecha < ?$fu', a);
+    for (final c in descuadres) {
+      final dif = _n(c['diferencia']);
+      if (dif.abs() < toleranciaCuadre) continue;
+      if (dif < 0) {
+        faltantes += -dif;
+      } else {
+        sobrantes += dif;
+      }
+    }
+
     final mermas = await db.rawQuery(
         'SELECT fecha, total_perdida FROM mermas WHERE fecha >= ? AND fecha < ?$fu', a);
     double totalMermas = 0;

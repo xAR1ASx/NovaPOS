@@ -104,7 +104,7 @@ class _MermasScreenState extends State<MermasScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          final cant = parseNumero(cantidadCtrl.text) ?? 0;
+          final cant = parseCantidad(cantidadCtrl.text) ?? 0;
           final costo = productoSeleccionado != null
               ? (productoSeleccionado!['precio_costo'] as num?)?.toDouble() ?? 0
               : 0.0;

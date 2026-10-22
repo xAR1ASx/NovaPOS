@@ -4,6 +4,7 @@ class RolePermissions {
       'VENTAS_CREAR',
       'VENTAS_VER',
       'VENTAS_ANULAR',
+      'VENTAS_DEVOLVER',
       'INVENTARIO_VER',
       'INVENTARIO_CREAR',
       'INVENTARIO_EDITAR',
@@ -25,6 +26,9 @@ class RolePermissions {
     'CAJERO': [
       'VENTAS_CREAR',
       'VENTAS_VER',
+      // Devolver artículos sí (con motivo, queda en Control); anular una
+      // venta completa sigue siendo solo del administrador.
+      'VENTAS_DEVOLVER',
       'CAJA_ABRIR',
       'CAJA_CERRAR',
       'CAJA_MOVIMIENTOS',

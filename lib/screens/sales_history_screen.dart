@@ -149,10 +149,12 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) {
-          final double cantDev = parseNumero(cantCtrl.text) ?? 0;
-          final bool valida = cantDev > 0 && cantDev <= maxCant + 0.0001;
+          final double cantDev = parseCantidad(cantCtrl.text) ?? 0;
+          final bool cantidadValida = cantDev > 0 && cantDev <= maxCant + 0.0001;
+          // Motivo obligatorio: queda en Control con el nombre de quien devolvió.
+          final bool valida = cantidadValida && motivoCtrl.text.trim().length >= 3;
           // Mismo cálculo que hace la base de datos: proporción del subtotal cobrado.
-          final double monto = !valida
+          final double monto = !cantidadValida
               ? 0
               : (cantDev >= maxCant - 0.0001
                   ? subtotal
@@ -189,15 +191,16 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     decoration: InputDecoration(
                       labelText: '${_t('Cantidad a devolver')} (${_t('Máx')}: ${_cantidadTexto(maxCant)})',
                       border: const OutlineInputBorder(),
-                      errorText: cantCtrl.text.isNotEmpty && !valida ? _t('Cantidad inválida') : null,
+                      errorText: cantCtrl.text.isNotEmpty && !cantidadValida ? _t('Cantidad inválida') : null,
                     ),
                     onChanged: (_) => setStateDialog(() {}),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: motivoCtrl,
+                    onChanged: (_) => setStateDialog(() {}),
                     decoration: InputDecoration(
-                      labelText: _t('Motivo (opcional)'),
+                      labelText: _t('Motivo de la devolución *'),
                       hintText: _t('Ej: producto dañado, cliente cambió de opinión'),
                       border: const OutlineInputBorder(),
                     ),
@@ -349,7 +352,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                           formater.format(d['subtotal']),
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        if ((venta['anulada'] ?? 0) != 1 && PermissionService.can("VENTAS_ANULAR"))
+                        if ((venta['anulada'] ?? 0) != 1 && PermissionService.can("VENTAS_DEVOLVER"))
                           IconButton(
                             icon: const Icon(Icons.replay, color: Colors.brown, size: 20),
                             tooltip: 'Devolver artículo',

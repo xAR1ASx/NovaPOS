@@ -177,7 +177,10 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
       }
 
       // L-02: Unificar verificación de licencia usando LicenseMonitor
-      LicenciaResult licencia = await LicenseMonitor.instance.revisar(negocioId);
+      final sinInternet = usuario['offline'] == true;
+      LicenciaResult licencia = sinInternet
+          ? await LicenseMonitor.instance.revisarSinConexion()
+          : await LicenseMonitor.instance.revisar(negocioId);
 
       if (!mounted) return;
 
@@ -191,7 +194,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
       }
 
       // Conteo local de días disponibles (sirve de respaldo sin internet)
-      await LicenseMonitor.instance.guardarCacheLocal(negocioId);
+      if (!sinInternet) await LicenseMonitor.instance.guardarCacheLocal(negocioId);
 
       await SessionService.login(usuario, negocioId: negocioId);
 
@@ -214,6 +217,26 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
       );
 
       unawaited(LicenseMonitor.instance.iniciar(negocioId));
+
+      // Entró sin internet: se avisa y, al volver la conexión, se reconecta
+      // solo a la nube (sincronización y licencia).
+      if (usuario['offline'] == true) {
+        final uid = (usuario['uid'] ?? '').toString();
+        PinAuthService.iniciarReconexionAutomatica(() async {
+          await SyncService().detener();
+          await SyncService().iniciar(negocioId: negocioId, usuarioUid: uid);
+          await LicenseMonitor.instance.iniciar(negocioId);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('📴 Entraste sin internet. Puedes vender normal; '
+                  'todo se sincroniza solo cuando vuelva la conexión.'),
+              duration: Duration(seconds: 6),
+            ),
+          );
+        }
+      }
 
       // Primera vez del administrador en este equipo: asistente de inicio.
       final conAsistente = await AsistenteInicioScreen.debeMostrarse();

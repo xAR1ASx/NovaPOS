@@ -4,7 +4,7 @@
 ===============================================================================
 
 Versión del documento ..... 1.0
-Versión del sistema ....... 1.7.0 (base de datos local v14)
+Versión del sistema ....... 1.7.1 (base de datos local v14)
 Fecha ..................... 21 de octubre de 2026
 Repositorio ............... github.com/xAR1ASx/NovaPOS (rama main)
 
@@ -48,7 +48,7 @@ Quién lo usa:
     atiende clientes. No ve utilidades ni configuración.
 
 Plataformas:
-  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.7.0.exe.
+  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.7.1.exe.
   - Android 8 o superior (tablets): APK, con modo kiosco opcional.
   - macOS: solo para desarrollo (no se entrega a clientes).
 
@@ -76,9 +76,8 @@ Principios:
      precios, stock, ventas, clientes, fiados, promociones, combos y cierres.
      Cada caja cuadra su propio cajón.
 
-  d) FUNCIONA SIN INTERNET. Si se cae la conexión, se sigue vendiendo. Al
-     volver, todo se sincroniza solo. (Ver pendiente 11.1: hoy todavía hace
-     falta internet para INICIAR SESIÓN.)
+  d) FUNCIONA SIN INTERNET. Si se cae la conexión, se sigue vendiendo y se
+     puede volver a entrar con el PIN. Al volver, todo se sincroniza solo.
 
   e) EL DUEÑO ENTIENDE SU NEGOCIO. Un Centro Financiero que diga cuánto se
      ganó de verdad, en qué se va la plata, qué productos dejan y cuáles no,
@@ -136,15 +135,19 @@ Principios:
   - Asistente para pagar un pedido mayor al efectivo disponible (ingresa el
     faltante y paga en una sola operación).
   - Cierre de turno con conteo obligatorio, semáforo de cuadre (perfecto /
-    sobrante / faltante), ajuste automático y tirilla Z imprimible con
-    desglose por medio de pago y firmas.
+    sobrante / faltante) y tirilla Z imprimible con desglose por medio de
+    pago y firmas. La diferencia se calcula en el cierre (no se registra un
+    gasto de "ajuste"), así la tirilla cuadra: base + ventas + ingresos -
+    gastos = esperado; contado - esperado = diferencia.
   - Historial de cierres y reimpresión.
 
 3.3 Ventas, devoluciones y anulaciones
   - Historial de ventas por fecha.
-  - Devolución parcial o total de un artículo, con motivo. Muestra antes de
-    confirmar cuánto se devuelve y por qué medio.
-  - Anulación de una venta completa, con motivo; queda quién y cuándo.
+  - Devolución parcial o total de un artículo, con motivo obligatorio. Muestra
+    antes de confirmar cuánto se devuelve y por qué medio. La puede hacer el
+    cajero o el administrador.
+  - Anulación de una venta completa, con motivo; solo el administrador. Queda
+    quién y cuándo.
 
 3.4 Inventario y compras
   - Productos con costo, precio, stock, categoría, PLU, código de barras,
@@ -158,7 +161,9 @@ Principios:
 
 3.5 Clientes y fiados
   - Clientes con cupo de crédito, deuda actual y movimientos (fiado, abono,
-    devolución, anulación). Los abonos en efectivo entran a la caja.
+    devolución, anulación). Los abonos en efectivo entran a la caja (con la
+    caja abierta). Solo el administrador asigna o cambia el cupo; un cliente
+    creado por el cajero empieza sin cupo.
 
 3.6 Centro Financiero (Reportes)
   Período (hoy, ayer, 7 días, 30 días, este mes, mes pasado, año o rango) y
@@ -185,6 +190,12 @@ Principios:
   - El ADMIN crea cajeros y puede enviarles recuperación de PIN por correo.
   - Mensajes claros al entrar: PIN incorrecto, sin internet, usuario
     desactivado, perfil faltante en la nube, correo mal escrito.
+  - Inicio de sesión sin internet: quien ya entró con internet en ese equipo
+    puede entrar con su PIN sin conexión hasta 7 días (se guarda una huella
+    cifrada del PIN, nunca el PIN). Respeta la licencia guardada y se
+    reconecta sola a la nube al volver el internet.
+  - El cajero no ve Inventario, Combos, Reportes, Compras, Usuarios ni
+    Configuración, y no puede anular ventas.
 
 3.8 Configuración y primer uso
   - Asistente de primer uso (5 pasos) para el ADMIN: datos del ticket
@@ -284,8 +295,8 @@ Principios:
   - Todas las cajas de un negocio deben tener la MISMA versión (1.7.0 o
     superior). Las versiones anteriores no marcan la hora del servidor y sus
     cambios no les llegarían a las cajas nuevas.
-  - Cada caja necesita internet para iniciar sesión (pendiente 11.1) y para
-    sincronizar; sin internet sigue vendiendo con lo que tiene.
+  - Cada caja necesita internet para sincronizar; sin internet sigue
+    vendiendo con lo que tiene y se puede entrar con el PIN.
   - La sincronización debe estar activa (Ajustes -> Sincronización entre
     cajas; viene activa de fábrica).
 
@@ -365,8 +376,11 @@ Principios:
   - Atrasar el reloj del PC bloquea.
   - Borrar la marca de última conexión en un equipo financiado bloquea.
   - "Restablecer de fábrica" no quita el bloqueo.
-  - Hoy, para iniciar sesión siempre hace falta internet, y en ese momento se
-    revisa la licencia en la nube.
+  - La revisión en la nube siempre consulta el servidor (sin internet no se
+    toma la copia guardada de Firebase como válida).
+  - Sin internet se puede entrar con el PIN (hasta 7 días), pero la licencia
+    guardada se respeta: si estaba bloqueada o vencida no deja entrar, y los
+    financiados se suspenden a las 72 horas.
 
 
 ===============================================================================
@@ -465,6 +479,16 @@ Principios:
 10. ÚLTIMOS CAMBIOS REALIZADOS
 ===============================================================================
 
+  Versión 1.7.1 (21-oct-2026) - Auditoría y entrada sin internet
+  - Nuevo: inicio de sesión sin internet con el PIN (hasta 7 días).
+  - Nuevo: el cajero puede devolver artículos (motivo obligatorio); anular
+    sigue siendo del administrador.
+  - Corregido: el POS se caía con un favorito en promoción; el cajero podía
+    entrar a Inventario/Combos desde el POS y cambiar cupos de crédito;
+    "0.750" kg se leía como 750; abonos con la caja cerrada; tirilla Z
+    contradictoria con faltante; el bloqueo de 72 horas no llegaba sin
+    internet.
+
   Versión 1.7.0 (21-oct-2026) - Varias cajas en el plan gratuito
   - Sincronización incremental (solo lo nuevo) y caja nueva que no descarga
     el historial de stock.
@@ -499,20 +523,14 @@ Principios:
 
   Versión 1.5.0 y anteriores: ver CHANGELOG.md.
 
-  Pruebas automáticas: 101, todas pasando (flutter test).
+  Pruebas automáticas: 112, todas pasando (flutter test).
 
 
 ===============================================================================
 11. PENDIENTES Y PRÓXIMOS PASOS
 ===============================================================================
 
-  11.1 Iniciar sesión sin internet (prioridad alta)
-       Hoy, si se cierra la app y no hay internet, no se puede volver a
-       entrar aunque solo pida el PIN (la entrada siempre se valida con
-       Firebase). Propuesta: guardar en el PC una huella cifrada del PIN de
-       los usuarios que ya entraron con internet y permitir la entrada sin
-       conexión, respetando la licencia guardada (bloqueada, vencida y 72 h
-       para financiados).
+  11.1 (Hecho en 1.7.1) Iniciar sesión sin internet.
 
   11.2 Validar en hardware real con dos cajas sincronizadas (Windows +
        tablet), incluyendo impresora, cajón y balanza.
@@ -565,7 +583,7 @@ Principios:
   compatibilidad; la versión real del esquema es 14).
 
   Comandos:
-    flutter test ........................ correr las 101 pruebas
+    flutter test ........................ correr las 112 pruebas
     flutter build windows --release ..... compilar para Windows
     flutter build apk --release ......... compilar para Android
     ISCC.exe installer\NovaPOS_setup.iss  generar el instalador

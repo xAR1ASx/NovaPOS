@@ -109,15 +109,18 @@ class LicenseMonitor {
     }
   }
 
-  /// Para pruebas: la revisión que se hace cuando no hay internet.
-  @visibleForTesting
+  /// La revisión con lo guardado en el equipo (sin internet): bloqueo,
+  /// vencimiento, reloj y las 72 horas de los financiados.
   Future<LicenciaResult> revisarSinConexion() => _verificarLocal();
 
   Future<LicenciaResult> _verificarNube(String negocioId) async {
+    // Siempre del servidor: sin internet Firebase responde con su copia
+    // guardada, eso contaba como "revisión exitosa" y el bloqueo de 72 horas
+    // nunca llegaba. Sin conexión esto falla y se usa la revisión local.
     final doc = await FirebaseFirestore.instance
         .collection('negocios')
         .doc(negocioId)
-        .get();
+        .get(const GetOptions(source: Source.server));
     if (!doc.exists) {
       return const LicenciaResult(
         estado: LicenciaEstado.vencida,

@@ -6,9 +6,9 @@ NovaPOS combina una arquitectura local ultrarrápida impulsada por **SQLite (100
 
 ---
 
-## 🚀 Estado Actual del Proyecto (Versión 1.7.0)
+## 🚀 Estado Actual del Proyecto (Versión 1.7.1)
 
-El sistema se encuentra en su versión **1.7.0**, completamente blindado con seguridad nativa, auditoría integral, control estricto de inventarios y un módulo de caja y arqueo financiero de alto rendimiento. Modificaciones y capacidades destacadas:
+El sistema se encuentra en su versión **1.7.1**, completamente blindado con seguridad nativa, auditoría integral, control estricto de inventarios y un módulo de caja y arqueo financiero de alto rendimiento. Modificaciones y capacidades destacadas:
 
 * **Varias cajas en el plan gratuito de Firebase (v1.7.0)**: sincronización incremental (cada caja descarga solo lo nuevo), cajas con nombre, combos, paquetes y promociones compartidos, y cajas nuevas que se unen sin pisar precios ni stock.
 * **Peso manual o con balanza (v1.7.0)**: kilos, gramos o por valor en pesos; la balanza se conecta sola.
@@ -51,7 +51,7 @@ El sistema se encuentra en su versión **1.7.0**, completamente blindado con seg
   * Permite devolver unidades o fracciones específicas de un ticket, reintegrando inventario y ajustando caja automáticamente.
 * **Seguridad Estricta de Precios (H-01 Plus)**:
   * El backend intercepta la venta, valida en la BD oculta, evalúa promociones programadas del día y recalcula el importe exacto.
-* **Banco de Pruebas Automatizadas (101 Tests)**:
+* **Banco de Pruebas Automatizadas (112 Tests)**:
   * Test suite integral verificando el 100% de la lógica de negocio: balanzas, promociones, permisos, cálculo de caja, arqueo Z y bloqueo de stock cero.
 
 ---
@@ -101,12 +101,12 @@ flutter build windows --release
 # Compilar paquete APK Release para Tablet Android
 flutter build apk --release
 
-# Ejecutar banco de pruebas automatizadas (Test Suite: 101 tests)
+# Ejecutar banco de pruebas automatizadas (Test Suite: 112 tests)
 flutter test
 ```
 
 ### 📁 Salida de Compilación e Instaladores
 
 Los instaladores generados se ubican en:
-* **Windows**: `installer/output/NovaPOS-Setup-1.7.0.exe`
-* **Android**: `installer/output/NovaPOS-1.7.0.apk` (o `build/app/outputs/flutter-apk/app-release.apk`)
+* **Windows**: `installer/output/NovaPOS-Setup-1.7.1.exe`
+* **Android**: `installer/output/NovaPOS-1.7.1.apk` (o `build/app/outputs/flutter-apk/app-release.apk`)

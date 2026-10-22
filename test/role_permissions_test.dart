@@ -28,6 +28,14 @@ void main() {
       ]));
     });
 
+    test('El cajero puede devolver pero no anular', () {
+      final cajero = RolePermissions.permisosPara('CAJERO');
+      expect(cajero, contains('VENTAS_DEVOLVER'));
+      expect(cajero, isNot(contains('VENTAS_ANULAR')));
+      expect(cajero, isNot(contains('INVENTARIO_VER')));
+      expect(RolePermissions.permisosPara('ADMIN'), containsAll(['VENTAS_DEVOLVER', 'VENTAS_ANULAR']));
+    });
+
     test('CAJERO tiene permisos de venta y caja', () {
       final permisos = RolePermissions.permisosPara('CAJERO');
       expect(permisos, containsAll([
