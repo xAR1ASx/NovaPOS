@@ -109,6 +109,10 @@ class LicenseMonitor {
     }
   }
 
+  /// Para pruebas: la revisión que se hace cuando no hay internet.
+  @visibleForTesting
+  Future<LicenciaResult> revisarSinConexion() => _verificarLocal();
+
   Future<LicenciaResult> _verificarNube(String negocioId) async {
     final doc = await FirebaseFirestore.instance
         .collection('negocios')
