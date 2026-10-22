@@ -15,6 +15,21 @@ jobs:
       - name: Descargar repositorio
         uses: actions/checkout@v4
 
+      - name: Restaurar configuración de Firebase desde Secrets
+        shell: pwsh
+        env:
+          FIREBASE_B64: ${{ secrets.FIREBASE_OPTIONS_B64 }}
+          GOOGLE_SERVICES_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          if ($env:FIREBASE_B64) {
+            [System.IO.File]::WriteAllBytes("lib/firebase_options.dart", [System.Convert]::FromBase64String($env:FIREBASE_B64))
+            Write-Host "Restaurado lib/firebase_options.dart con éxito."
+          }
+          if ($env:GOOGLE_SERVICES_B64) {
+            [System.IO.File]::WriteAllBytes("android/app/google-services.json", [System.Convert]::FromBase64String($env:GOOGLE_SERVICES_B64))
+            Write-Host "Restaurado android/app/google-services.json con éxito."
+          }
+
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:

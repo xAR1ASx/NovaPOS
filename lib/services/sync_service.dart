@@ -583,7 +583,12 @@ class SyncService {
   // ======================= IMÁGENES EN FIREBASE STORAGE =======================
 
   Future<Directory> _dirImagenesSync() async {
-    final base = await getApplicationSupportDirectory();
+    Directory base;
+    try {
+      base = await getApplicationSupportDirectory();
+    } catch (_) {
+      base = Directory.systemTemp;
+    }
     final dir = Directory(
       '${base.path}${Platform.pathSeparator}imagenes_sync',
     );

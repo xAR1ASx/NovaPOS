@@ -60,13 +60,16 @@ void main() {
     final s = SyncService.paraPruebas(nube);
     await s.iniciar(negocioId: negocio, usuarioUid: 'uid-ana');
     await Future.delayed(const Duration(milliseconds: 400)); // primeras escuchas
-    await accion(s);
-    // Todo lo pendiente sube antes de apagar la caja
-    await esperar(() async {
-      await s.sincronizarAhora();
-      return (await db.obtenerPendientes()).length;
-    }, (n) => n == 0);
-    await s.detener();
+    try {
+      await accion(s);
+      // Todo lo pendiente sube antes de apagar la caja
+      await esperar(() async {
+        await s.sincronizarAhora();
+        return (await db.obtenerPendientes()).length;
+      }, (n) => n == 0);
+    } finally {
+      await s.detener();
+    }
   }
 
   Future<Map<String, dynamic>> producto(String nombre) async {
