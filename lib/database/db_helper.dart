@@ -29,7 +29,7 @@ class DBHelper {
     final db = await databaseFactory.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(
-        version: 13,
+        version: 14,
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
       ),
@@ -46,7 +46,7 @@ class DBHelper {
     final db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 13,
+        version: 14,
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
       ),
@@ -76,7 +76,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 13,
+      version: 14,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -410,6 +410,7 @@ CREATE TABLE roles_permisos(
   Future<void> encolarProductoCambio(
     Map<String, dynamic> p, {
     bool stockRecon = false,
+    bool semilla = false,
   }) async {
     final disp = await obtenerDispositivoUuid();
     final esCombo = (p['es_combo'] as num?)?.toInt() == 1 ? 1 : 0;
@@ -433,10 +434,24 @@ CREATE TABLE roles_permisos(
       payload['combo_componentes'] =
           await _componentesComboPayload(db, (p['id'] as num).toInt());
     }
-    if (stockRecon) {
-      payload['stock_recon'] =
-          ((p['stock_actual'] as num?)?.toDouble() ?? 0).toInt();
+    if (p['id'] != null) {
+      final db = await database;
+      final packs = await db.query('presentaciones',
+          where: 'producto_id = ?', whereArgs: [p['id']]);
+      payload['presentaciones'] = [
+        for (final k in packs)
+          {
+            'nombre': k['nombre'],
+            'cantidad': k['cantidad'],
+            'precio': k['precio'],
+            'codigo_barras': k['codigo_barras'],
+          }
+      ];
     }
+    if (stockRecon) {
+      payload['stock_recon'] = (p['stock_actual'] as num?)?.toDouble() ?? 0;
+    }
+    if (semilla) payload['semilla'] = true;
     await encolarPendiente('PRODUCTO', p['uuid'] as String, jsonEncode(payload));
   }
 
@@ -562,11 +577,38 @@ CREATE TABLE roles_permisos(
     double precio,
   ) async {
     final db = await database;
-    return await db.insert('presentaciones', {
+    final id = await db.insert('presentaciones', {
       'producto_id': prodId,
       'nombre': nombre,
       'cantidad': cantidad,
       'precio': precio,
+    });
+    await _encolarProductoPorId(prodId);
+    return id;
+  }
+
+  /// Vuelve a subir un producto (por ejemplo al cambiar sus paquetes).
+  Future<void> _encolarProductoPorId(int prodId) async {
+    final db = await database;
+    final p = await db.query('productos', where: 'id = ?', whereArgs: [prodId], limit: 1);
+    if (p.isNotEmpty) await encolarProductoCambio(p.first);
+  }
+
+  /// Reemplaza los paquetes locales de un producto con los recibidos de otra caja.
+  Future<void> sincronizarPresentaciones(int prodId, List<dynamic> packs) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('presentaciones', where: 'producto_id = ?', whereArgs: [prodId]);
+      for (final k in packs) {
+        if (k is! Map) continue;
+        await txn.insert('presentaciones', {
+          'producto_id': prodId,
+          'nombre': k['nombre'],
+          'cantidad': (k['cantidad'] as num?)?.toDouble() ?? 1,
+          'precio': (k['precio'] as num?)?.toDouble() ?? 0,
+          'codigo_barras': k['codigo_barras'],
+        });
+      }
     });
   }
 
@@ -582,7 +624,9 @@ CREATE TABLE roles_permisos(
 
   Future<void> borrarPresentacion(int id) async {
     final db = await database;
+    final k = await db.query('presentaciones', columns: ['producto_id'], where: 'id = ?', whereArgs: [id], limit: 1);
     await db.delete('presentaciones', where: 'id = ?', whereArgs: [id]);
+    if (k.isNotEmpty) await _encolarProductoPorId((k.first['producto_id'] as num).toInt());
   }
 
   // --- CAJA Y VENTAS ---
@@ -1059,6 +1103,7 @@ CREATE TABLE roles_permisos(
         'detalle': nuevoDetalle,
         'uuid': generateUuidV4(),
         'dispositivo_uuid': disp,
+        'caja_nombre': await nombreCaja(txn),
       });
 
       final cierreCreado = (await txn.query(
@@ -1090,6 +1135,14 @@ CREATE TABLE roles_permisos(
     datos['fecha_epoch'] =
         DateTime.tryParse(c['fecha']?.toString() ?? '')?.millisecondsSinceEpoch ?? 0;
     await encolarPendiente('CIERRE', uuid, jsonEncode(datos));
+  }
+
+  /// Nombre que el dueño le dio a esta caja (ej. "Caja principal").
+  Future<String> nombreCaja([DatabaseExecutor? ex]) async {
+    final e = ex ?? await database;
+    final r = await e.query('configuracion', where: "clave = 'caja_nombre'", limit: 1);
+    final v = r.isEmpty ? '' : (r.first['valor'] ?? '').toString().trim();
+    return v.isEmpty ? 'Caja principal' : v;
   }
 
   Future<String?> obtenerFechaAperturaActual() async {
@@ -2314,10 +2367,10 @@ CREATE TABLE roles_permisos(
               await _componentesComboPayload(db, (p['id'] as num).toInt()),
         'esta_activo': p['esta_activo'] ?? 1,
         'imagen_path': p['imagen_path'],
-        'stock_recon':
-            ((p['stock_actual'] as num?)?.toDouble() ?? 0).toInt(),
+        'stock_recon': (p['stock_actual'] as num?)?.toDouble() ?? 0,
         'actualizado_epoch': DateTime.now().millisecondsSinceEpoch,
         'dispositivo_uuid': dispositivoUuid,
+        'semilla': true,
       }));
     }
 
@@ -2881,8 +2934,18 @@ CREATE TABLE roles_permisos(
       await txn.delete('presentaciones');
       await txn.delete('productos');
       await txn.delete('clientes');
+      await txn.delete('mermas');
+      await txn.delete('devoluciones');
+      await txn.delete('combo_detalles');
+      await txn.delete('promociones');
+      // Sin esto, lo que quedó pendiente por subir (y la marca de equipo ya
+      // sincronizado) iría a parar al próximo negocio que use este equipo.
+      await txn.delete('sync_pendientes');
+      await txn.delete('sync_aplicados');
+      await txn.delete('configuracion',
+          where: "clave IN ('sync_semilla', 'sync_semilla_finanzas', 'sync_negocio_id', 'sync_usuario_uid') OR clave LIKE 'img_url_%'");
       await txn.rawDelete(
-        "DELETE FROM sqlite_sequence WHERE name IN ('ventas', 'productos', 'clientes', 'caja_movimientos', 'compras', 'detalle_compras', 'cierres_caja', 'movimientos_cartera')",
+        "DELETE FROM sqlite_sequence WHERE name IN ('ventas', 'productos', 'clientes', 'caja_movimientos', 'compras', 'detalle_compras', 'cierres_caja', 'movimientos_cartera', 'mermas', 'devoluciones', 'combo_detalles', 'promociones')",
       );
       await txn.insert('clientes', {
         'nombre': 'Cliente Casual',
@@ -3256,6 +3319,9 @@ CREATE TABLE roles_permisos(
       await _asegurarEsquemaFinanzas(db);
       await _rellenarEfectivoCobrado(db);
     }
+    if (oldVersion < 14) {
+      await _asegurarEsquemaFinanzas(db);
+    }
   }
 
   // --- ESQUEMA FINANCIERO (v13) ---
@@ -3276,6 +3342,7 @@ CREATE TABLE roles_permisos(
     await columna('caja_movimientos', 'venta_id', 'INTEGER');
     await columna('caja_movimientos', 'resta_caja', 'INTEGER DEFAULT 0');
     await columna('cierres_caja', 'dispositivo_uuid', 'TEXT');
+    await columna('cierres_caja', 'caja_nombre', 'TEXT');
     // Ventas: efectivo que entró al cajón al cobrar (no cambia con
     // devoluciones) y auditoría de la anulación.
     await columna('ventas', 'efectivo_cobrado', 'REAL');
@@ -3345,8 +3412,14 @@ CREATE TABLE roles_permisos(
       datos['creado_en'] = DateTime.now().toIso8601String();
     }
     
-    datos['actualizado_epoch'] = DateTime.now().millisecondsSinceEpoch;
-    datos['dispositivo_uuid'] = await obtenerDispositivoUuid();
+    // La tabla local no tiene estas columnas: solo viajan a la nube (antes
+    // se intentaban guardar y crear o editar una promoción fallaba).
+    final nube = {
+      'actualizado_epoch': DateTime.now().millisecondsSinceEpoch,
+      'dispositivo_uuid': await obtenerDispositivoUuid(),
+    };
+    datos.remove('actualizado_epoch');
+    datos.remove('dispositivo_uuid');
 
     int idRes;
     if (datos.containsKey('id') && datos['id'] != null) {
@@ -3358,7 +3431,7 @@ CREATE TABLE roles_permisos(
     
     // Sync to cloud
     datos['id'] = idRes;
-    await encolarPendiente('PROMOCION', datos['uuid'], jsonEncode(datos));
+    await encolarPendiente('PROMOCION', datos['uuid'], jsonEncode({...datos, ...nube}));
     return idRes;
   }
 
@@ -3372,38 +3445,38 @@ CREATE TABLE roles_permisos(
     return await db.delete('promociones', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// Sube la promoción con su versión, para que las otras cajas la apliquen.
+  Future<void> _encolarPromocion(int id) async {
+    final db = await database;
+    final pList = await db.query('promociones', where: 'id = ?', whereArgs: [id]);
+    if (pList.isEmpty) return;
+    await encolarPendiente('PROMOCION', pList.first['uuid'] as String, jsonEncode({
+      ...pList.first,
+      'actualizado_epoch': DateTime.now().millisecondsSinceEpoch,
+      'dispositivo_uuid': await obtenerDispositivoUuid(),
+    }));
+  }
+
   Future<void> togglePromocionActiva(int id, bool activa) async {
     final db = await database;
     await db.update(
       'promociones',
-      {
-        'esta_activa': activa ? 1 : 0, 
-        'actualizado_epoch': DateTime.now().millisecondsSinceEpoch
-      },
+      {'esta_activa': activa ? 1 : 0},
       where: 'id = ?',
       whereArgs: [id],
     );
-    final pList = await db.query('promociones', where: 'id = ?', whereArgs: [id]);
-    if (pList.isNotEmpty) {
-       await encolarPendiente('PROMOCION', pList.first['uuid'] as String, jsonEncode(pList.first));
-    }
+    await _encolarPromocion(id);
   }
 
   Future<void> togglePromocionForzarHoy(int id, bool forzar) async {
     final db = await database;
     await db.update(
       'promociones',
-      {
-        'forzar_hoy': forzar ? 1 : 0,
-        'actualizado_epoch': DateTime.now().millisecondsSinceEpoch
-      },
+      {'forzar_hoy': forzar ? 1 : 0},
       where: 'id = ?',
       whereArgs: [id],
     );
-    final pList = await db.query('promociones', where: 'id = ?', whereArgs: [id]);
-    if (pList.isNotEmpty) {
-       await encolarPendiente('PROMOCION', pList.first['uuid'] as String, jsonEncode(pList.first));
-    }
+    await _encolarPromocion(id);
   }
 
   // --- CONFIGURACIÓN DE STOCK FLEXIBLE ---
@@ -3575,7 +3648,7 @@ CREATE TABLE roles_permisos(
         final id = await db.insert('productos', map);
         map['id'] = id;
         try {
-          await encolarProductoCambio(map, stockRecon: true);
+          await encolarProductoCambio(map, stockRecon: true, semilla: true);
         } catch (_) {}
         insertados++;
       }

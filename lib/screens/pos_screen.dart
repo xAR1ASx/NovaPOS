@@ -1,6 +1,7 @@
 import '../services/printer_service.dart'; // 🔥 Importamos el servicio de impresión
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
@@ -130,6 +131,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   Map<String, dynamic>? _clienteSeleccionadoGlobal;
   double _pesoActualBalanza = 0;
+  String _modoBalanza = BalanzaService.modoManual;
 
   // Categorías
   List<String> _categorias = ["TODO", "⭐ FAVORITOS"];
@@ -340,12 +342,14 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     final favs = await DBHelper().obtenerProductosFavoritos(limit: 12);
     final promos = await PromocionesService().obtenerPromocionesActivasHoy();
     final permitirStockNeg = await DBHelper().permitirStockNegativo();
+    final modoBalanza = await BalanzaService.modo();
     if (mounted) {
       setState(() {
         _products = data;
         _favoritos = favs;
         _promocionesActivas = promos;
         _permitirStockNegativo = permitirStockNeg;
+        _modoBalanza = modoBalanza;
         if (_categoriaActual == "⭐ FAVORITOS") {
           _filteredProducts = favs;
         } else if (_categoriaActual == "TODO") {
@@ -914,6 +918,16 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     });
   }
 
+  /// Kilos escritos a mano: acepta "0,75", "0.75" o "1,5" (el punto siempre
+  /// es decimal, porque nadie escribe miles de kilos).
+  double? _leerKilos(String t) {
+    final v = double.tryParse(t.trim().replaceAll(',', '.'));
+    return (v == null || v <= 0) ? null : v;
+  }
+
+  /// Ventana para productos por peso. Con balanza conectada muestra el peso
+  /// en vivo; siempre deja escribirlo a mano en kilos, gramos o por valor
+  /// en pesos ("deme $2.000 de tomate").
   void _dialogoBalanza(Map<String, dynamic> p) {
     _pesoActualBalanza = 0;
     StateSetter? stSet;
@@ -923,6 +937,38 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
         stSet?.call(() {});
       }
     });
+    final usaBalanza = _modoBalanza == BalanzaService.modoBalanza;
+    if (usaBalanza && !BalanzaService.estaConectada) {
+      BalanzaService.conectarSiCorresponde().then((_) => stSet?.call(() {}));
+    }
+
+    final promo = PromocionesService().calcularDescuentoProducto(p, _promocionesActivas);
+    final double precioKg = promo != null
+        ? (promo['precio_con_descuento'] as num).toDouble()
+        : ((p['precio_venta'] as num?)?.toDouble() ?? 0.0);
+    final ctrl = TextEditingController();
+    // KG, GR o VALOR
+    String unidad = 'KG';
+    bool escribir = !usaBalanza;
+    bool reconectando = false;
+
+    double? kilosEscritos() {
+      if (unidad == 'VALOR') {
+        final valor = parseNumero(ctrl.text);
+        if (valor == null || valor <= 0 || precioKg <= 0) return null;
+        return double.parse((valor / precioKg).toStringAsFixed(3));
+      }
+      final v = _leerKilos(ctrl.text);
+      if (v == null) return null;
+      return unidad == 'GR' ? v / 1000 : v;
+    }
+
+    void confirmar(BuildContext ctx, double kilos) {
+      _agregar(p, cantidad: double.parse(kilos.toStringAsFixed(3)));
+      Navigator.pop(ctx);
+    }
+
+    String kg(double v) => '${v.toStringAsFixed(3).replaceAll('.', ',')} Kg';
 
     showDialog(
       context: context,
@@ -931,71 +977,203 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
           stSet = st;
           final peso = _pesoActualBalanza;
           final hayBalanza = BalanzaService.estaConectada;
+          final kilos = kilosEscritos();
+          final atajos = unidad == 'VALOR'
+              ? const [1000.0, 2000.0, 5000.0, 10000.0]
+              : (unidad == 'GR' ? const [250.0, 500.0, 750.0, 1000.0] : const [0.25, 0.5, 1.0, 2.0]);
+
+          Widget chipUnidad(String id, String texto) => ChoiceChip(
+                label: Text(texto),
+                selected: unidad == id,
+                showCheckmark: false,
+                selectedColor: Colors.green.shade700,
+                labelStyle: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: unidad == id ? Colors.white : context.textPrimary,
+                ),
+                onSelected: (_) => st(() {
+                  unidad = id;
+                  ctrl.clear();
+                }),
+              );
 
           return AlertDialog(
             title: Row(
               children: [
                 const Icon(Icons.scale, color: Colors.green),
                 const SizedBox(width: 10),
-                Expanded(child: Text("${_t('Pesando')}: ${p['nombre']}")),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  hayBalanza
-                      ? _t("Coloca el producto en la balanza...")
-                      : _t("Sin balanza conectada. Usa la simulacion."),
-                  style: const TextStyle(fontStyle: FontStyle.italic),
-                ),
-                const SizedBox(height: 16),
-                if (hayBalanza) ...[
-                  Text(
-                    peso > 0
-                        ? "${peso.toStringAsFixed(3)} Kg"
-                        : _t("Esperando peso estable..."),
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: peso > 0
-                        ? () {
-                            _agregar(p, cantidad: peso);
-                            Navigator.pop(ctx);
-                          }
-                        : null,
-                    icon: const Icon(Icons.check),
-                    label: Text(
-                      peso > 0
-                          ? "${_t('USAR PESO')} (${peso.toStringAsFixed(3)} Kg)"
-                          : _t("ESPERANDO..."),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                ElevatedButton.icon(
-                  onPressed: () {
-                    _agregar(p, cantidad: 1.5);
-                    Navigator.pop(ctx);
-                  },
-                  icon: const Icon(Icons.download),
-                  label: Text(_t("SIMULAR PESO (1.5 Kg)")),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[50],
-                    foregroundColor: Colors.blue[900],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("${p['nombre']}"),
+                      Text(
+                        "${formater.format(precioKg)} / Kg",
+                        style: TextStyle(fontSize: 13, color: context.textSecondary),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
+            content: SizedBox(
+              width: 380,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (usaBalanza) ...[
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: context.isDarkMode ? Colors.green.shade900.withOpacity(0.3) : Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              hayBalanza
+                                  ? _t("Coloca el producto en la balanza...")
+                                  : (reconectando ? _t("Conectando la balanza...") : _t("La balanza no está conectada")),
+                              style: TextStyle(fontStyle: FontStyle.italic, color: context.textSecondary),
+                            ),
+                            const SizedBox(height: 8),
+                            if (hayBalanza)
+                              Text(
+                                peso > 0 ? kg(peso) : _t("Esperando peso estable..."),
+                                style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.green),
+                              ),
+                            if (hayBalanza && peso > 0)
+                              Text(
+                                "= ${formater.format(peso * precioKg)}",
+                                style: TextStyle(fontSize: 16, color: context.textPrimary),
+                              ),
+                            const SizedBox(height: 10),
+                            if (hayBalanza)
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: peso > 0 ? () => confirmar(ctx, peso) : null,
+                                  icon: const Icon(Icons.check),
+                                  label: Text(peso > 0 ? _t("USAR ESTE PESO") : _t("ESPERANDO...")),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                  ),
+                                ),
+                              )
+                            else
+                              OutlinedButton.icon(
+                                onPressed: reconectando
+                                    ? null
+                                    : () async {
+                                        st(() => reconectando = true);
+                                        await BalanzaService.conectar();
+                                        st(() => reconectando = false);
+                                      },
+                                icon: const Icon(Icons.refresh),
+                                label: Text(_t("Reintentar conexión")),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (!escribir)
+                        TextButton.icon(
+                          onPressed: () => st(() => escribir = true),
+                          icon: const Icon(Icons.keyboard),
+                          label: Text(_t("Escribir el peso a mano")),
+                        ),
+                    ],
+                    if (escribir) ...[
+                      Wrap(
+                        spacing: 6,
+                        children: [
+                          chipUnidad('KG', _t('Kilos')),
+                          chipUnidad('GR', _t('Gramos')),
+                          chipUnidad('VALOR', _t('Por valor \$')),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: ctrl,
+                        autofocus: true,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                        decoration: InputDecoration(
+                          hintText: unidad == 'VALOR' ? '\$ 2.000' : (unidad == 'GR' ? '750' : '0,75'),
+                          suffixText: unidad == 'VALOR' ? null : (unidad == 'GR' ? 'g' : 'Kg'),
+                          prefixText: unidad == 'VALOR' ? '\$ ' : null,
+                          border: const OutlineInputBorder(),
+                        ),
+                        onChanged: (_) => st(() {}),
+                        onSubmitted: (_) {
+                          final k = kilosEscritos();
+                          if (k != null) confirmar(ctx, k);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: atajos
+                            .map((a) => ActionChip(
+                                  label: Text(unidad == 'VALOR'
+                                      ? formater.format(a)
+                                      : (unidad == 'GR' ? '${a.toInt()} g' : kg(a).replaceAll(',000', ''))),
+                                  onPressed: () => st(() {
+                                    ctrl.text = unidad == 'VALOR'
+                                        ? a.toInt().toString()
+                                        : (unidad == 'GR' ? a.toInt().toString() : a.toString().replaceAll('.', ','));
+                                  }),
+                                ))
+                            .toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: context.cardSubtle,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: context.borderSubtle),
+                        ),
+                        child: Text(
+                          kilos == null
+                              ? _t("Escribe el peso o el valor que pide el cliente")
+                              : "${kg(kilos)}  ×  ${formater.format(precioKg)}  =  ${formater.format(kilos * precioKg)}",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.bold, color: context.textPrimary),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      ElevatedButton.icon(
+                        onPressed: kilos == null ? null : () => confirmar(ctx, kilos),
+                        icon: const Icon(Icons.add_shopping_cart),
+                        label: Text(_t("AGREGAR")),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ],
+                    if (kDebugMode) ...[
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () => confirmar(ctx, 1.5),
+                        child: Text(_t("SIMULAR PESO (1.5 Kg)")),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_t("Cancelar"))),
+            ],
           );
         },
       ),

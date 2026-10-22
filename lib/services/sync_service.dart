@@ -25,12 +25,17 @@ class SyncEstado {
 /// cartera, devoluciones y, para los reportes, los movimientos y cierres de
 /// caja. Cada cajón se cuadra solo con sus propios movimientos.
 class SyncService {
-  SyncService._();
+  SyncService._() : _fInyectado = null;
+
+  /// Para pruebas: una caja que sincroniza contra una nube simulada.
+  @visibleForTesting
+  SyncService.paraPruebas(FirebaseFirestore nube) : _fInyectado = nube;
 
   static final SyncService _instance = SyncService._();
   factory SyncService() => _instance;
 
-  final FirebaseFirestore _f = FirebaseFirestore.instance;
+  final FirebaseFirestore? _fInyectado;
+  FirebaseFirestore get _f => _fInyectado ?? FirebaseFirestore.instance;
   final DBHelper _db = DBHelper();
 
   String? _negocioId;
@@ -81,6 +86,7 @@ class SyncService {
 
     final cfg = await _db.obtenerConfiguracion();
     if (cfg['sync_activo'] != '1') {
+      await _precargarSiVacio();
       await _refrescarEstado();
       return;
     }
@@ -96,6 +102,8 @@ class SyncService {
         await _subirPendientes();
       } else {
         await _descargaInicial();
+        // Negocio nuevo (la nube no tenía productos): arranca con el catálogo.
+        if (await _precargarSiVacio()) cambiosRemotosNotifier.value++;
         await _subirPendientes();
       }
       await _instalarListeners();
@@ -113,8 +121,24 @@ class SyncService {
       _refrescarEstado();
     } catch (e) {
       debugPrint('SyncService iniciar error: $e');
+      // Sin internet en el primer uso: igual se puede trabajar con el
+      // catálogo; al conectarse, la siembra no pisa lo que ya esté en la nube.
+      await _precargarSiVacio();
       await _refrescarEstado();
       return;
+    }
+  }
+
+  /// Precarga el catálogo maestro si este equipo no tiene productos.
+  Future<bool> _precargarSiVacio() async {
+    try {
+      final db = await _db.database;
+      final r = await db.rawQuery('SELECT COUNT(*) AS n FROM productos');
+      if (((r.first['n'] as num?)?.toInt() ?? 0) > 0) return false;
+      return await _db.precargarCatalogoMaestro(forzar: false) > 0;
+    } catch (e) {
+      debugPrint('SyncService precarga catálogo: $e');
+      return false;
     }
   }
 
@@ -136,51 +160,86 @@ class SyncService {
     estado.value = const SyncEstado();
   }
 
+  /// Colecciones que se escuchan y el tipo con que se aplican.
+  static const Map<String, String> _colecciones = {
+    'productos': 'PRODUCTO',
+    'stock_ops': 'STOCK_OP',
+    'clientes': 'CLIENTE',
+    'ventas': 'VENTA',
+    'compras': 'COMPRA',
+    'cartera': 'CARTERA',
+    'mermas': 'MERMA',
+    'promociones': 'PROMOCION',
+    'caja_movimientos': 'CAJA_MOV',
+    'cierres': 'CIERRE',
+    'devoluciones': 'DEVOLUCION',
+  };
+
+  /// Margen al retomar: lo de los últimos minutos se vuelve a leer (aplicar
+  /// es idempotente), así un reloj un poco adelantado no hace perder nada.
+  static const Duration _margenMarca = Duration(minutes: 30);
+
+  /// Última marca de tiempo del servidor vista por colección (sync_ts).
+  final Map<String, int> _marcas = {};
+
+  /// Momento en que este equipo descargó los productos con su stock.
+  int _baseStockMs = 0;
+
+  Future<void> _cargarMarcas() async {
+    final cfg = await _db.obtenerConfiguracion();
+    _baseStockMs = int.tryParse(cfg['sync_base_stock'] ?? '') ?? 0;
+    _marcas.clear();
+    for (final tipo in _colecciones.values) {
+      final v = int.tryParse(cfg['sync_marca_$tipo'] ?? '');
+      if (v != null && v > 0) _marcas[tipo] = v;
+    }
+  }
+
+  Future<void> _guardarMarca(String tipo, int ms) async {
+    if (ms <= (_marcas[tipo] ?? 0)) return;
+    _marcas[tipo] = ms;
+    await _db.guardarConfiguracion('sync_marca_$tipo', ms.toString());
+  }
+
+  /// Después de una lectura completa: lo que venga desde ahora.
+  Future<void> _marcarTodoDesdeAhora() async {
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    for (final tipo in _colecciones.values) {
+      await _guardarMarca(tipo, ahora);
+    }
+  }
+
+  /// Escucha solo lo que cambió desde la última vez (campo sync_ts que se
+  /// escribe con la hora del servidor). Antes cada caja releía todo el
+  /// historial del negocio al abrir: con meses de uso eso agotaba la cuota
+  /// gratuita de Firestore en una sola apertura.
   Future<void> _instalarListeners() async {
-    _subs.add(_col('productos').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'PRODUCTO'),
-          onError: (e) {},
-        ));
-    _subs.add(_col('stock_ops').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'STOCK_OP'),
-          onError: (e) {},
-        ));
-    _subs.add(_col('ventas').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'VENTA'),
-          onError: (e) {},
-        ));
-    _subs.add(_col('compras').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'COMPRA'),
-          onError: (e) {},
-        ));
-    _subs.add(_col('clientes').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'CLIENTE'),
-          onError: (e) {},
-        ));
-    _subs.add(_col('cartera').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'CARTERA'),
-          onError: (e) {},
-        ));
-    _subs.add(_col('mermas').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'MERMA'),
-          onError: (e) {},
-        ));
-    _subs.add(_col('promociones').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'PROMOCION'),
-          onError: (e) {},
-        ));
-    _subs.add(_col('caja_movimientos').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'CAJA_MOV'),
-          onError: (e) {},
-        ));
-    _subs.add(_col('cierres').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'CIERRE'),
-          onError: (e) {},
-        ));
-    _subs.add(_col('devoluciones').snapshots().listen(
-          (s) => _procesarSnapshot(s, 'DEVOLUCION'),
-          onError: (e) {},
-        ));
+    await _cargarMarcas();
+    final sinMarca = _colecciones.values.any((t) => !_marcas.containsKey(t));
+    for (final e in _colecciones.entries) {
+      final tipo = e.value;
+      final marca = _marcas[tipo];
+      Query<Map<String, dynamic>> q = _col(e.key);
+      if (marca != null) {
+        final desde = marca - _margenMarca.inMilliseconds;
+        q = q.where('sync_ts', isGreaterThan: Timestamp.fromMillisecondsSinceEpoch(desde));
+      }
+      _subs.add(q.snapshots().listen(
+            (snap) => _procesarSnapshot(snap, tipo),
+            onError: (e) => debugPrint('SyncService escucha $tipo: $e'),
+          ));
+    }
+    // Equipo que ya tenía datos de antes de esta versión: la primera vez lee
+    // todo (como antes) y desde ahí queda incremental.
+    if (sinMarca) {
+      unawaited(Future.delayed(const Duration(seconds: 20), () async {
+        for (final tipo in _colecciones.values) {
+          if (!_marcas.containsKey(tipo)) {
+            await _guardarMarca(tipo, DateTime.now().millisecondsSinceEpoch);
+          }
+        }
+      }));
+    }
   }
 
   Future<void> _procesarSnapshot(
@@ -247,6 +306,14 @@ class SyncService {
         debugPrint('SyncService aplicar $tipo: $e');
       }
     }
+    int maxMarca = 0;
+    for (final dc in cambios) {
+      final ts = dc.doc.data()?['sync_ts'];
+      if (ts is Timestamp && ts.millisecondsSinceEpoch > maxMarca) {
+        maxMarca = ts.millisecondsSinceEpoch;
+      }
+    }
+    if (maxMarca > 0) await _guardarMarca(tipo, maxMarca);
     if (huboCambios) {
       cambiosRemotosNotifier.value++;
     }
@@ -255,6 +322,8 @@ class SyncService {
   // ======================= DESCARGA INICIAL (equipo nuevo) =======================
 
   Future<void> _descargaInicial() async {
+    _baseStockMs = DateTime.now().millisecondsSinceEpoch;
+    await _db.guardarConfiguracion('sync_base_stock', _baseStockMs.toString());
     final productos = await _col('productos').get();
     final docsProd = List.of(productos.docs)
       ..sort((a, b) {
@@ -266,15 +335,9 @@ class SyncService {
       await _aplicarProducto(doc, bootstrap: true);
     }
 
-    final stockOps = await _col('stock_ops').get();
-    for (final doc in stockOps.docs) {
-      final data = doc.data();
-      await _db.guardarAplicado(
-        'STOCK_OP',
-        doc.id,
-        (data['fecha_epoch'] as num?)?.toInt() ?? 0,
-      );
-    }
+    // Los movimientos de stock no se descargan: el stock de cada producto
+    // ya los incluye (stock_recon). Desde aquí solo se escuchan los nuevos.
+    await _guardarMarca('STOCK_OP', DateTime.now().millisecondsSinceEpoch);
 
     final clientes = await _col('clientes').get();
     for (final doc in clientes.docs) {
@@ -319,6 +382,7 @@ class SyncService {
     for (final doc in devoluciones.docs) {
       await _aplicarDevolucion(doc);
     }
+    await _marcarTodoDesdeAhora();
     
     cambiosRemotosNotifier.value++;
   }
@@ -352,9 +416,19 @@ class SyncService {
       'precio_costo': data['precio_costo'],
       'precio_venta': data['precio_venta'],
       'es_pesable': data['es_pesable'] ?? 0,
+      'es_combo': data['es_combo'] ?? 0,
       'esta_activo': data['esta_activo'] ?? 1,
     };
-    if (bootstrap) {
+    final asset = (data['imagen_asset'] ?? '').toString();
+    if (asset.startsWith('assets/') &&
+        (existente.isEmpty || (existente.first['imagen_path'] ?? '').toString().isEmpty)) {
+      datos['imagen_path'] = asset;
+    }
+    // Primera vez que este equipo recibe un producto creado o sembrado en
+    // otra caja: su stock es el de la nube (el local era una copia sin uso,
+    // por ejemplo el catálogo maestro con stock 0).
+    final deOtraCaja = (data['dispositivo_uuid'] ?? '') != _dispositivoUuid;
+    if (bootstrap || (aplicado == null && deOtraCaja && data['stock_recon'] != null)) {
       datos['stock_actual'] =
           ((data['stock_recon'] as num?)?.toDouble() ?? 0);
     }
@@ -372,6 +446,15 @@ class SyncService {
         'stock_actual':
             ((data['stock_recon'] as num?)?.toDouble() ?? 0),
       });
+    }
+    final idLocal = await _db.idProductoPorUuid(uuid);
+    if (idLocal != null) {
+      if (data['combo_componentes'] is List) {
+        await _db.sincronizarComponentesCombo(idLocal, data['combo_componentes'] as List);
+      }
+      if (data['presentaciones'] is List) {
+        await _db.sincronizarPresentaciones(idLocal, data['presentaciones'] as List);
+      }
     }
     await _db.guardarAplicado('PRODUCTO', uuid, epoch);
 
@@ -486,7 +569,7 @@ class SyncService {
       try {
         if (await File(path).exists()) {
           final url = await _subirImagen(uuid, path);
-          await _col('productos').doc(uuid).update({'imagen_url': url});
+          await _col('productos').doc(uuid).update({'imagen_url': url, 'sync_ts': FieldValue.serverTimestamp()});
         }
         _imagenesPorSubir.remove(item);
       } catch (e) {
@@ -509,6 +592,14 @@ class SyncService {
     final uuid = doc.id;
     final aplicado = await _db.obtenerAplicado('STOCK_OP', uuid);
     if (aplicado != null) return;
+
+    // Movimientos anteriores a la descarga inicial de este equipo ya vienen
+    // sumados en el stock de cada producto: no se cuentan dos veces.
+    final ts = data['sync_ts'];
+    if (_baseStockMs > 0 && ts is Timestamp && ts.millisecondsSinceEpoch <= _baseStockMs) {
+      await _db.guardarAplicado('STOCK_OP', uuid, (data['fecha_epoch'] as num?)?.toInt() ?? 0);
+      return;
+    }
 
     final productId = await _db.idProductoPorUuid(
       (data['producto_uuid'] ?? '').toString(),
@@ -675,6 +766,7 @@ class SyncService {
       'fecha', 'fecha_inicio', 'fecha_fin', 'base', 'ventas_turno',
       'ventas_turno_global', 'ingresos_turno', 'gastos_turno', 'total_sistema',
       'real_contado', 'diferencia', 'estado', 'detalle', 'dispositivo_uuid',
+      'caja_nombre',
     ];
     await db.insert('cierres_caja', {
       for (final c in campos) c: data[c],
@@ -873,11 +965,18 @@ class SyncService {
     if (aplicado != null && epoch <= epochAplicado) return;
 
     final db = await _db.database;
+    if ((data['eliminada'] ?? 0) == 1) {
+      await db.delete('promociones', where: 'uuid = ?', whereArgs: [uuid]);
+      await _db.guardarAplicado('PROMOCION', uuid, epoch);
+      return;
+    }
     final existe = await db.query('promociones', where: 'uuid = ?', whereArgs: [uuid], limit: 1);
     
     Map<String, dynamic> payload = Map.from(data);
     payload.remove('actualizado_epoch');
     payload.remove('dispositivo_uuid');
+    payload.remove('sync_ts');
+    payload.remove('eliminada');
     
     if (existe.isNotEmpty) {
       payload.remove('id'); // No actualizar el ID local
@@ -987,6 +1086,7 @@ class SyncService {
           'precio_costo': data['precio_costo'],
           'precio_venta': data['precio_venta'],
           'es_pesable': data['es_pesable'] ?? 0,
+          'es_combo': data['es_combo'] ?? 0,
           'esta_activo': data['esta_activo'] ?? 1,
           'actualizado_epoch': data['actualizado_epoch'],
           'dispositivo_uuid': data['dispositivo_uuid'],
@@ -994,8 +1094,20 @@ class SyncService {
         if (data.containsKey('stock_recon')) {
           payload['stock_recon'] = data['stock_recon'];
         }
+        // Componentes del combo y paquetes: viajan con el producto.
+        if (data['combo_componentes'] != null) {
+          payload['combo_componentes'] = data['combo_componentes'];
+        }
+        if (data['presentaciones'] != null) {
+          payload['presentaciones'] = data['presentaciones'];
+        }
         final imgLocal = (data['imagen_path_local'] ?? '').toString();
-        if (imgLocal.isNotEmpty && await File(imgLocal).exists()) {
+        // Las fotos del catálogo maestro vienen dentro de la app en todas las
+        // cajas: no se suben (ahorra cuota de Cloudinary y tiempo); se indica
+        // cuál es para que la otra caja la tome de sí misma.
+        final esDelCatalogo = imgLocal.startsWith('assets/');
+        if (esDelCatalogo) payload['imagen_asset'] = imgLocal;
+        if (!esDelCatalogo && imgLocal.isNotEmpty && await File(imgLocal).exists()) {
           try {
             payload['imagen_url'] = await _subirImagen(uuid, imgLocal);
           } catch (e) {
@@ -1004,6 +1116,14 @@ class SyncService {
             debugPrint('SyncService imagen upload $uuid: $e');
           }
         }
+        // Siembra (datos que el equipo tenía antes de sincronizar o catálogo
+        // maestro): si el producto ya existe en la nube no se pisa, así una
+        // caja nueva no reemplaza los precios ni el stock del negocio.
+        if (data['semilla'] == true) {
+          final existe = await _col('productos').doc(uuid).get();
+          if (existe.exists) return true;
+        }
+        payload['sync_ts'] = FieldValue.serverTimestamp();
         await _col('productos').doc(uuid).set(
               payload,
               SetOptions(merge: true),
@@ -1019,6 +1139,7 @@ class SyncService {
             'cantidad': data['cantidad'],
             'fecha_epoch': data['fecha_epoch'],
             'dispositivo_uuid': data['dispositivo_uuid'],
+            'sync_ts': FieldValue.serverTimestamp(),
           },
         );
         final pu = (data['producto_uuid'] ?? '').toString();
@@ -1032,17 +1153,18 @@ class SyncService {
         return true;
 
       case 'VENTA':
-        await _col('ventas').doc(uuid).set(data);
+        await _col('ventas').doc(uuid).set({...data, 'sync_ts': FieldValue.serverTimestamp()});
         return true;
 
       case 'MERMA':
-        await _col('mermas').doc(uuid).set(data);
+        await _col('mermas').doc(uuid).set({...data, 'sync_ts': FieldValue.serverTimestamp()});
         return true;
 
       case 'VENTA_ANULA':
         await _col('ventas').doc(uuid).update({
           'anulada': 1,
           'actualizado_epoch': data['actualizado_epoch'],
+          'sync_ts': FieldValue.serverTimestamp(),
           if (data['anulada_en'] != null) 'anulada_en': data['anulada_en'],
           if (data['anulada_por_uid'] != null)
             'anulada_por_uid': data['anulada_por_uid'],
@@ -1059,19 +1181,20 @@ class SyncService {
           'metodo_pago_detalle': data['metodo_pago_detalle'],
           'detalle': data['detalle'],
           'actualizado_epoch': data['actualizado_epoch'],
+          'sync_ts': FieldValue.serverTimestamp(),
         });
         return true;
 
       case 'DEVOLUCION':
-        await _col('devoluciones').doc(uuid).set(data);
+        await _col('devoluciones').doc(uuid).set({...data, 'sync_ts': FieldValue.serverTimestamp()});
         return true;
 
       case 'CAJA_MOV':
-        await _col('caja_movimientos').doc(uuid).set(data);
+        await _col('caja_movimientos').doc(uuid).set({...data, 'sync_ts': FieldValue.serverTimestamp()});
         return true;
 
       case 'CIERRE':
-        await _col('cierres').doc(uuid).set(data);
+        await _col('cierres').doc(uuid).set({...data, 'sync_ts': FieldValue.serverTimestamp()});
         return true;
 
       case 'CLIENTE':
@@ -1084,6 +1207,7 @@ class SyncService {
           'esta_activo': data['esta_activo'] ?? 1,
           'actualizado_epoch': data['actualizado_epoch'],
           'dispositivo_uuid': data['dispositivo_uuid'],
+          'sync_ts': FieldValue.serverTimestamp(),
         };
         if (data['deuda_seed'] == true) {
           payload['deuda_actual'] = data['deuda_actual'];
@@ -1104,6 +1228,7 @@ class SyncService {
           'fecha_epoch': data['fecha_epoch'],
           'usuario_uid': data['usuario_uid'],
           'dispositivo_uuid': data['dispositivo_uuid'],
+          'sync_ts': FieldValue.serverTimestamp(),
         });
         final cp = (data['cliente_uuid'] ?? '').toString();
         if (data['sin_deuda'] != true && cp.isNotEmpty) {
@@ -1116,15 +1241,22 @@ class SyncService {
         return true;
 
       case 'COMPRA':
-        await _col('compras').doc(uuid).set(data);
+        await _col('compras').doc(uuid).set({...data, 'sync_ts': FieldValue.serverTimestamp()});
         return true;
 
       case 'PROMOCION':
-        await _col('promociones').doc(uuid).set(data, SetOptions(merge: true));
+        await _col('promociones').doc(uuid).set({...data, 'sync_ts': FieldValue.serverTimestamp()}, SetOptions(merge: true));
         return true;
 
       case 'PROMOCION_ELIMINAR':
-        await _col('promociones').doc(uuid).delete();
+        // Se marca y no se borra: un borrado no les llega a las otras cajas
+        // (seguían aplicando la promoción eliminada).
+        await _col('promociones').doc(uuid).set({
+          'eliminada': 1,
+          'esta_activa': 0,
+          'actualizado_epoch': data['actualizado_epoch'],
+          'sync_ts': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
         return true;
 
       default:

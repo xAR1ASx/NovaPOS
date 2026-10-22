@@ -117,10 +117,18 @@ class AutoBackupService {
               return false; // Aún no han pasado 7 días
             }
           }
+        } else if (frecuencia == 'diaria') {
+          // Una vez al día: al abrir la app o al cerrar caja.
+          final ultima = DateTime.tryParse(config['ultimo_backup_auto_fecha'] ?? '');
+          if (ultima != null && DateTime.now().difference(ultima).inHours < 20) {
+            return false;
+          }
         } else if (frecuencia == 'cierre_caja') {
           if (motivo != 'cierre_caja') {
             return false; // Solo se dispara en el cierre de caja
           }
+        } else if (frecuencia == 'desactivado') {
+          return false;
         }
       }
 
@@ -145,12 +153,44 @@ class AutoBackupService {
       // Rotación de archivos: Eliminar los más viejos para no llenar el disco
       await _purgarCopiasAntiguas(dir, maxArchivos);
 
+      // Copia extra fuera del disco del PC (USB o carpeta de Google Drive /
+      // OneDrive): si el PC se daña o se lo roban, la copia sobrevive.
+      await _copiarACarpetaExtra(rutaDestino, nombreArchivo, maxArchivos);
+
       debugPrint('✅ Backup automático generado con éxito: $nombreArchivo');
       return true;
     } catch (e) {
       debugPrint('Error en backup automático: $e');
       return false;
     }
+  }
+
+  Future<void> _copiarACarpetaExtra(String origen, String nombre, int maxArchivos) async {
+    try {
+      final cfg = await DBHelper().obtenerConfiguracion();
+      final extra = (cfg['backup_carpeta_extra'] ?? '').trim();
+      if (extra.isEmpty) return;
+      final dir = Directory(extra);
+      if (!await dir.exists()) {
+        await DBHelper().guardarConfiguracion('backup_extra_error',
+            'No se encontró la carpeta $extra (¿la USB está conectada?)');
+        return;
+      }
+      await File(origen).copy(join(dir.path, nombre));
+      await _purgarCopiasAntiguas(dir, maxArchivos);
+      await DBHelper().guardarConfiguracion('backup_extra_error', '');
+      await DBHelper().guardarConfiguracion('ultimo_backup_extra_fecha', DateTime.now().toIso8601String());
+    } catch (e) {
+      await DBHelper().guardarConfiguracion('backup_extra_error', 'No se pudo copiar a la carpeta extra: $e');
+    }
+  }
+
+  /// Días desde la última copia (null si nunca se ha hecho una).
+  Future<int?> diasSinCopia() async {
+    final cfg = await DBHelper().obtenerConfiguracion();
+    final ultima = DateTime.tryParse(cfg['ultimo_backup_auto_fecha'] ?? '');
+    if (ultima == null) return null;
+    return DateTime.now().difference(ultima).inDays;
   }
 
   /// Elimina los archivos de backup que superen el límite configurado

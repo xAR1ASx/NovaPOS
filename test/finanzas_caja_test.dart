@@ -475,4 +475,41 @@ void main() {
       expect(await db.verificarCajaAbiertaHoy(), isTrue);
     });
   });
+
+  group('Caja nueva que se une a un negocio', () {
+    test('El catálogo maestro se sube como semilla (no pisa la nube)', () async {
+      final n = await db.precargarCatalogoMaestro(forzar: false);
+      expect(n, greaterThan(0));
+      final d = await db.database;
+      final prods = await d.query('sync_pendientes', where: "tipo = 'PRODUCTO'");
+      expect(prods.length, n);
+      expect(prods.every((x) => (jsonDecode(x['datos'] as String) as Map)['semilla'] == true), isTrue);
+    });
+
+    test('Editar un producto ya no es semilla y el stock viaja con decimales', () async {
+      final p = await db.insertProduct({
+        'nombre': 'Tomate chonto', 'precio_costo': 2000, 'precio_venta': 3500,
+        'stock_actual': 12.75, 'categoria': 'Verduras', 'es_pesable': 1,
+      });
+      final d = await db.database;
+      final datos = jsonDecode((await d.query('sync_pendientes', where: "tipo = 'PRODUCTO'")).last['datos'] as String);
+      expect(datos['semilla'], isNull);
+      expect(datos['stock_recon'], 12.75);
+      expect(p, greaterThan(0));
+    });
+  });
+
+  test('Restablecer de fábrica deja el equipo limpio para otro negocio', () async {
+    await db.registrarMovimientoCaja('APERTURA', 10000, 'Base', 1);
+    final p = await producto();
+    await vender(p, 2, 'EFECTIVO');
+    await db.guardarConfiguracion('sync_semilla', 'x');
+    await db.resetFactory();
+    final d = await db.database;
+    for (final t in ['ventas', 'productos', 'caja_movimientos', 'sync_pendientes', 'sync_aplicados', 'devoluciones']) {
+      expect((await d.query(t)).length, 0, reason: t);
+    }
+    expect((await db.obtenerConfiguracion())['sync_semilla'], isNull);
+    expect(await db.verificarCajaAbiertaHoy(), isFalse);
+  });
 }

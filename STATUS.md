@@ -1,9 +1,10 @@
 # NovaPOS - Estado del Proyecto y Siguientes Pasos
 
 **Fecha de última actualización:** 2026-10-21
-**Versión Actual:** 1.6.0
+**Versión Actual:** 1.7.0
 
 ## 🎯 Hitos Completados
+- [x] **v1.7.0 lista para entregar**: sincronización incremental (plan gratuito), balanza manual, asistente de primer uso, nombre de cajas, copias a USB/Drive, mensajes de login claros y 6 errores de varias cajas corregidos. 88 tests.
 - [x] **Centro Financiero v1.6.0**: Panorama, Resultados, Gastos y compras, Rentabilidad, Ventas, Control y Cierres de caja, con informe Excel del período.
 - [x] **Cuadre de caja como flujo de efectivo** (base de datos v13): devoluciones/anulaciones de otros turnos o cajas sin descuadre, pagos mixtos exactos, combos y paquetes correctos, gastos con categoría.
 - [x] **Sincronización financiera**: movimientos de caja, cierres, devoluciones y combos entre cajas.
@@ -46,6 +47,7 @@
    - Generar el instalador `.exe` utilizando Inno Setup (`installer/NovaPOS_setup.iss`).
    - Ejecutar `flutter build apk --release` (o `.aab` si se requiere) para las tablets.
 
-3. **Alertas de Presupuesto en Google Cloud**
+3. **Plan de Firebase**: el sistema funciona en el plan gratuito (Spark). Con muchos clientes conviene un proyecto de Firebase por cliente (cada uno con su cuota gratis). Pendiente a futuro: juntar los movimientos de stock dentro de la venta para reducir escrituras.
+4. **Alertas de Presupuesto en Google Cloud** (solo si se activa Blaze)
    - Ir a la consola de Google Cloud (asociada al proyecto Firebase "PruebaPOS" o Producción).
    - Configurar Alerta de Facturación de $5 USD (Blaze Plan).

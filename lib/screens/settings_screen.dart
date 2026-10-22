@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import '../database/db_helper.dart';
 import '../services/pin_auth_service.dart';
 import '../services/printer_service.dart';
+import 'asistente_inicio_screen.dart';
 import '../services/balanza_service.dart';
 import '../services/auto_backup_service.dart';
 import '../utils/numero.dart';
@@ -64,6 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _balanzaVelocidad = "9600";
   List<String> _puertosSerial = [];
   bool _balanzaConectada = false;
+  String _balanzaModo = BalanzaService.modoManual;
   String _estadoBalanza = "";
   bool _procesando = false;
   bool _syncActivo = true;
@@ -81,6 +83,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   // Configuración de Copias de Seguridad Automáticas (Auto-Backup)
   bool _backupAutoActivo = true;
   String _backupAutoFrecuencia = 'cierre_caja';
+  String _backupCarpetaExtra = '';
+  String _backupExtraError = '';
   int _backupMaxArchivos = 3;
   Map<String, dynamic> _estadoBackups = {};
 
@@ -148,6 +152,13 @@ class _SettingsScreenState extends State<SettingsScreen>
       _impresoraSeleccionada = config['impresora_nombre'] ?? "";
       _impresionDirecta = config['impresion_directa'] == '1';
       _balanzaPuerto = config['balanza_puerto'] ?? "COM1";
+      _balanzaModo = (config['balanza_modo'] == BalanzaService.modoBalanza ||
+              config['balanza_modo'] == BalanzaService.modoManual)
+          ? config['balanza_modo']!
+          : ((config['balanza_puerto'] ?? '').isNotEmpty
+              ? BalanzaService.modoBalanza
+              : BalanzaService.modoManual);
+      _balanzaConectada = BalanzaService.estaConectada;
       _balanzaVelocidad = config['balanza_velocidad'] ?? "9600";
       _syncActivo = config['sync_activo'] != '0';
       _permitirStockNegativo = (config['permitir_stock_negativo'] ?? '0') == '1';
@@ -157,6 +168,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       _backupAutoActivo = (config['backup_auto_activo'] ?? '1') == '1';
       _backupAutoFrecuencia = config['backup_auto_frecuencia'] ?? 'cierre_caja';
       _backupMaxArchivos = int.tryParse(config['backup_max_archivos'] ?? '3') ?? 3;
+      _backupCarpetaExtra = config['backup_carpeta_extra'] ?? '';
+      _backupExtraError = config['backup_extra_error'] ?? '';
       _estadoBackups = estadoBkp;
 
       _balanzaEtiquetaActiva = (config['balanza_etiqueta_activa'] ?? '1') != '0';
@@ -1498,6 +1511,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                           child: Text("En cada Cierre de Caja (Recomendado)"),
                         ),
                         DropdownMenuItem(
+                          value: 'diaria',
+                          child: Text("Una vez al día"),
+                        ),
+                        DropdownMenuItem(
                           value: 'semanal',
                           child: Text("Semanal (Cada 7 días)"),
                         ),
@@ -1583,6 +1600,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(height: 12),
+              _copiaExtraCard(),
+              const SizedBox(height: 12),
               Wrap(
                 spacing: 10,
                 runSpacing: 8,
@@ -1620,6 +1639,136 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  /// Segunda copia fuera del disco del PC (USB, Google Drive u OneDrive).
+  Widget _copiaExtraCard() {
+    final tiene = _backupCarpetaExtra.isNotEmpty;
+    final color = tiene ? Colors.green : Colors.orange;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(context.isDarkMode ? 0.18 : 0.07),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(tiene ? Icons.verified_user : Icons.warning_amber, size: 18, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  tiene ? "Copia extra fuera del PC: activa" : "Copia extra fuera del PC: sin configurar",
+                  style: TextStyle(fontWeight: FontWeight.bold, color: context.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            tiene
+                ? "Cada copia también se guarda en: $_backupCarpetaExtra"
+                : "Si el PC se daña o se lo roban, las copias se pierden con él. Elige una USB o la carpeta "
+                    "de Google Drive / OneDrive de escritorio para guardar una segunda copia.",
+            style: TextStyle(fontSize: 12, color: context.textSecondary),
+          ),
+          if (_backupExtraError.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(_backupExtraError, style: const TextStyle(fontSize: 12, color: Colors.red)),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              OutlinedButton.icon(
+                icon: const Icon(Icons.drive_folder_upload, size: 18),
+                label: Text(tiene ? "Cambiar carpeta" : "Elegir carpeta"),
+                onPressed: () async {
+                  final ruta = await FilePicker.getDirectoryPath(
+                    dialogTitle: "Carpeta para la copia extra (USB, Google Drive u OneDrive)",
+                  );
+                  if (ruta == null || !mounted) return;
+                  await DBHelper().guardarConfiguracion('backup_carpeta_extra', ruta);
+                  final ok = await AutoBackupService()
+                      .ejecutarBackupSiCorresponde(motivo: 'manual', forzar: true);
+                  final cfg = await DBHelper().obtenerConfiguracion();
+                  if (!mounted) return;
+                  setState(() {
+                    _backupCarpetaExtra = ruta;
+                    _backupExtraError = cfg['backup_extra_error'] ?? '';
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(ok && _backupExtraError.isEmpty
+                        ? "✅ Listo: se hizo una copia en la carpeta elegida"
+                        : "⚠️ ${_backupExtraError.isEmpty ? 'No se pudo hacer la copia' : _backupExtraError}"),
+                  ));
+                },
+              ),
+              if (tiene)
+                TextButton.icon(
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text("Quitar"),
+                  onPressed: () async {
+                    await DBHelper().guardarConfiguracion('backup_carpeta_extra', '');
+                    if (mounted) setState(() => _backupCarpetaExtra = '');
+                  },
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _opcionModoBalanza(String modo, IconData icono, String titulo, String ayuda) {
+    final activo = _balanzaModo == modo;
+    final color = Colors.green.shade700;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () async {
+        await BalanzaService.guardarModo(modo);
+        if (!mounted) return;
+        setState(() {
+          _balanzaModo = modo;
+          _balanzaConectada = BalanzaService.estaConectada;
+        });
+        if (modo == BalanzaService.modoBalanza) {
+          await BalanzaService.conectarSiCorresponde();
+          if (mounted) setState(() => _balanzaConectada = BalanzaService.estaConectada);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: activo ? color.withOpacity(context.isDarkMode ? 0.25 : 0.08) : context.cardBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: activo ? color : context.borderSubtle, width: activo ? 2 : 1),
+        ),
+        child: Row(
+          children: [
+            Icon(icono, color: activo ? color : context.textSecondary, size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(titulo, style: TextStyle(fontWeight: FontWeight.bold, color: context.textPrimary)),
+                  const SizedBox(height: 2),
+                  Text(ayuda, style: TextStyle(fontSize: 12, color: context.textSecondary)),
+                ],
+              ),
+            ),
+            Icon(activo ? Icons.radio_button_checked : Icons.radio_button_off,
+                color: activo ? color : context.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1628,6 +1777,20 @@ class _SettingsScreenState extends State<SettingsScreen>
         title: const Text("Configuración Total"),
         backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : Colors.blueGrey[800],
         foregroundColor: Colors.white,
+        actions: [
+          TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: Colors.white),
+            icon: const Icon(Icons.auto_fix_high),
+            label: const Text("Asistente"),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const AsistenteInicioScreen(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.orange,
@@ -1934,6 +2097,26 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ),
                     ),
                     const Divider(),
+                    const Text(
+                      "¿Cómo se pesan los productos?",
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    _opcionModoBalanza(
+                      BalanzaService.modoBalanza,
+                      Icons.monitor_weight,
+                      "Con balanza conectada",
+                      "La balanza digital pone el peso sola en la caja. Igual se puede escribir a mano si hace falta.",
+                    ),
+                    const SizedBox(height: 8),
+                    _opcionModoBalanza(
+                      BalanzaService.modoManual,
+                      Icons.keyboard,
+                      "Escribir el peso a mano",
+                      "Para negocios sin balanza conectada: el cajero escribe los kilos, los gramos o el valor en pesos.",
+                    ),
+                    const SizedBox(height: 14),
+                    if (_balanzaModo == BalanzaService.modoBalanza) ...[
                     Row(
                       children: [
                         Expanded(
@@ -2063,6 +2246,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                         ),
                       ],
                     ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      "Al elegir el puerto, guarda los cambios: la balanza se conectará sola cada vez que se abra NovaPOS.",
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    ],
 
                     const SizedBox(height: 25),
                     const Text(

@@ -77,7 +77,7 @@ void main() {
   test('Migra sin perder datos y el cuadre del turno abierto es correcto', () async {
     final db = DBHelper();
     final d = await db.abrirArchivoParaPruebas(ruta);
-    expect(await d.getVersion(), 13);
+    expect(await d.getVersion(), 14);
 
     // Datos intactos
     expect((await d.query('ventas')).length, 4);

@@ -2,6 +2,43 @@
 
 Todas las versiones notables de NovaPOS se documentan en este archivo.
 
+## [1.7.0] - 2026-10-21
+
+### Nuevo
+- **Peso manual o con balanza** (Ajustes → Balanza): para fruvers sin balanza conectada. En el
+  POS se escribe el peso en kilos, gramos o **por valor** ("deme $2.000"), con atajos y la cuenta
+  visible antes de agregar. Con balanza, se puede escribir a mano si hace falta y la balanza se
+  **conecta sola** al abrir NovaPOS.
+- **Asistente de primer uso** para el administrador: datos del ticket (precargados desde la
+  nube), nombre de la caja, balanza e impresora con ticket de prueba. También en Ajustes →
+  Asistente.
+- **Nombre de cada caja** ("Caja principal", "Caja frutas"), visible en los cierres de todas las cajas.
+- **Copia de seguridad extra** en una USB o en Google Drive / OneDrive, copia diaria y aviso en
+  el inicio cuando la copia está vieja o solo existe en el PC.
+- **Mensajes de inicio de sesión claros** (perfil faltante, usuario desactivado, sin internet,
+  correo mal escrito…). Un perfil faltante ya no se confunde con un PIN incorrecto.
+
+### Nube (plan gratuito de Firebase)
+- **Sincronización incremental**: cada caja descarga solo lo que cambió desde la última vez
+  (marca de hora del servidor `sync_ts`), en lugar de releer todo el historial al abrir.
+- Una caja nueva no descarga los movimientos de stock históricos (ya vienen en cada producto).
+- Las fotos del catálogo maestro no se suben a Cloudinary (vienen en cada instalación).
+
+### Corregido
+- Una caja nueva de un negocio existente quedaba con todos los productos AGOTADOS y pisaba en la
+  nube los precios del dueño (el catálogo se precargaba antes de iniciar sesión).
+- Combos y paquetes (presentaciones) no llegaban completos a las otras cajas.
+- Crear, editar, activar o desactivar promociones fallaba; eliminar una promoción no la quitaba
+  de las otras cajas.
+- "Restablecer de fábrica" dejaba datos pendientes por subir que iban a parar al siguiente negocio.
+- El stock con decimales (kilos) se truncaba al sincronizar.
+- El botón de prueba "SIMULAR PESO" se mostraba a los cajeros.
+
+### Técnico
+- Base de datos v14 (nombre de la caja en los cierres). 88 pruebas, incluidas dos cajas
+  sincronizándose contra una nube simulada (`fake_cloud_firestore`, solo para pruebas).
+- Todas las cajas de un negocio deben tener la misma versión (las anteriores no marcan `sync_ts`).
+
 ## [1.6.0] - 2026-10-21
 
 ### Nuevo

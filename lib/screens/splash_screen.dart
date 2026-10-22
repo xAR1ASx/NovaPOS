@@ -37,7 +37,9 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> _inicializarApp() async {
     try {
-      await DBHelper().precargarCatalogoMaestro(forzar: false);
+      // El catálogo maestro se precarga después de iniciar sesión y solo si
+      // el negocio está vacío (ver SyncService.iniciar): precargarlo aquí
+      // hacía que una caja nueva no descargara los productos del negocio.
       unawaited(AutoBackupService().ejecutarBackupSiCorresponde(motivo: 'inicio_app'));
     } catch (e) {
       debugPrint('Error inicializando catalogo maestro: $e');

@@ -866,7 +866,9 @@ class FinanzasService {
       lista.add(CierreAuditoria(
         id: c['id'] as int,
         cajero: _nombre(u, c['usuario_id']),
-        caja: nombreCaja(c['dispositivo_uuid'] as String?),
+        caja: (c['caja_nombre'] ?? '').toString().trim().isNotEmpty
+            ? c['caja_nombre'].toString()
+            : nombreCaja(c['dispositivo_uuid'] as String?),
         estaCaja: c['dispositivo_uuid'] == null || c['dispositivo_uuid'] == disp,
         apertura: DateTime.tryParse(c['fecha_inicio']?.toString() ?? ''),
         cierre: DateTime.tryParse((c['fecha_fin'] ?? c['fecha'])?.toString() ?? ''),
@@ -896,7 +898,7 @@ class FinanzasService {
           CierreAuditoria(
             id: 0,
             cajero: _nombre(u, ap.isEmpty ? null : ap.first['usuario_id']),
-            caja: 'Esta caja',
+            caja: await _db.nombreCaja(),
             estaCaja: true,
             apertura: DateTime.tryParse(apertura),
             cierre: null,

@@ -19,6 +19,35 @@ class BalanzaService {
 
   static bool get estaConectada => _puerto != null && _puerto!.isOpen;
 
+  /// 'BALANZA': la balanza digital pone el peso sola.
+  /// 'MANUAL': el cajero escribe el peso (fruvers sin balanza conectada).
+  static const String modoBalanza = 'BALANZA';
+  static const String modoManual = 'MANUAL';
+
+  /// Modo guardado. Si nunca se eligió, se usa balanza solo si ya se había
+  /// configurado un puerto.
+  static Future<String> modo() async {
+    final cfg = await DBHelper().obtenerConfiguracion();
+    final m = cfg['balanza_modo'];
+    if (m == modoBalanza || m == modoManual) return m!;
+    return (cfg['balanza_puerto'] ?? '').isNotEmpty ? modoBalanza : modoManual;
+  }
+
+  static Future<void> guardarModo(String modo) async {
+    await DBHelper().guardarConfiguracion('balanza_modo', modo);
+    if (modo == modoManual) await desconectar();
+  }
+
+  /// Al abrir la app o el POS: conecta la balanza si se usa y no está
+  /// conectada, para no tener que entrar a Ajustes cada vez.
+  static Future<void> conectarSiCorresponde() async {
+    try {
+      if (estaConectada) return;
+      if (await modo() != modoBalanza) return;
+      await conectar();
+    } catch (_) {}
+  }
+
   static List<String> puertosDisponibles() {
     try {
       if (Platform.isWindows || Platform.isLinux) {

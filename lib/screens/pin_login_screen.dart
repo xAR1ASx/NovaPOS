@@ -10,6 +10,7 @@ import '../services/sync_service.dart';
 import '../services/license_monitor.dart';
 import '../database/db_helper.dart';
 import 'home_screen.dart';
+import 'asistente_inicio_screen.dart';
 import '../services/theme_service.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
@@ -214,10 +215,25 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
 
       unawaited(LicenseMonitor.instance.iniciar(negocioId));
 
+      // Primera vez del administrador en este equipo: asistente de inicio.
+      final conAsistente = await AsistenteInicioScreen.debeMostrarse();
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (_) => conAsistente
+              ? const AsistenteInicioScreen(siguiente: HomeScreen())
+              : const HomeScreen(),
+        ),
       );
+    } on ProblemaLogin catch (e) {
+      // El PIN fue correcto: no cuenta como intento fallido.
+      if (!mounted) return;
+      setState(() {
+        _error = e.mensaje;
+        _pin = '';
+        _cargando = false;
+      });
     } on FirebaseAuthException catch (e) {
       debugPrint('Login FirebaseAuthException: ${e.code} - ${e.message}');
       if (!mounted) return;
@@ -233,8 +249,17 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
         case 'network-request-failed':
           mensaje = 'Sin conexion a internet';
           break;
+        case 'invalid-email':
+          mensaje = 'El correo no está bien escrito. Revisa que tenga @ y el dominio (ej. nombre@gmail.com)';
+          break;
+        case 'keychain-error':
+          mensaje = 'Este equipo no dejó guardar la sesión. Cierra NovaPOS, ábrelo de nuevo e intenta otra vez';
+          break;
+        case 'operation-not-allowed':
+          mensaje = 'El inicio de sesión con correo no está activado en Firebase. Contacta a soporte';
+          break;
         default:
-          mensaje = 'Error de conexion';
+          mensaje = 'No se pudo iniciar sesión (${e.code}). Si sigue pasando, contacta a soporte';
       }
       setState(() {
         _error = mensaje;
@@ -245,7 +270,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
       debugPrint('Login error: $e\n$st');
       if (!mounted) return;
       setState(() {
-        _error = 'Error de conexion';
+        _error = 'No hay conexión con la nube. Revisa el internet (Wi-Fi o cable) e intenta de nuevo';
         _pin = '';
         _cargando = false;
       });

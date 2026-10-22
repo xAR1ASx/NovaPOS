@@ -80,6 +80,23 @@ class PinAuthService {
   }
 
   /// Trae el documento del usuario desde Firestore (ya autenticado)
+  /// Perfil para iniciar sesión: a diferencia de [_obtenerDocUsuario], dice
+  /// por qué no se puede entrar (el correo y el PIN ya fueron correctos).
+  static Future<Map<String, dynamic>> _perfilParaLogin(String uid) async {
+    DocumentSnapshot doc;
+    try {
+      doc = await _firestore.collection('usuarios').doc(uid).get();
+    } on FirebaseException catch (e) {
+      throw ProblemaLogin.desdeFirebase(e);
+    }
+    if (!doc.exists) throw const ProblemaLogin(ProblemaLogin.sinPerfil);
+    final data = doc.data() as Map<String, dynamic>;
+    if (data['esta_activo'] != true) throw const ProblemaLogin(ProblemaLogin.inactivo);
+    final perfil = await _obtenerDocUsuario(uid);
+    if (perfil == null) throw const ProblemaLogin(ProblemaLogin.sinConexion);
+    return perfil;
+  }
+
   static Future<Map<String, dynamic>?> _obtenerDocUsuario(String uid) async {
     try {
       DocumentSnapshot doc =
@@ -127,7 +144,7 @@ class PinAuthService {
         email: email.trim(),
         password: pin,
       );
-      return await _obtenerDocUsuario(cred.user!.uid);
+      return await _perfilParaLogin(cred.user!.uid);
     } on FirebaseAuthException catch (e) {
       if (e.code == 'invalid-credential' ||
           e.code == 'wrong-password' ||
@@ -148,7 +165,7 @@ class PinAuthService {
         email: email,
         password: pin,
       );
-      return await _obtenerDocUsuario(cred.user!.uid);
+      return await _perfilParaLogin(cred.user!.uid);
     } on FirebaseAuthException catch (e) {
       if (e.code == 'invalid-credential' ||
           e.code == 'wrong-password' ||
@@ -419,4 +436,46 @@ class PinAuthService {
       return {'valida': false, 'mensaje': 'Error de conexion'};
     }
   }
+}
+
+/// Razón clara por la que no se pudo iniciar sesión.
+class ProblemaLogin implements Exception {
+  static const sinPerfil = 'SIN_PERFIL';
+  static const inactivo = 'INACTIVO';
+  static const sinConexion = 'SIN_CONEXION';
+  static const sinPermiso = 'SIN_PERMISO';
+  static const limiteNube = 'LIMITE_NUBE';
+
+  final String codigo;
+  const ProblemaLogin(this.codigo);
+
+  factory ProblemaLogin.desdeFirebase(FirebaseException e) {
+    switch (e.code) {
+      case 'permission-denied':
+        return const ProblemaLogin(sinPermiso);
+      case 'resource-exhausted':
+        return const ProblemaLogin(limiteNube);
+      default:
+        return const ProblemaLogin(sinConexion);
+    }
+  }
+
+  String get mensaje {
+    switch (codigo) {
+      case sinPerfil:
+        return 'El correo y el PIN están bien, pero este usuario no tiene perfil en NovaPOS. '
+            'Pide a soporte que lo cree (colección "usuarios" en Firebase).';
+      case inactivo:
+        return 'Este usuario está desactivado. El administrador puede activarlo en Usuarios.';
+      case sinPermiso:
+        return 'Este usuario no tiene un negocio asignado o no tiene permisos. Contacta a soporte.';
+      case limiteNube:
+        return 'La nube llegó a su límite de hoy. Intenta de nuevo más tarde o contacta a soporte.';
+      default:
+        return 'No hay conexión con la nube. Revisa el internet (Wi-Fi o cable) e intenta de nuevo.';
+    }
+  }
+
+  @override
+  String toString() => mensaje;
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../services/balanza_service.dart';
+import '../services/auto_backup_service.dart';
 import '../database/db_helper.dart';
 // Importamos todas las pantallas
 import 'pos_screen.dart';
@@ -71,10 +73,13 @@ class _HomeScreenState extends State<HomeScreen> {
   int _cantidadVentasHoy = 0;
   int _productosBajosStock = 0;
 
+  String? _avisoCopia;
   @override
   void initState() {
     super.initState();
     _cargarDatosDashboard();
+    // La balanza se conecta sola al entrar (si el negocio la usa).
+    BalanzaService.conectarSiCorresponde();
   }
 
   void _cargarDatosDashboard() async {
@@ -88,8 +93,22 @@ class _HomeScreenState extends State<HomeScreen> {
       "SELECT COUNT(*) as cantidad FROM productos WHERE stock_actual <= 5 AND esta_activo = 1",
     );
 
+    final cfg = await DBHelper().obtenerConfiguracion();
+    final diasCopia = await AutoBackupService().diasSinCopia();
+    final hayVentas = ((await db.rawQuery('SELECT COUNT(*) AS n FROM ventas')).first['n'] as num? ?? 0) > 0;
+
     if (!mounted) return;
     setState(() {
+      // Aviso al administrador: copia vieja (o nunca) o sin copia fuera del PC.
+      _avisoCopia = SessionService.userRole() != 'ADMIN' || !hayVentas
+          ? null
+          : (diasCopia == null
+              ? 'Aún no hay ninguna copia de seguridad de este equipo.'
+              : (diasCopia >= 3
+                  ? 'La última copia de seguridad es de hace $diasCopia días.'
+                  : ((cfg['backup_carpeta_extra'] ?? '').isEmpty
+                      ? 'Las copias se guardan solo en este PC. Configura una USB o Google Drive.'
+                      : null)));
       _ventasHoy = (ventasRes.first['total'] as num?)?.toDouble() ?? 0;
       _cantidadVentasHoy = (ventasRes.first['cantidad'] as num?)?.toInt() ?? 0;
       _productosBajosStock = (stockRes.first['cantidad'] as num?)?.toInt() ?? 0;
@@ -240,6 +259,37 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_avisoCopia != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(context.isDarkMode ? 0.2 : 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.backup_outlined, color: Colors.orange),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(_avisoCopia!,
+                          style: TextStyle(color: context.textPrimary, fontWeight: FontWeight.w600)),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (c) => const SettingsScreen()),
+                        );
+                        _cargarDatosDashboard();
+                      },
+                      child: Text(_t('Configurar copias')),
+                    ),
+                  ],
+                ),
+              ),
             // 1. ENCABEZADO DE BIENVENIDA
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
