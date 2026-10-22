@@ -66,7 +66,12 @@ class DBHelper {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
-    final directory = await getApplicationDocumentsDirectory();
+    Directory directory;
+    try {
+      directory = await getApplicationDocumentsDirectory();
+    } catch (_) {
+      directory = Directory.systemTemp;
+    }
     final rutaCarpeta = Directory(join(directory.path, 'Sistema_Fruver_Data'));
     if (!await rutaCarpeta.exists()) {
       await rutaCarpeta.create(recursive: true);
@@ -3592,7 +3597,12 @@ CREATE TABLE roles_permisos(
     if (abierta != null && abierta.isNotEmpty && abierta != inMemoryDatabasePath) {
       return abierta;
     }
-    final directory = await getApplicationDocumentsDirectory();
+    Directory directory;
+    try {
+      directory = await getApplicationDocumentsDirectory();
+    } catch (_) {
+      directory = Directory.systemTemp;
+    }
     final rutaCarpeta = Directory(join(directory.path, 'Sistema_Fruver_Data'));
     return join(rutaCarpeta.path, 'mifruver_sistema_v12_imagenes_ok.db');
   }

@@ -31,11 +31,15 @@ void main() {
 
   tearDown(() async {
     for (final d in dbs.values) {
-      await d.close();
+      if (d.isOpen) {
+        await d.close();
+      }
     }
     dbs.clear();
     DBHelper.setDatabaseForTesting(null);
-    await dir.delete(recursive: true);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
     await SessionService.logout();
     await PermissionService.clear();
   });

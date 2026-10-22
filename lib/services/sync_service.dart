@@ -47,6 +47,8 @@ class SyncService {
   Timer? _timerImagenes;
   Timer? _timerAutoSync;
   Timer? _timerMantenimiento;
+  Timer? _timerSinMarca;
+  int _enProcesoCount = 0;
 
   /// Notificador reactivo para que pantallas abiertas (POS, Inventario) refresquen en tiempo real
   static final ValueNotifier<int> cambiosRemotosNotifier = ValueNotifier<int>(0);
@@ -264,6 +266,8 @@ class SyncService {
     _timerImagenes = null;
     _timerMantenimiento?.cancel();
     _timerMantenimiento = null;
+    _timerSinMarca?.cancel();
+    _timerSinMarca = null;
     _imagenesPorSubir.clear();
     _imagenesPorBajar.clear();
     for (final s in _subs) {
@@ -274,6 +278,11 @@ class SyncService {
     _usuarioUid = null;
     _dispositivoUuid = '';
     estado.value = const SyncEstado();
+
+    // Esperar a que cualquier snapshot o callback asíncrono termine ordenadamente
+    while (_enProcesoCount > 0) {
+      await Future.delayed(const Duration(milliseconds: 10));
+    }
   }
 
   /// Colecciones que se escuchan y el tipo con que se aplican.
@@ -312,15 +321,22 @@ class SyncService {
   }
 
   Future<void> _guardarMarca(String tipo, int ms) async {
+    if (!activo) return;
     if (ms <= (_marcas[tipo] ?? 0)) return;
     _marcas[tipo] = ms;
-    await _db.guardarConfiguracion('sync_marca_$tipo', ms.toString());
+    try {
+      await _db.guardarConfiguracion('sync_marca_$tipo', ms.toString());
+    } catch (e) {
+      debugPrint('SyncService guardarMarca: $e');
+    }
   }
 
   /// Después de una lectura completa: lo que venga desde ahora.
   Future<void> _marcarTodoDesdeAhora() async {
+    if (!activo) return;
     final ahora = DateTime.now().millisecondsSinceEpoch;
     for (final tipo in _colecciones.values) {
+      if (!activo) return;
       await _guardarMarca(tipo, ahora);
     }
   }
@@ -348,13 +364,16 @@ class SyncService {
     // Equipo que ya tenía datos de antes de esta versión: la primera vez lee
     // todo (como antes) y desde ahí queda incremental.
     if (sinMarca) {
-      unawaited(Future.delayed(const Duration(seconds: 20), () async {
+      _timerSinMarca?.cancel();
+      _timerSinMarca = Timer(const Duration(seconds: 20), () async {
+        if (!activo) return;
         for (final tipo in _colecciones.values) {
+          if (!activo) return;
           if (!_marcas.containsKey(tipo)) {
             await _guardarMarca(tipo, DateTime.now().millisecondsSinceEpoch);
           }
         }
-      }));
+      });
     }
   }
 
@@ -362,76 +381,84 @@ class SyncService {
     QuerySnapshot<Map<String, dynamic>> snap,
     String tipo,
   ) async {
-    bool huboCambios = false;
-    final cambios = List.of(snap.docChanges);
-    if (tipo == 'PRODUCTO') {
-      // Primero productos simples y luego combos, para que sus componentes existan.
-      cambios.sort((a, b) {
-        final ca = (a.doc.data()?['es_combo'] as num?)?.toInt() ?? 0;
-        final cb = (b.doc.data()?['es_combo'] as num?)?.toInt() ?? 0;
-        return ca.compareTo(cb);
-      });
-    }
-    for (final dc in cambios) {
-      if (dc.type == DocumentChangeType.removed) continue;
-      try {
-        switch (tipo) {
-          case 'PRODUCTO':
-            await _aplicarProducto(dc.doc);
-            huboCambios = true;
-            break;
-          case 'STOCK_OP':
-            await _aplicarStockOp(dc.doc);
-            huboCambios = true;
-            break;
-          case 'VENTA':
-            await _aplicarVenta(dc.doc);
-            huboCambios = true;
-            break;
-          case 'COMPRA':
-            await _aplicarCompra(dc.doc);
-            huboCambios = true;
-            break;
-          case 'CLIENTE':
-            await _aplicarCliente(dc.doc, bootstrap: false);
-            huboCambios = true;
-            break;
-          case 'CARTERA':
-            await _aplicarCartera(dc.doc, bootstrap: false);
-            huboCambios = true;
-            break;
-          case 'MERMA':
-            await _aplicarMerma(dc.doc);
-            huboCambios = true;
-            break;
-          case 'PROMOCION':
-            await _aplicarPromocion(dc.doc);
-            huboCambios = true;
-            break;
-          case 'CAJA_MOV':
-            huboCambios = await _aplicarMovCaja(dc.doc) || huboCambios;
-            break;
-          case 'CIERRE':
-            huboCambios = await _aplicarCierre(dc.doc) || huboCambios;
-            break;
-          case 'DEVOLUCION':
-            huboCambios = await _aplicarDevolucion(dc.doc) || huboCambios;
-            break;
+    if (!activo) return;
+    _enProcesoCount++;
+    try {
+      bool huboCambios = false;
+      final cambios = List.of(snap.docChanges);
+      if (tipo == 'PRODUCTO') {
+        // Primero productos simples y luego combos, para que sus componentes existan.
+        cambios.sort((a, b) {
+          final ca = (a.doc.data()?['es_combo'] as num?)?.toInt() ?? 0;
+          final cb = (b.doc.data()?['es_combo'] as num?)?.toInt() ?? 0;
+          return ca.compareTo(cb);
+        });
+      }
+      for (final dc in cambios) {
+        if (!activo) return;
+        if (dc.type == DocumentChangeType.removed) continue;
+        try {
+          switch (tipo) {
+            case 'PRODUCTO':
+              await _aplicarProducto(dc.doc);
+              huboCambios = true;
+              break;
+            case 'STOCK_OP':
+              await _aplicarStockOp(dc.doc);
+              huboCambios = true;
+              break;
+            case 'VENTA':
+              await _aplicarVenta(dc.doc);
+              huboCambios = true;
+              break;
+            case 'COMPRA':
+              await _aplicarCompra(dc.doc);
+              huboCambios = true;
+              break;
+            case 'CLIENTE':
+              await _aplicarCliente(dc.doc, bootstrap: false);
+              huboCambios = true;
+              break;
+            case 'CARTERA':
+              await _aplicarCartera(dc.doc, bootstrap: false);
+              huboCambios = true;
+              break;
+            case 'MERMA':
+              await _aplicarMerma(dc.doc);
+              huboCambios = true;
+              break;
+            case 'PROMOCION':
+              await _aplicarPromocion(dc.doc);
+              huboCambios = true;
+              break;
+            case 'CAJA_MOV':
+              huboCambios = await _aplicarMovCaja(dc.doc) || huboCambios;
+              break;
+            case 'CIERRE':
+              huboCambios = await _aplicarCierre(dc.doc) || huboCambios;
+              break;
+            case 'DEVOLUCION':
+              huboCambios = await _aplicarDevolucion(dc.doc) || huboCambios;
+              break;
+          }
+        } catch (e) {
+          debugPrint('SyncService aplicar $tipo: $e');
         }
-      } catch (e) {
-        debugPrint('SyncService aplicar $tipo: $e');
       }
-    }
-    int maxMarca = 0;
-    for (final dc in cambios) {
-      final ts = dc.doc.data()?['sync_ts'];
-      if (ts is Timestamp && ts.millisecondsSinceEpoch > maxMarca) {
-        maxMarca = ts.millisecondsSinceEpoch;
+      if (!activo) return;
+      int maxMarca = 0;
+      for (final dc in cambios) {
+        final ts = dc.doc.data()?['sync_ts'];
+        if (ts is Timestamp && ts.millisecondsSinceEpoch > maxMarca) {
+          maxMarca = ts.millisecondsSinceEpoch;
+        }
       }
-    }
-    if (maxMarca > 0) await _guardarMarca(tipo, maxMarca);
-    if (huboCambios) {
-      cambiosRemotosNotifier.value++;
+      if (maxMarca > 0 && activo) await _guardarMarca(tipo, maxMarca);
+      if (huboCambios && activo) {
+        cambiosRemotosNotifier.value++;
+      }
+    } finally {
+      _enProcesoCount--;
     }
   }
 
@@ -509,15 +536,18 @@ class SyncService {
     DocumentSnapshot<Map<String, dynamic>> doc, {
     bool bootstrap = false,
   }) async {
+    if (!activo) return;
     final data = doc.data();
     if (data == null) return;
     final uuid = doc.id;
     final epoch = (data['actualizado_epoch'] as num?)?.toInt() ?? 0;
     final aplicado = await _db.obtenerAplicado('PRODUCTO', uuid);
+    if (!activo) return;
     final epochAplicado = (aplicado?['epoch'] as num?)?.toInt() ?? -1;
     if (aplicado != null && epoch <= epochAplicado && !bootstrap) return;
 
     final db = await _db.database;
+    if (!activo) return;
     final existente = await db.query(
       'productos',
       where: 'uuid = ?',
@@ -624,17 +654,20 @@ class SyncService {
   /// Descarga la imagen del producto al disco local y actualiza imagen_path.
   /// Si no se puede (sin internet) queda pendiente para reintentar.
   Future<void> _bajarImagenProducto(String uuid, String url) async {
+    if (!activo) return;
     final db = await _db.database;
+    if (!activo) return;
     final existente = await db.query(
       'productos',
       where: 'uuid = ?',
       whereArgs: [uuid],
       limit: 1,
     );
-    if (existente.isEmpty) return;
+    if (!activo || existente.isEmpty) return;
     final row = existente.first;
     final pathActual = (row['imagen_path'] ?? '').toString();
     final cfg = await _db.obtenerConfiguracion();
+    if (!activo) return;
     final urlSync = (cfg['img_url_$uuid'] ?? '').toString();
 
     if (urlSync == url) return;
@@ -643,12 +676,14 @@ class SyncService {
     if (urlSync.isEmpty &&
         pathActual.isNotEmpty &&
         (await File(pathActual).exists())) {
+      if (!activo) return;
       await _db.guardarConfiguracion('img_url_$uuid', url);
       _imagenesPorBajar.remove('$uuid\u0000$url');
       return;
     }
 
     final dir = await _dirImagenesSync();
+    if (!activo) return;
     final destino = '${dir.path}${Platform.pathSeparator}$uuid.jpg';
     try {
       Uint8List? bytes;
@@ -664,16 +699,19 @@ class SyncService {
             .refFromURL(url)
             .getData(10 * 1024 * 1024);
       }
+      if (!activo) return;
       if (bytes == null) throw Exception('Imagen vacia');
       await File(destino).writeAsBytes(bytes, flush: true);
+      if (!activo) return;
       await db.rawUpdate(
         'UPDATE productos SET imagen_path = ? WHERE uuid = ?',
         [destino, uuid],
       );
+      if (!activo) return;
       await _db.guardarConfiguracion('img_url_$uuid', url);
       _imagenesPorBajar.remove('$uuid\u0000$url');
     } catch (e) {
-      _imagenesPorBajar.add('$uuid\u0000$url');
+      if (activo) _imagenesPorBajar.add('$uuid\u0000$url');
       debugPrint('SyncService imagen download $uuid: $e');
     }
   }
@@ -708,31 +746,35 @@ class SyncService {
   Future<void> _aplicarStockOp(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) async {
+    if (!activo) return;
     final data = doc.data();
     if (data == null) return;
     final uuid = doc.id;
     final aplicado = await _db.obtenerAplicado('STOCK_OP', uuid);
-    if (aplicado != null) return;
+    if (!activo || aplicado != null) return;
 
     // Movimientos anteriores a la descarga inicial de este equipo ya vienen
     // sumados en el stock de cada producto: no se cuentan dos veces.
     final ts = data['sync_ts'];
     if (_baseStockMs > 0 && ts is Timestamp && ts.millisecondsSinceEpoch <= _baseStockMs) {
-      await _db.guardarAplicado('STOCK_OP', uuid, (data['fecha_epoch'] as num?)?.toInt() ?? 0);
+      if (activo) await _db.guardarAplicado('STOCK_OP', uuid, (data['fecha_epoch'] as num?)?.toInt() ?? 0);
       return;
     }
 
     final productId = await _db.idProductoPorUuid(
       (data['producto_uuid'] ?? '').toString(),
     );
+    if (!activo) return;
     final cantidad = (data['cantidad'] as num?)?.toDouble() ?? 0;
     if (productId != null && cantidad != 0) {
       final db = await _db.database;
+      if (!activo) return;
       await db.rawUpdate(
         'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
         [cantidad, productId],
       );
     }
+    if (!activo) return;
     await _db.guardarAplicado(
       'STOCK_OP',
       uuid,
@@ -743,6 +785,7 @@ class SyncService {
   Future<void> _aplicarVenta(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) async {
+    if (!activo) return;
     final data = doc.data();
     if (data == null) return;
     final uuid = doc.id;
@@ -751,6 +794,7 @@ class SyncService {
     // Una devolución o anulación posterior cambia la versión de la venta.
     final epoch = actualizadoEpoch > fechaEpoch ? actualizadoEpoch : fechaEpoch;
     final aplicado = await _db.obtenerAplicado('VENTA', uuid);
+    if (!activo) return;
     final epochAplicado = (aplicado?['epoch'] as num?)?.toInt() ?? -1;
     if (aplicado != null && epoch <= epochAplicado) {
       await _aplicarCambioAnulacion(data, uuid);
@@ -758,6 +802,7 @@ class SyncService {
     }
 
     final db = await _db.database;
+    if (!activo) return;
     final existente = await db.query(
       'ventas',
       where: 'uuid = ?',
@@ -771,6 +816,7 @@ class SyncService {
     final anuladaPor = await _db
         .idUsuarioPorAuthUid((data['anulada_por_uid'] ?? '').toString());
 
+    if (!activo) return;
     final datos = <String, dynamic>{
       'fecha': data['fecha'],
       'total': data['total'],
@@ -822,6 +868,7 @@ class SyncService {
         });
       }
     });
+    if (!activo) return;
     await _db.guardarAplicado('VENTA', uuid, epoch);
   }
 
@@ -830,10 +877,12 @@ class SyncService {
     Map<String, dynamic> data,
     String uuid,
   ) async {
-    if ((data['anulada'] ?? 0) != 1) return;
+    if (!activo || (data['anulada'] ?? 0) != 1) return;
     final vId = await _db.idVentaPorUuid(uuid);
+    if (!activo) return;
     if (vId != null) {
       final db = await _db.database;
+      if (!activo) return;
       await db.update(
         'ventas',
         {'anulada': 1},
@@ -848,13 +897,18 @@ class SyncService {
   Future<bool> _aplicarMovCaja(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) async {
+    if (!activo) return false;
     final data = doc.data();
     if (data == null) return false;
     if ((data['dispositivo_uuid'] ?? '') == _dispositivoUuid) return false;
     final db = await _db.database;
+    if (!activo) return false;
     final existe = await db.query('caja_movimientos',
         columns: ['id'], where: 'uuid = ?', whereArgs: [doc.id], limit: 1);
     if (existe.isNotEmpty) return false;
+    final vId = await _db.idVentaPorUuid((data['venta_uuid'] ?? '').toString());
+    final uId = await _db.idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString());
+    if (!activo) return false;
     await db.insert('caja_movimientos', {
       'uuid': doc.id,
       'fecha': data['fecha'],
@@ -863,11 +917,8 @@ class SyncService {
       'descripcion': data['descripcion'],
       'categoria': data['categoria'],
       'resta_caja': data['resta_caja'] ?? 0,
-      'venta_id':
-          await _db.idVentaPorUuid((data['venta_uuid'] ?? '').toString()),
-      'usuario_id': await _db
-              .idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString()) ??
-          0,
+      'venta_id': vId,
+      'usuario_id': uId ?? 0,
       'dispositivo_uuid': data['dispositivo_uuid'],
     });
     return true;
@@ -876,13 +927,17 @@ class SyncService {
   Future<bool> _aplicarCierre(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) async {
+    if (!activo) return false;
     final data = doc.data();
     if (data == null) return false;
     if ((data['dispositivo_uuid'] ?? '') == _dispositivoUuid) return false;
     final db = await _db.database;
+    if (!activo) return false;
     final existe = await db.query('cierres_caja',
         columns: ['id'], where: 'uuid = ?', whereArgs: [doc.id], limit: 1);
     if (existe.isNotEmpty) return false;
+    final uId = await _db.idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString());
+    if (!activo) return false;
     const campos = [
       'fecha', 'fecha_inicio', 'fecha_fin', 'base', 'ventas_turno',
       'ventas_turno_global', 'ingresos_turno', 'gastos_turno', 'total_sistema',
@@ -892,9 +947,7 @@ class SyncService {
     await db.insert('cierres_caja', {
       for (final c in campos) c: data[c],
       'uuid': doc.id,
-      'usuario_id': await _db
-              .idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString()) ??
-          0,
+      'usuario_id': uId ?? 0,
     });
     return true;
   }
@@ -904,28 +957,30 @@ class SyncService {
   Future<bool> _aplicarDevolucion(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) async {
+    if (!activo) return false;
     final data = doc.data();
     if (data == null) return false;
     final db = await _db.database;
+    if (!activo) return false;
     final existe = await db.query('devoluciones',
         columns: ['id'], where: 'uuid = ?', whereArgs: [doc.id], limit: 1);
     if (existe.isNotEmpty) return false;
+    final vId = await _db.idVentaPorUuid((data['venta_uuid'] ?? '').toString());
+    final pId = await _db.idProductoPorUuid((data['producto_uuid'] ?? '').toString());
+    final uId = await _db.idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString());
+    if (!activo) return false;
     await db.insert('devoluciones', {
       'uuid': doc.id,
       'fecha': data['fecha'],
-      'venta_id':
-          await _db.idVentaPorUuid((data['venta_uuid'] ?? '').toString()),
-      'producto_id':
-          await _db.idProductoPorUuid((data['producto_uuid'] ?? '').toString()),
+      'venta_id': vId,
+      'producto_id': pId,
       'nombre_producto': data['nombre_producto'],
       'cantidad': data['cantidad'],
       'monto': data['monto'],
       'efectivo': data['efectivo'] ?? 0,
       'metodo_pago': data['metodo_pago'],
       'motivo': data['motivo'],
-      'usuario_id': await _db
-              .idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString()) ??
-          0,
+      'usuario_id': uId ?? 0,
       'dispositivo_uuid': data['dispositivo_uuid'],
     });
     return true;
@@ -935,15 +990,18 @@ class SyncService {
     DocumentSnapshot<Map<String, dynamic>> doc, {
     bool bootstrap = false,
   }) async {
+    if (!activo) return;
     final data = doc.data();
     if (data == null) return;
     final uuid = doc.id;
     final epoch = (data['actualizado_epoch'] as num?)?.toInt() ?? 0;
     final aplicado = await _db.obtenerAplicado('CLIENTE', uuid);
+    if (!activo) return;
     final epochAplicado = (aplicado?['epoch'] as num?)?.toInt() ?? -1;
     if (aplicado != null && epoch <= epochAplicado && !bootstrap) return;
 
     final db = await _db.database;
+    if (!activo) return;
     final existente = await db.query(
       'clientes',
       where: 'uuid = ?',
@@ -980,21 +1038,25 @@ class SyncService {
             (data['deuda_actual'] as num?)?.toDouble() ?? 0,
       });
     }
+    if (!activo) return;
     await _db.guardarAplicado('CLIENTE', uuid, epoch);
   }
 
   Future<void> _aplicarCompra(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) async {
+    if (!activo) return;
     final data = doc.data();
     if (data == null) return;
     final uuid = doc.id;
     final epoch = (data['fecha_epoch'] as num?)?.toInt() ?? 0;
     final aplicado = await _db.obtenerAplicado('COMPRA', uuid);
+    if (!activo) return;
     final epochAplicado = (aplicado?['epoch'] as num?)?.toInt() ?? -1;
     if (aplicado != null && epoch <= epochAplicado) return;
 
     final db = await _db.database;
+    if (!activo) return;
     final existente = await db.query(
       'compras',
       where: 'uuid = ?',
@@ -1003,6 +1065,7 @@ class SyncService {
     );
     final usuarioIdHelper =
         await _db.idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString());
+    if (!activo) return;
     if (existente.isNotEmpty) {
       final cId = existente.first['id'] as int;
       await db.update(
@@ -1028,10 +1091,12 @@ class SyncService {
       });
       final detalle = (data['detalle'] as List?) ?? [];
       for (final item in detalle) {
+        if (!activo) return;
         final pm = item as Map<String, dynamic>;
         final pId = await _db.idProductoPorUuid(
           (pm['producto_uuid'] ?? '').toString(),
         );
+        if (!activo) return;
         await db.insert('detalle_compras', {
           'compra_id': cId,
           'producto_id': pId,
@@ -1042,14 +1107,17 @@ class SyncService {
         });
       }
     }
+    if (!activo) return;
     await _db.guardarAplicado('COMPRA', uuid, epoch);
   }
 
   Future<void> _aplicarMerma(DocumentSnapshot<Map<String, dynamic>> doc) async {
+    if (!activo) return;
     final data = doc.data();
     if (data == null) return;
     final uuid = doc.id;
     final db = await _db.database;
+    if (!activo) return;
 
     final existe = await db.query(
       'mermas',
@@ -1061,6 +1129,7 @@ class SyncService {
 
     final pLocal =
         await _db.idProductoPorUuid((data['producto_uuid'] ?? '').toString());
+    if (!activo) return;
     await db.insert('mermas', {
       'fecha': data['fecha'],
       'producto_id': pLocal ?? data['producto_id'],
@@ -1076,22 +1145,26 @@ class SyncService {
   }
 
   Future<void> _aplicarPromocion(DocumentSnapshot<Map<String, dynamic>> doc) async {
+    if (!activo) return;
     final data = doc.data();
     if (data == null) return;
     final uuid = doc.id;
     final epoch = (data['actualizado_epoch'] as num?)?.toInt() ?? 0;
     
     final aplicado = await _db.obtenerAplicado('PROMOCION', uuid);
+    if (!activo) return;
     final epochAplicado = (aplicado?['epoch'] as num?)?.toInt() ?? -1;
     if (aplicado != null && epoch <= epochAplicado) return;
 
     final db = await _db.database;
+    if (!activo) return;
     if ((data['eliminada'] ?? 0) == 1) {
       await db.delete('promociones', where: 'uuid = ?', whereArgs: [uuid]);
-      await _db.guardarAplicado('PROMOCION', uuid, epoch);
+      if (activo) await _db.guardarAplicado('PROMOCION', uuid, epoch);
       return;
     }
     final existe = await db.query('promociones', where: 'uuid = ?', whereArgs: [uuid], limit: 1);
+    if (!activo) return;
     
     Map<String, dynamic> payload = Map.from(data);
     payload.remove('actualizado_epoch');
@@ -1108,6 +1181,7 @@ class SyncService {
       await db.insert('promociones', payload);
     }
     
+    if (!activo) return;
     await _db.guardarAplicado('PROMOCION', uuid, epoch);
   }
 
@@ -1116,13 +1190,15 @@ class SyncService {
     bool bootstrap = false,
     bool soloInsertar = false,
   }) async {
+    if (!activo) return;
     final data = doc.data();
     if (data == null) return;
     final uuid = doc.id;
     final aplicado = await _db.obtenerAplicado('CARTERA', uuid);
-    if (aplicado != null) return;
+    if (!activo || aplicado != null) return;
 
     final db = await _db.database;
+    if (!activo) return;
     final clienteId = await _db.idClientePorUuid(
       (data['cliente_uuid'] ?? '').toString(),
     );
@@ -1138,10 +1214,11 @@ class SyncService {
         : DateTime.now().toIso8601String();
 
     if (bootstrap && !soloInsertar) {
-      await _db.guardarAplicado('CARTERA', uuid, epoch);
+      if (activo) await _db.guardarAplicado('CARTERA', uuid, epoch);
       return;
     }
 
+    if (!activo) return;
     await db.insert('movimientos_cartera', {
       'cliente_id': clienteId,
       'tipo': data['tipo'],
