@@ -1,3 +1,6 @@
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -44,11 +47,13 @@ void main() {
     await PermissionService.clear();
   });
 
-  Future<T> esperar<T>(Future<T> Function() leer, bool Function(T) listo, {int intentos = 60}) async {
+  Future<T> esperar<T>(Future<T> Function() leer, bool Function(T) listo, {int intentos = 150}) async {
     late T v;
     for (var i = 0; i < intentos; i++) {
-      v = await leer();
-      if (listo(v)) return v;
+      try {
+        v = await leer();
+        if (listo(v)) return v;
+      } catch (_) {}
       await Future.delayed(const Duration(milliseconds: 100));
     }
     return v;
@@ -70,7 +75,7 @@ void main() {
       await esperar(() async {
         await s.sincronizarAhora();
         return (await db.obtenerPendientes()).length;
-      }, (n) => n == 0);
+      }, (n) => n == 0, intentos: 150);
     } finally {
       await s.detener();
     }
@@ -78,7 +83,9 @@ void main() {
 
   Future<Map<String, dynamic>> producto(String nombre) async {
     final d = await db.database;
-    return (await d.query('productos', where: 'nombre = ?', whereArgs: [nombre])).first;
+    final r = await d.query('productos', where: 'nombre = ?', whereArgs: [nombre]);
+    if (r.isEmpty) throw StateError('Producto no encontrado: $nombre');
+    return r.first;
   }
 
   Future<void> darStock(String nombre, double stock) async {

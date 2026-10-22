@@ -111,8 +111,12 @@ class SyncService {
         await _subirPendientes();
       }
       await _instalarListeners();
+      Timer? debounceSync;
       DBHelper.onDatoEncolado = () {
-        unawaited(sincronizarAhora().catchError((e) {}));
+        debounceSync?.cancel();
+        debounceSync = Timer(const Duration(milliseconds: 100), () {
+          if (activo) unawaited(sincronizarAhora().catchError((e) {}));
+        });
       };
       _timerAutoSync = Timer.periodic(
         const Duration(seconds: 8),
@@ -1247,9 +1251,10 @@ class SyncService {
     try {
       final pendientes = await _db.obtenerPendientes();
       for (final p in pendientes) {
+        if (!activo) break;
         try {
           final ok = await _subirUno(p);
-          if (ok) {
+          if (ok && activo) {
             await _db.marcarPendienteSubido(p['id'] as int);
           }
         } catch (e) {
@@ -1258,7 +1263,7 @@ class SyncService {
       }
     } finally {
       _subiendo = false;
-      await _refrescarEstado();
+      if (activo) await _refrescarEstado();
     }
   }
 
