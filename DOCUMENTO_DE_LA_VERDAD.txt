@@ -3,9 +3,9 @@
             Sistema de punto de venta para Fruvers y Minimarkets
 ===============================================================================
 
-Versión del documento ..... 1.0
-Versión del sistema ....... 1.7.1 (base de datos local v14)
-Fecha ..................... 21 de octubre de 2026
+Versión del documento ..... 1.1
+Versión del sistema ....... 1.7.2 (base de datos local v14)
+Fecha ..................... 22 de octubre de 2026
 Repositorio ............... github.com/xAR1ASx/NovaPOS (rama main)
 
 Este documento es la referencia oficial de NovaPOS: qué queremos que sea el
@@ -478,6 +478,15 @@ Principios:
 ===============================================================================
 10. ÚLTIMOS CAMBIOS REALIZADOS
 ===============================================================================
+
+  Versión 1.7.2 (22-oct-2026) - Salida a producción, hardware y CI/CD
+  - Nuevo: reimpresión de tickets desde el Historial de Ventas.
+  - Nuevo: apertura de cajón monedero por software (RJ11/impresora térmica).
+  - Nuevo: tickets identifican el nombre de la terminal (ej. "Caja 1") y cajero.
+  - Nuevo: compilación automática de NovaPOS-Setup-1.7.2.exe en GitHub Actions.
+  - Nuevo: soporte de firma release para tablets Android con key.properties.
+  - Nuevo: instalador Windows detecta y avisa si falta vcruntime140.dll.
+  - Corregido: tipado en SyncService.mantenimiento() y advertencias de linter.
 
   Versión 1.7.1 (21-oct-2026) - Auditoría y entrada sin internet
   - Nuevo: inicio de sesión sin internet con el PIN (hasta 7 días).

@@ -125,6 +125,7 @@ class SyncService {
         const Duration(minutes: 2),
         () => unawaited(mantenimiento().catchError((e) {
           debugPrint('SyncService mantenimiento: $e');
+          return <String, int>{};
         })),
       );
       _refrescarEstado();

@@ -11,7 +11,7 @@
 ; directo en el Escritorio y en el Menu de Inicio, y desinstalador.
 
 #define MyAppName "NovaPOS"
-#define MyAppVersion "1.7.1"
+#define MyAppVersion "1.7.2"
 #define MyAppPublisher "NovaPOS"
 #define MyAppExeName "NovaPOS.exe"
 
@@ -67,6 +67,14 @@ begin
   ModoInterfazPage.SelectedValueIndex := 0;
 end;
 
+function VCRuntimeInstalled(): Boolean;
+var
+  installed: Cardinal;
+begin
+  Result := (RegQueryDWordValue(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', installed) and (installed = 1))
+            or FileExists(ExpandConstant('{sys}\vcruntime140.dll'));
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   sModo: string;
@@ -84,5 +92,11 @@ begin
 
     SaveStringToFile(ExpandConstant('{localappdata}\NovaPOS\interfaz.txt'),
       sModo, False);
+
+    if not VCRuntimeInstalled() then
+    begin
+      MsgBox('Aviso: No se detectó Microsoft Visual C++ Redistributable (vcruntime140.dll).' + #13#10 + #13#10 +
+             'Si NovaPOS no inicia, instala el componente gratuito de Microsoft: "Visual C++ 2015-2022 Redistributable (x64)".', mbInformation, MB_OK);
+    end;
   end;
 end;

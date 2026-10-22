@@ -1,0 +1,59 @@
+name: Compilar NovaPOS (.exe e Instalador Windows)
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Compilar Instalador Windows (.exe)
+    runs-on: windows-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Limpiar hooks locales de macOS en pubspec.yaml
+        shell: pwsh
+        run: |
+          $lines = Get-Content pubspec.yaml
+          $filtered = $lines | Where-Object { 
+            $_ -notmatch "hooks:" -and 
+            $_ -notmatch "user_defines:" -and 
+            $_ -notmatch "sqlite3:" -and 
+            $_ -notmatch "source:\s*system" -and
+            $_ -notmatch "LOCAL \(Mac\)"
+          }
+          $filtered | Set-Content pubspec.yaml
+
+      - name: Obtener dependencias
+        run: flutter pub get
+
+      - name: Ejecutar pruebas automáticas
+        run: flutter test
+
+      - name: Compilar aplicación Windows en Release
+        run: flutter build windows --release
+
+      - name: Instalar Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Generar Instalador con Inno Setup
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\NovaPOS_setup.iss
+
+      - name: Subir Instalador como Artefacto descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaPOS-Windows-Setup-1.7.2
+          path: installer/output/*.exe
+          retention-days: 30

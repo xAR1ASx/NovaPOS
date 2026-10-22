@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/locale_service.dart';
-import '../database/db_helper.dart';
 import '../services/auto_backup_service.dart';
 import 'pin_login_screen.dart';
 

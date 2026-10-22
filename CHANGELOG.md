@@ -2,6 +2,19 @@
 
 Todas las versiones notables de NovaPOS se documentan en este archivo.
 
+## [1.7.2] - 2026-10-22
+
+### Nuevo
+- **Reimpresión de tickets**: botón "REIMPRIMIR TICKET" desde el modal de detalle en el Historial de Ventas, respetando la fecha original de la venta y el desglose de productos.
+- **Apertura de cajón monedero**: método integrado en `PrinterService.abrirCajon()` para enviar la señal de apertura vía cola de impresión a la impresora térmica por RJ11, con botón de prueba en Ajustes y confirmación visual en el POS.
+- **Identificación multi-caja en tickets**: el encabezado del ticket ahora imprime el nombre de la terminal (ej. `Caja 1 - Ticket #45`) y el nombre del cajero responsable, evitando confusiones de numeración en negocios con varias terminales.
+- **Soporte de firma Release en Android**: `build.gradle.kts` preparado para cargar `key.properties` si existe, con plantilla de ejemplo `key.properties.example` y protección en `.gitignore`.
+- **Detección de VC++ Redistributable en Windows**: el instalador Inno Setup verifica la presencia de `vcruntime140.dll` y avisa al usuario si requiere instalar el componente gratuito de Microsoft.
+
+### Corregido
+- Advertencia de tipos en `SyncService.mantenimiento()` (`body_might_complete_normally_catch_error`).
+- Import huérfano en `splash_screen.dart` y advertencia de contexto asíncrono en `license_monitor.dart`.
+
 ## [1.7.1] - 2026-10-21
 
 ### Nuevo

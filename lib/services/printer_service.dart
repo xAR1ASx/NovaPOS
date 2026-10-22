@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -48,6 +49,9 @@ class PrinterService {
     String mensajePie = (config['ticket_mensaje_pie'] ?? '').trim();
     if (mensajePie.isEmpty) mensajePie = "¡Gracias por su compra!";
     String leyenda = (config['ticket_leyenda'] ?? '').trim();
+    String cajaNombre = await DBHelper().nombreCaja();
+    String cajeroNombre = (venta['cajero'] ?? venta['usuario_nombre'] ?? '').toString().trim();
+    DateTime fechaVenta = DateTime.tryParse(venta['fecha']?.toString() ?? '') ?? DateTime.now();
 
     final double ahorroTotalPromo = productos.fold(0.0, (acc, item) {
       final double desc =
@@ -98,15 +102,26 @@ class PrinterService {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                    "Ticket #${venta['id']}",
+                    "$cajaNombre - Ticket #${venta['id']}",
                     style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
                   ),
                   pw.Text(
-                    DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
+                    DateFormat('dd/MM/yyyy HH:mm').format(fechaVenta),
                     style: const pw.TextStyle(fontSize: 10),
                   ),
                 ],
               ),
+              if (cajeroNombre.isNotEmpty) ...[
+                pw.SizedBox(height: 2),
+                pw.Row(
+                  children: [
+                    pw.Text(
+                      "Cajero: $cajeroNombre",
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                  ],
+                ),
+              ],
               pw.Divider(),
 
               // PRODUCTOS - Encabezados
@@ -718,6 +733,41 @@ class PrinterService {
         onLayout: (PdfPageFormat format) async => doc.save(),
         name: nombreTicket,
       );
+    }
+  }
+
+  /// Envía un pulso / trabajo mínimo a la impresora térmica para activar
+  /// la apertura del cajón monedero conectado al puerto RJ11.
+  Future<bool> abrirCajon() async {
+    try {
+      final config = await DBHelper().obtenerConfiguracion();
+      final directa = config['impresion_directa'] == '1';
+      final impresoraNombre = (config['impresora_nombre'] ?? '').trim();
+      if (!directa || impresoraNombre.isEmpty) {
+        return false;
+      }
+      final printers = await Printing.listPrinters();
+      final printer = printers.firstWhere(
+        (p) => p.name == impresoraNombre,
+        orElse: () => throw Exception('Impresora no encontrada'),
+      );
+      final doc = pw.Document();
+      doc.addPage(
+        pw.Page(
+          pageFormat: const PdfPageFormat(58 * PdfPageFormat.mm, 2 * PdfPageFormat.mm),
+          margin: pw.EdgeInsets.zero,
+          build: (context) => pw.SizedBox(height: 1),
+        ),
+      );
+      await Printing.directPrintPdf(
+        printer: printer,
+        onLayout: (PdfPageFormat format) async => doc.save(),
+        name: 'AbrirCajon',
+      );
+      return true;
+    } catch (e) {
+      debugPrint('Error enviando señal al cajón monedero: $e');
+      return false;
     }
   }
 }

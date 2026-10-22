@@ -1,10 +1,11 @@
 # NovaPOS - Estado del Proyecto y Siguientes Pasos
 
-**Fecha de última actualización:** 2026-10-21
-**Versión Actual:** 1.7.1
+**Fecha de última actualización:** 2026-10-22
+**Versión Actual:** 1.7.2
 
 ## 🎯 Hitos Completados
-- [x] **v1.7.0 lista para entregar**: sincronización incremental (plan gratuito), balanza manual, asistente de primer uso, nombre de cajas, copias a USB/Drive, mensajes de login claros y 6 errores de varias cajas corregidos. 101 tests.
+- [x] **v1.7.2 lista para producción**: Identificación multi-caja en tickets, apertura de cajón por software, reimpresión de tickets en historial, CI/CD GitHub Actions para Windows .exe, firma release en Android y detección de VC++ Redistributable. 112 tests pasando.
+- [x] **v1.7.1**: inicio de sesión sin internet con PIN cifrado, devoluciones para cajeros y correcciones de auditoría.
 - [x] **Centro Financiero v1.6.0**: Panorama, Resultados, Gastos y compras, Rentabilidad, Ventas, Control y Cierres de caja, con informe Excel del período.
 - [x] **Cuadre de caja como flujo de efectivo** (base de datos v13): devoluciones/anulaciones de otros turnos o cajas sin descuadre, pagos mixtos exactos, combos y paquetes correctos, gastos con categoría.
 - [x] **Sincronización financiera**: movimientos de caja, cierres, devoluciones y combos entre cajas.

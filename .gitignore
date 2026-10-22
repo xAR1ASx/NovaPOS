@@ -44,6 +44,12 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Keystore y llaves privadas de firma
+*.keystore
+*.jks
+android/key.properties
+key.properties
+
 # Instalador compilado (se genera con ISCC)
 /installer/output/
 

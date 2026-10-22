@@ -38,6 +38,7 @@ const Map<String, String> _mapEn = {
   '🔙 Volver': '🔙 Back',
   'IR A ABRIR CAJA': 'GO OPEN REGISTER',
   '🔌 Cajón Abierto': '🔌 Cash Drawer Open',
+  '🔌 Señal enviada al cajón monedero': '🔌 Signal sent to cash drawer',
   '¿Cómo vas a vender': 'How are you selling',
   'Unidad Individual': 'Single Unit',
   'Precio': 'Price',
@@ -543,18 +544,22 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     return total;
   }
 
-  void _abrirCajonMonedero() {
+  Future<void> _abrirCajonMonedero() async {
+    final enviado = await PrinterService().abrirCajon();
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
             const Icon(Icons.point_of_sale, color: Colors.white),
             const SizedBox(width: 10),
-            Text(_t("🔌 Cajón Abierto")),
+            Text(enviado
+                ? _t("🔌 Señal enviada al cajón monedero")
+                : _t("🔌 Cajón Abierto")),
           ],
         ),
-        backgroundColor: Colors.blueGrey,
-        duration: const Duration(milliseconds: 500),
+        backgroundColor: Colors.teal,
+        duration: const Duration(milliseconds: 1200),
       ),
     );
   }
@@ -1712,6 +1717,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                       'total': total,
                       'metodo_pago': metodo,
                       'metodo_pago_detalle': detalleJson,
+                      'cajero': SessionService.userName() ?? '',
+                      'fecha': DateTime.now().toIso8601String(),
                     };
                     List<Map<String, dynamic>> itemsImpresion = List.from(_currentCart);
 

@@ -363,9 +363,9 @@ class LicenseMonitor {
 
     await db.guardarConfiguracion('licencia_aviso_dia', key);
 
-    final ctx = appNavigatorKey.currentState?.overlay?.context ??
-        appNavigatorKey.currentContext;
-    if (ctx == null) return;
+    final nav = appNavigatorKey.currentState;
+    final ctx = nav?.overlay?.context ?? nav?.context;
+    if (ctx == null || !ctx.mounted) return;
     showDialog<void>(
       context: ctx,
       barrierDismissible: false,

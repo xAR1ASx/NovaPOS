@@ -1,0 +1,9 @@
+# Plantilla para la firma de producción de la aplicación Android (Release Keystore)
+# Para generar tu propia llave de producción de forma segura, ejecuta en tu terminal:
+# keytool -genkey -v -keystore release.keystore -alias novapos-key -keyalg RSA -keysize 2048 -validity 10000
+#
+# Luego copia este archivo como `android/key.properties` (no lo subas a GitHub) y completa:
+keyAlias=novapos-key
+keyPassword=TU_PASSWORD_AQUI
+storeFile=../release.keystore
+storePassword=TU_PASSWORD_AQUI

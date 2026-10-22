@@ -5,6 +5,7 @@ import '../services/locale_service.dart';
 import '../services/permission_service.dart';
 import '../services/session_service.dart';
 import '../services/theme_service.dart';
+import '../services/printer_service.dart';
 import '../utils/numero.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
@@ -30,6 +31,9 @@ const Map<String, String> _mapEn = {
   'Venta anulada correctamente': 'Sale voided successfully',
   'La venta ya está anulada': 'The sale is already voided',
   'Venta no encontrada': 'Sale not found',
+  'REIMPRIMIR TICKET': 'REPRINT TICKET',
+  'Ticket enviado a impresión': 'Ticket sent to printer',
+  'Error al imprimir': 'Error printing',
 };
 
 class SalesHistoryScreen extends StatefulWidget {
@@ -384,6 +388,45 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                   ),
                 ),
               ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.print, size: 18),
+                  label: Text(_t('REIMPRIMIR TICKET')),
+                  onPressed: () async {
+                    try {
+                      final items = detalles.map((d) => {
+                        'nombre': d['nombre_producto'],
+                        'cantidad': d['cantidad'],
+                        'precio': d['precio_unitario'],
+                        'subtotal': d['subtotal'],
+                        'descuento_aplicado': 0.0,
+                      }).toList();
+                      await PrinterService().imprimirTicket(venta, items);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(_t('Ticket enviado a impresión')),
+                            backgroundColor: Colors.teal,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('${_t("Error al imprimir")}: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ),
             ),
             if (PermissionService.can("VENTAS_ANULAR") &&
                 (venta['anulada'] ?? 0) != 1)

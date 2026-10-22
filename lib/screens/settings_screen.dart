@@ -2106,6 +2106,36 @@ class _SettingsScreenState extends State<SettingsScreen>
                       value: _impresionDirecta,
                       onChanged: (v) => setState(() => _impresionDirecta = v),
                     ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      child: Row(
+                        children: [
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.point_of_sale, size: 18),
+                            label: const Text("Probar cajón monedero"),
+                            onPressed: () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              final ok = await PrinterService().abrirCajon();
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(ok
+                                      ? "✅ Señal enviada a la impresora para apertura de cajón"
+                                      : "⚠️ Selecciona una impresora y activa Impresión Directa para enviar la señal"),
+                                  backgroundColor: ok ? Colors.teal : Colors.orange,
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              "💡 Conectado vía RJ11 a la impresora térmica",
+                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 20),
                     const Text(
                       "⚖️ Balanza",
