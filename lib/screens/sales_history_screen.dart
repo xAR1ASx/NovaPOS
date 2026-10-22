@@ -5,6 +5,7 @@ import '../services/locale_service.dart';
 import '../services/permission_service.dart';
 import '../services/session_service.dart';
 import '../services/theme_service.dart';
+import '../utils/numero.dart';
 
 String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
 
@@ -137,78 +138,149 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
 
   // --- DEVOLUCIÓN PARCIAL DE ARTÍCULO ---
   void _devolverArticuloDialog(Map<String, dynamic> venta, Map<String, dynamic> detalle) {
-    final cantCtrl = TextEditingController(text: detalle['cantidad'].toString());
-    
+    final double maxCant = (detalle['cantidad'] as num).toDouble();
+    final double subtotal = (detalle['subtotal'] as num?)?.toDouble() ?? 0;
+    final cantCtrl = TextEditingController(text: _cantidadTexto(maxCant));
+    final motivoCtrl = TextEditingController();
+    final String metodo = (venta['metodo_pago'] ?? '').toString();
+    bool procesando = false;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Devolver Artículo'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Producto: ${detalle['nombre_producto']}'),
-            const SizedBox(height: 10),
-            TextField(
-              controller: cantCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Cantidad a devolver (Max: ${detalle['cantidad']})',
-                border: const OutlineInputBorder(),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) {
+          final double cantDev = parseNumero(cantCtrl.text) ?? 0;
+          final bool valida = cantDev > 0 && cantDev <= maxCant + 0.0001;
+          // Mismo cálculo que hace la base de datos: proporción del subtotal cobrado.
+          final double monto = !valida
+              ? 0
+              : (cantDev >= maxCant - 0.0001
+                  ? subtotal
+                  : ((subtotal * cantDev / maxCant) * 100).roundToDouble() / 100);
+          String comoSeDevuelve;
+          if (metodo == 'EFECTIVO') {
+            comoSeDevuelve = _t('Se entrega en efectivo desde la caja abierta');
+          } else if (metodo == 'MIXTO') {
+            comoSeDevuelve = _t('Primero en efectivo (desde la caja) y el resto por el medio digital');
+          } else if (metodo == 'CREDITO') {
+            comoSeDevuelve = _t('Se descuenta de la deuda del cliente');
+          } else {
+            comoSeDevuelve = '${_t('Se devuelve por')} $metodo';
+          }
+          return AlertDialog(
+            title: Text(_t('Devolver Artículo')),
+            content: SizedBox(
+              width: 380,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${_t('Producto')}: ${detalle['nombre_producto']}',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(
+                    '${_t('Vendido')}: ${_cantidadTexto(maxCant)} · ${formater.format(subtotal)}',
+                    style: TextStyle(color: context.textSecondary, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: cantCtrl,
+                    autofocus: true,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: '${_t('Cantidad a devolver')} (${_t('Máx')}: ${_cantidadTexto(maxCant)})',
+                      border: const OutlineInputBorder(),
+                      errorText: cantCtrl.text.isNotEmpty && !valida ? _t('Cantidad inválida') : null,
+                    ),
+                    onChanged: (_) => setStateDialog(() {}),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: motivoCtrl,
+                    decoration: InputDecoration(
+                      labelText: _t('Motivo (opcional)'),
+                      hintText: _t('Ej: producto dañado, cliente cambió de opinión'),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: context.isDarkMode ? Colors.brown.shade900.withOpacity(0.35) : Colors.brown.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.brown.withOpacity(0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(_t('A devolver'), style: TextStyle(color: context.textPrimary)),
+                            Text(
+                              formater.format(monto),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: context.isDarkMode ? Colors.orange.shade200 : Colors.brown.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(comoSeDevuelve, style: TextStyle(fontSize: 11, color: context.textSecondary)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(_t('Cancelar')),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              double cantDev = double.tryParse(cantCtrl.text) ?? 0;
-              double maxCant = (detalle['cantidad'] as num).toDouble();
-              
-              if (cantDev <= 0 || cantDev > maxCant) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Cantidad inválida')),
-                );
-                return;
-              }
-
-              // Calcular dinero a devolver en base a la cantidad
-              double precioUnitario = (detalle['precio_unitario'] as num).toDouble();
-              double dineroADevolver = cantDev * precioUnitario;
-
-              Navigator.pop(ctx);
-              setState(() => _cargando = true);
-              
-              final res = await DBHelper().devolverArticulo(
-                detalle['id'],
-                detalle['producto_id'],
-                venta['id'],
-                maxCant,
-                dineroADevolver,
-                cantidadADevolver: cantDev,
-                usuarioId: SessionService.userId() ?? 1,
-              );
-
-              if (mounted) {
-                setState(() => _cargando = false);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(res['mensaje'].toString())),
-                );
-                if (res['exito'] == true) {
-                  _cargarVentas();
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.brown, foregroundColor: Colors.white),
-            child: const Text('Devolver'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: procesando ? null : () => Navigator.pop(ctx),
+                child: Text(_t('Cancelar')),
+              ),
+              ElevatedButton(
+                onPressed: !valida || procesando
+                    ? null
+                    : () async {
+                        setStateDialog(() => procesando = true);
+                        final res = await DBHelper().devolverArticulo(
+                          detalle['id'],
+                          detalle['producto_id'],
+                          venta['id'],
+                          maxCant,
+                          monto,
+                          cantidadADevolver: cantDev,
+                          usuarioId: SessionService.userId() ?? 1,
+                          motivo: motivoCtrl.text.trim(),
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(_t(res['mensaje'].toString())),
+                            backgroundColor: res['exito'] == true ? Colors.green.shade700 : Colors.red,
+                            duration: const Duration(seconds: 5),
+                          ),
+                        );
+                        if (res['exito'] == true) _cargarVentas();
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.brown, foregroundColor: Colors.white),
+                child: Text(procesando ? _t('Procesando...') : _t('Devolver')),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
+
+  /// Cantidad con coma decimal ("0,375"), que parseNumero lee como decimal.
+  String _cantidadTexto(double v) => v == v.roundToDouble()
+      ? v.toStringAsFixed(0)
+      : v.toStringAsFixed(3).replaceFirst(RegExp(r'0+$'), '').replaceAll('.', ',');
 
   // --- VER DETALLE DE UNA VENTA ---
   void _verDetalleVenta(Map<String, dynamic> venta) async {
@@ -324,13 +396,28 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                       foregroundColor: Colors.white,
                     ),
                     onPressed: () async {
+                      final motivoCtrl = TextEditingController();
                       final confirmar = await showDialog<bool>(
                         context: context,
                         builder: (c) => AlertDialog(
                           title: Text(_t('Anular Venta')),
-                          content: Text(
-                            "${_t('¿Seguro que quieres anular esta venta?')}\n\n"
-                            "${_t('Total:')} ${formater.format(venta['total'])}",
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "${_t('¿Seguro que quieres anular esta venta?')}\n\n"
+                                "${_t('Total:')} ${formater.format(venta['total'])}",
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: motivoCtrl,
+                                decoration: InputDecoration(
+                                  labelText: _t('Motivo de la anulación'),
+                                  border: const OutlineInputBorder(),
+                                ),
+                              ),
+                            ],
                           ),
                           actions: [
                             TextButton(
@@ -356,6 +443,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
                       final res = await DBHelper().anularVenta(
                         venta['id'],
                         usuarioId: SessionService.userId() ?? 1,
+                        motivo: motivoCtrl.text.trim(),
                       );
                       if (!mounted) return;
                       Navigator.pop(ctx);

@@ -21,8 +21,9 @@ class SyncEstado {
 }
 
 /// Motor de sincronización entre cajas usando Firestore como almacén
-/// central. Las cajas comparten productos/stock, ventas, compras, clientes
-/// y cartera. La caja física (movimientos y cierres) queda local.
+/// central. Las cajas comparten productos/stock, ventas, compras, clientes,
+/// cartera, devoluciones y, para los reportes, los movimientos y cierres de
+/// caja. Cada cajón se cuadra solo con sus propios movimientos.
 class SyncService {
   SyncService._();
 
@@ -168,6 +169,18 @@ class SyncService {
           (s) => _procesarSnapshot(s, 'PROMOCION'),
           onError: (e) {},
         ));
+    _subs.add(_col('caja_movimientos').snapshots().listen(
+          (s) => _procesarSnapshot(s, 'CAJA_MOV'),
+          onError: (e) {},
+        ));
+    _subs.add(_col('cierres').snapshots().listen(
+          (s) => _procesarSnapshot(s, 'CIERRE'),
+          onError: (e) {},
+        ));
+    _subs.add(_col('devoluciones').snapshots().listen(
+          (s) => _procesarSnapshot(s, 'DEVOLUCION'),
+          onError: (e) {},
+        ));
   }
 
   Future<void> _procesarSnapshot(
@@ -175,7 +188,16 @@ class SyncService {
     String tipo,
   ) async {
     bool huboCambios = false;
-    for (final dc in snap.docChanges) {
+    final cambios = List.of(snap.docChanges);
+    if (tipo == 'PRODUCTO') {
+      // Primero productos simples y luego combos, para que sus componentes existan.
+      cambios.sort((a, b) {
+        final ca = (a.doc.data()?['es_combo'] as num?)?.toInt() ?? 0;
+        final cb = (b.doc.data()?['es_combo'] as num?)?.toInt() ?? 0;
+        return ca.compareTo(cb);
+      });
+    }
+    for (final dc in cambios) {
       if (dc.type == DocumentChangeType.removed) continue;
       try {
         switch (tipo) {
@@ -211,6 +233,15 @@ class SyncService {
             await _aplicarPromocion(dc.doc);
             huboCambios = true;
             break;
+          case 'CAJA_MOV':
+            huboCambios = await _aplicarMovCaja(dc.doc) || huboCambios;
+            break;
+          case 'CIERRE':
+            huboCambios = await _aplicarCierre(dc.doc) || huboCambios;
+            break;
+          case 'DEVOLUCION':
+            huboCambios = await _aplicarDevolucion(dc.doc) || huboCambios;
+            break;
         }
       } catch (e) {
         debugPrint('SyncService aplicar $tipo: $e');
@@ -225,7 +256,13 @@ class SyncService {
 
   Future<void> _descargaInicial() async {
     final productos = await _col('productos').get();
-    for (final doc in productos.docs) {
+    final docsProd = List.of(productos.docs)
+      ..sort((a, b) {
+        final ca = (a.data()['es_combo'] as num?)?.toInt() ?? 0;
+        final cb = (b.data()['es_combo'] as num?)?.toInt() ?? 0;
+        return ca.compareTo(cb);
+      });
+    for (final doc in docsProd) {
       await _aplicarProducto(doc, bootstrap: true);
     }
 
@@ -267,6 +304,20 @@ class SyncService {
     final promos = await _col('promociones').get();
     for (final doc in promos.docs) {
       await _aplicarPromocion(doc);
+    }
+
+    // Historial financiero de las demás cajas (para los reportes).
+    final movsCaja = await _col('caja_movimientos').get();
+    for (final doc in movsCaja.docs) {
+      await _aplicarMovCaja(doc);
+    }
+    final cierres = await _col('cierres').get();
+    for (final doc in cierres.docs) {
+      await _aplicarCierre(doc);
+    }
+    final devoluciones = await _col('devoluciones').get();
+    for (final doc in devoluciones.docs) {
+      await _aplicarDevolucion(doc);
     }
     
     cambiosRemotosNotifier.value++;
@@ -483,7 +534,10 @@ class SyncService {
     final data = doc.data();
     if (data == null) return;
     final uuid = doc.id;
-    final epoch = (data['fecha_epoch'] as num?)?.toInt() ?? 0;
+    final fechaEpoch = (data['fecha_epoch'] as num?)?.toInt() ?? 0;
+    final actualizadoEpoch = (data['actualizado_epoch'] as num?)?.toInt() ?? 0;
+    // Una devolución o anulación posterior cambia la versión de la venta.
+    final epoch = actualizadoEpoch > fechaEpoch ? actualizadoEpoch : fechaEpoch;
     final aplicado = await _db.obtenerAplicado('VENTA', uuid);
     final epochAplicado = (aplicado?['epoch'] as num?)?.toInt() ?? -1;
     if (aplicado != null && epoch <= epochAplicado) {
@@ -502,43 +556,51 @@ class SyncService {
         await _db.idClientePorUuid((data['cliente_uuid'] ?? '').toString());
     final usuarioIdHelper =
         await _db.idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString());
+    final anuladaPor = await _db
+        .idUsuarioPorAuthUid((data['anulada_por_uid'] ?? '').toString());
 
-    if (existente.isNotEmpty) {
-      final vId = existente.first['id'] as int;
-      await db.update(
-        'ventas',
-        {
-          'fecha': data['fecha'],
-          'total': data['total'],
-          'metodo_pago': data['metodo_pago'],
-          'anulada': (data['anulada'] ?? 0) == 1 ? 1 : 0,
-          'dispositivo_uuid': data['dispositivo_uuid'],
-          'usuario_id': usuarioIdHelper ?? 0,
-          'cliente_id': clienteId ?? 0,
-        },
-        where: 'id = ?',
-        whereArgs: [vId],
-      );
-    } else {
-      final vId = await db.insert('ventas', {
-        'uuid': uuid,
-        'fecha': data['fecha'],
-        'total': data['total'],
-        'metodo_pago': data['metodo_pago'],
-        'usuario_id': usuarioIdHelper ?? 0,
-        'cliente_id': clienteId ?? 0,
-        'anulada': (data['anulada'] ?? 0) == 1 ? 1 : 0,
-        'dispositivo_uuid': data['dispositivo_uuid'],
-      });
-      final detalle = (data['detalle'] as List?) ?? [];
+    final datos = <String, dynamic>{
+      'fecha': data['fecha'],
+      'total': data['total'],
+      'metodo_pago': data['metodo_pago'],
+      'anulada': (data['anulada'] ?? 0) == 1 ? 1 : 0,
+      'dispositivo_uuid': data['dispositivo_uuid'],
+      'usuario_id': usuarioIdHelper ?? 0,
+      'cliente_id': clienteId ?? 0,
+      'metodo_pago_detalle': data['metodo_pago_detalle'],
+      'efectivo_cobrado': data['efectivo_cobrado'],
+      'anulada_en': data['anulada_en'],
+      'anulada_por': anuladaPor,
+      'motivo_anulacion': data['motivo_anulacion'],
+      'actualizado_epoch': actualizadoEpoch,
+    };
+    final detalle = (data['detalle'] as List?) ?? [];
+    await db.transaction((txn) async {
+      int vId;
+      if (existente.isNotEmpty) {
+        vId = existente.first['id'] as int;
+        if (datos['efectivo_cobrado'] == null) {
+          datos.remove('efectivo_cobrado'); // no borrar el dato local
+        }
+        await txn.update('ventas', datos, where: 'id = ?', whereArgs: [vId]);
+        // Solo una versión posterior trae cambios en las líneas.
+        if (actualizadoEpoch == 0) return;
+        await txn.delete('detalle_ventas', where: 'venta_id = ?', whereArgs: [vId]);
+      } else {
+        vId = await txn.insert('ventas', {...datos, 'uuid': uuid});
+      }
       for (final item in detalle) {
-        final pm = item as Map<String, dynamic>;
-        final pId = await _db.idProductoPorUuid(
-          (pm['producto_uuid'] ?? '').toString(),
+        final pm = Map<String, dynamic>.from(item as Map);
+        final res = await txn.query(
+          'productos',
+          columns: ['id'],
+          where: 'uuid = ?',
+          whereArgs: [(pm['producto_uuid'] ?? '').toString()],
+          limit: 1,
         );
-        await db.insert('detalle_ventas', {
+        await txn.insert('detalle_ventas', {
           'venta_id': vId,
-          'producto_id': pId,
+          'producto_id': res.isEmpty ? null : res.first['id'],
           'nombre_producto': pm['nombre_producto'],
           'cantidad': pm['cantidad'],
           'cantidad_descontada': pm['cantidad_descontada'],
@@ -547,7 +609,7 @@ class SyncService {
           'subtotal': pm['subtotal'],
         });
       }
-    }
+    });
     await _db.guardarAplicado('VENTA', uuid, epoch);
   }
 
@@ -567,6 +629,93 @@ class SyncService {
         whereArgs: [vId],
       );
     }
+  }
+
+  /// Movimiento de caja de otra caja: queda guardado con su dispositivo, así
+  /// sirve a los reportes pero no entra al cuadre de este cajón.
+  Future<bool> _aplicarMovCaja(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final data = doc.data();
+    if (data == null) return false;
+    if ((data['dispositivo_uuid'] ?? '') == _dispositivoUuid) return false;
+    final db = await _db.database;
+    final existe = await db.query('caja_movimientos',
+        columns: ['id'], where: 'uuid = ?', whereArgs: [doc.id], limit: 1);
+    if (existe.isNotEmpty) return false;
+    await db.insert('caja_movimientos', {
+      'uuid': doc.id,
+      'fecha': data['fecha'],
+      'tipo': data['tipo'],
+      'monto': data['monto'],
+      'descripcion': data['descripcion'],
+      'categoria': data['categoria'],
+      'resta_caja': data['resta_caja'] ?? 0,
+      'venta_id':
+          await _db.idVentaPorUuid((data['venta_uuid'] ?? '').toString()),
+      'usuario_id': await _db
+              .idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString()) ??
+          0,
+      'dispositivo_uuid': data['dispositivo_uuid'],
+    });
+    return true;
+  }
+
+  Future<bool> _aplicarCierre(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final data = doc.data();
+    if (data == null) return false;
+    if ((data['dispositivo_uuid'] ?? '') == _dispositivoUuid) return false;
+    final db = await _db.database;
+    final existe = await db.query('cierres_caja',
+        columns: ['id'], where: 'uuid = ?', whereArgs: [doc.id], limit: 1);
+    if (existe.isNotEmpty) return false;
+    const campos = [
+      'fecha', 'fecha_inicio', 'fecha_fin', 'base', 'ventas_turno',
+      'ventas_turno_global', 'ingresos_turno', 'gastos_turno', 'total_sistema',
+      'real_contado', 'diferencia', 'estado', 'detalle', 'dispositivo_uuid',
+    ];
+    await db.insert('cierres_caja', {
+      for (final c in campos) c: data[c],
+      'uuid': doc.id,
+      'usuario_id': await _db
+              .idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString()) ??
+          0,
+    });
+    return true;
+  }
+
+  /// Registro de una devolución hecha en otra caja (para el reporte de
+  /// control). El cambio en la venta llega con la venta misma.
+  Future<bool> _aplicarDevolucion(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final data = doc.data();
+    if (data == null) return false;
+    final db = await _db.database;
+    final existe = await db.query('devoluciones',
+        columns: ['id'], where: 'uuid = ?', whereArgs: [doc.id], limit: 1);
+    if (existe.isNotEmpty) return false;
+    await db.insert('devoluciones', {
+      'uuid': doc.id,
+      'fecha': data['fecha'],
+      'venta_id':
+          await _db.idVentaPorUuid((data['venta_uuid'] ?? '').toString()),
+      'producto_id':
+          await _db.idProductoPorUuid((data['producto_uuid'] ?? '').toString()),
+      'nombre_producto': data['nombre_producto'],
+      'cantidad': data['cantidad'],
+      'monto': data['monto'],
+      'efectivo': data['efectivo'] ?? 0,
+      'metodo_pago': data['metodo_pago'],
+      'motivo': data['motivo'],
+      'usuario_id': await _db
+              .idUsuarioPorAuthUid((data['usuario_uid'] ?? '').toString()) ??
+          0,
+      'dispositivo_uuid': data['dispositivo_uuid'],
+    });
+    return true;
   }
 
   Future<void> _aplicarCliente(
@@ -697,9 +846,12 @@ class SyncService {
     );
     if (existe.isNotEmpty) return;
 
+    final pLocal =
+        await _db.idProductoPorUuid((data['producto_uuid'] ?? '').toString());
     await db.insert('mermas', {
       'fecha': data['fecha'],
-      'producto_id': data['producto_id'],
+      'producto_id': pLocal ?? data['producto_id'],
+      'producto_uuid': data['producto_uuid'],
       'nombre_producto': data['nombre_producto'],
       'cantidad': data['cantidad'],
       'costo_unitario': data['costo_unitario'],
@@ -891,7 +1043,35 @@ class SyncService {
         await _col('ventas').doc(uuid).update({
           'anulada': 1,
           'actualizado_epoch': data['actualizado_epoch'],
+          if (data['anulada_en'] != null) 'anulada_en': data['anulada_en'],
+          if (data['anulada_por_uid'] != null)
+            'anulada_por_uid': data['anulada_por_uid'],
+          if (data['motivo_anulacion'] != null)
+            'motivo_anulacion': data['motivo_anulacion'],
         });
+        return true;
+
+      case 'VENTA_ACTUALIZA':
+        // update (no set): si la venta aún no subió, falla y se reintenta
+        // después de ella, sin pisarla.
+        await _col('ventas').doc(uuid).update({
+          'total': data['total'],
+          'metodo_pago_detalle': data['metodo_pago_detalle'],
+          'detalle': data['detalle'],
+          'actualizado_epoch': data['actualizado_epoch'],
+        });
+        return true;
+
+      case 'DEVOLUCION':
+        await _col('devoluciones').doc(uuid).set(data);
+        return true;
+
+      case 'CAJA_MOV':
+        await _col('caja_movimientos').doc(uuid).set(data);
+        return true;
+
+      case 'CIERRE':
+        await _col('cierres').doc(uuid).set(data);
         return true;
 
       case 'CLIENTE':

@@ -6,10 +6,15 @@ NovaPOS combina una arquitectura local ultrarrápida impulsada por **SQLite (100
 
 ---
 
-## 🚀 Estado Actual del Proyecto (Versión 1.5.0)
+## 🚀 Estado Actual del Proyecto (Versión 1.6.0)
 
-El sistema se encuentra en su versión **1.5.0**, completamente blindado con seguridad nativa, auditoría integral, control estricto de inventarios y un módulo de caja y arqueo financiero de alto rendimiento. Modificaciones y capacidades destacadas:
+El sistema se encuentra en su versión **1.6.0**, completamente blindado con seguridad nativa, auditoría integral, control estricto de inventarios y un módulo de caja y arqueo financiero de alto rendimiento. Modificaciones y capacidades destacadas:
 
+* **Centro Financiero (v1.6.0)**:
+  * Panel con período (Hoy, Ayer, 7/30 días, mes, mes pasado, año o rango) y filtro por cajero.
+  * **Resultados** (ventas − costo real de lo vendido − gastos − mermas − faltantes = utilidad neta, con comparación contra el período anterior), **Gastos y compras** (por categoría, proveedor y flujo de efectivo), **Rentabilidad** (margen por categoría y producto), **Ventas** (más vendidos, hora pico, mapa de calor), **Control** (anulaciones, devoluciones, mermas y descuadres por persona) y **Cierres de caja** (faltantes y sobrantes por cajero).
+  * Informe del período en Excel con todas las secciones.
+* **Caja como flujo de efectivo real**: devoluciones y anulaciones de cualquier turno o caja salen del cajón abierto sin descuadrar; gastos con categoría; motivo en anulaciones y devoluciones.
 * **Visualización Inmediata de Stock en Inventario**:
   * Badges dinámicos de color integrados directamente en cada fila de producto sin necesidad de entrar a editarlo.
   * Etiquetas visuales por nivel de existencia: **Sin stock (0 und/Kg)** en rojo, **Stock bajo (≤ 5)** en naranja y **Stock disponible** en verde.
@@ -43,7 +48,7 @@ El sistema se encuentra en su versión **1.5.0**, completamente blindado con seg
   * Permite devolver unidades o fracciones específicas de un ticket, reintegrando inventario y ajustando caja automáticamente.
 * **Seguridad Estricta de Precios (H-01 Plus)**:
   * El backend intercepta la venta, valida en la BD oculta, evalúa promociones programadas del día y recalcula el importe exacto.
-* **Banco de Pruebas Automatizadas (44 Tests)**:
+* **Banco de Pruebas Automatizadas (66 Tests)**:
   * Test suite integral verificando el 100% de la lógica de negocio: balanzas, promociones, permisos, cálculo de caja, arqueo Z y bloqueo de stock cero.
 
 ---
@@ -93,12 +98,12 @@ flutter build windows --release
 # Compilar paquete APK Release para Tablet Android
 flutter build apk --release
 
-# Ejecutar banco de pruebas automatizadas (Test Suite: 44 tests)
+# Ejecutar banco de pruebas automatizadas (Test Suite: 66 tests)
 flutter test
 ```
 
 ### 📁 Salida de Compilación e Instaladores
 
 Los instaladores generados se ubican en:
-* **Windows**: `installer/output/NovaPOS-Setup-1.5.0.exe`
-* **Android**: `installer/output/NovaPOS-1.5.0.apk` (o `build/app/outputs/flutter-apk/app-release.apk`)
+* **Windows**: `installer/output/NovaPOS-Setup-1.6.0.exe`
+* **Android**: `installer/output/NovaPOS-1.6.0.apk` (o `build/app/outputs/flutter-apk/app-release.apk`)

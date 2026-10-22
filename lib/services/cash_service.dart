@@ -9,6 +9,7 @@ class CashService {
     required String tipo,
     required double monto,
     required String descripcion,
+    String? categoria,
   }) async {
     String permiso;
 
@@ -42,6 +43,7 @@ class CashService {
       monto,
       descripcion,
       usuarioId,
+      categoria: categoria,
     );
   }
 
@@ -52,6 +54,8 @@ class CashService {
     required double gasto,
     required String descripcionIngreso,
     required String descripcionGasto,
+    String? categoriaIngreso,
+    String? categoriaGasto,
   }) async {
     if (!PermissionService.can('CAJA_MOVIMIENTOS')) {
       throw Exception(
@@ -68,6 +72,8 @@ class CashService {
       descripcionIngreso: descripcionIngreso,
       descripcionGasto: descripcionGasto,
       usuarioId: usuarioId,
+      categoriaIngreso: categoriaIngreso,
+      categoriaGasto: categoriaGasto,
     );
   }
 }

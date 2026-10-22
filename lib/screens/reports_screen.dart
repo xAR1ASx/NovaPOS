@@ -1,52 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../database/db_helper.dart';
-import '../services/permission_service.dart';
-import '../services/locale_service.dart';
 import '../services/excel_export_service.dart';
+import '../services/finanzas_service.dart';
+import '../services/permission_service.dart';
 import '../services/theme_service.dart';
+import '../widgets/finanzas_ui.dart';
+import 'finanzas/control_cierres_seccion.dart';
+import 'finanzas/rentabilidad_ventas_seccion.dart';
+import 'finanzas/resultados_seccion.dart';
 
-String _t(String es) => LocaleService().esEspanol ? es : (_mapEn[es] ?? es);
-
-const Map<String, String> _mapEn = {
-  'Inteligencia de Negocio': 'Business Intelligence',
-  'No tienes permiso para ver los reportes':
-      "You don't have permission to view reports",
-  'PANORAMA GENERAL': 'GENERAL OVERVIEW',
-  'ANALIZADOR DETALLADO': 'DETAILED ANALYZER',
-  'ESTADO DE RESULTADOS': 'INCOME STATEMENT',
-  'Concepto': 'Concept',
-  'HOY': 'TODAY',
-  'MES': 'MONTH',
-  'AÑO': 'YEAR',
-  'Ventas': 'Sales',
-  '(-) Costos': '(-) Costs',
-  '= Utilidad Bruta': '= Gross Profit',
-  '(-) Gastos': '(-) Expenses',
-  '(-) Mermas': '(-) Waste / Shrinkage',
-  '= UTILIDAD NETA': '= NET PROFIT',
-  'INVENTARIO': 'INVENTORY',
-  'CARTERA': 'RECEIVABLES',
-  'Hoy': 'Today',
-  'Ayer': 'Yesterday',
-  'Esta Semana': 'This Week',
-  'Este Mes': 'This Month',
-  'Este Año': 'This Year',
-  'Rango': 'Range',
-  'Todos los cajeros': 'All cashiers',
-  'Cajero': 'Cashier',
-  'RESULTADOS': 'RESULTS',
-  'Gastos': 'Expenses',
-  'Ganancia Neta': 'Net Profit',
-  '🏆 Productos Más Vendidos': '🏆 Best Selling Products',
-  'Sin ventas en este periodo': 'No sales in this period',
-  'Unds': 'Units',
-  '📦 Ventas por Categoría': '📦 Sales by Category',
-  'Sin datos': 'No data',
-  '💳 Métodos de Pago': '💳 Payment Methods',
-  'No se pudo cargar el informe': 'Could not load the report',
-};
-
+/// Centro Financiero: panorama, estado de resultados, gastos y compras,
+/// rentabilidad, ventas, control y auditoría de cierres de caja.
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
 
@@ -54,862 +20,730 @@ class ReportsScreen extends StatefulWidget {
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _ReportsScreenState extends State<ReportsScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final formater = NumberFormat.currency(
-    locale: 'es_CO',
-    symbol: '\$',
-    decimalDigits: 0,
-  );
+enum _Atajo { hoy, ayer, d7, d30, mes, mesPasado, anio, rango }
 
-  // --- VARIABLES PESTAÑA 1 (COMPARATIVA) ---
-  Map<String, double> _hoy = {};
-  Map<String, double> _mes = {};
-  Map<String, double> _anio = {};
-  double _inventarioValor = 0;
-  double _cartera = 0;
-  bool _cargandoGeneral = true;
+class _Seccion {
+  final String id;
+  final String titulo;
+  final String ayuda;
+  final IconData icono;
+  final Color color;
+  final bool usaPeriodo;
+  const _Seccion(this.id, this.titulo, this.ayuda, this.icono, this.color, {this.usaPeriodo = true});
+}
 
-  // --- VARIABLES PESTAÑA 2 (DETALLADO) ---
-  String _rangoSeleccionado = "Hoy";
-  DateTime _fechaInicioDetalle = DateTime.now();
-  DateTime _fechaFinDetalle = DateTime.now();
-  Map<String, double> _finanzasDetalle = {};
-  List<Map<String, dynamic>> _topProductos = [];
-  List<Map<String, dynamic>> _ventasCategoria = [];
-  List<Map<String, dynamic>> _metodosPago = [];
+const _secciones = [
+  _Seccion('PANORAMA', 'Panorama', 'Hoy, mes y año', Icons.dashboard_rounded, FinColor.azul, usaPeriodo: false),
+  _Seccion('RESULTADOS', 'Resultados', 'Ganancia del período', Icons.account_balance_rounded, FinColor.verde),
+  _Seccion('GASTOS', 'Gastos y compras', 'En qué se va la plata', Icons.receipt_long_rounded, FinColor.rosa),
+  _Seccion('RENTABILIDAD', 'Rentabilidad', 'Qué deja más', Icons.trending_up_rounded, FinColor.ambar),
+  _Seccion('VENTAS', 'Ventas', 'Productos y horas pico', Icons.storefront_rounded, FinColor.cian),
+  _Seccion('CONTROL', 'Control', 'Anulaciones y mermas', Icons.shield_rounded, FinColor.naranja),
+  _Seccion('CIERRES', 'Cierres de caja', 'Faltantes por cajero', Icons.point_of_sale_rounded, FinColor.violeta),
+];
+
+class _ReportsScreenState extends State<ReportsScreen> {
+  final FinanzasService _fin = FinanzasService();
+  String _seccion = 'RESULTADOS';
+  _Atajo _atajo = _Atajo.d7;
+  late Periodo _periodo = _rangoDe(_Atajo.d7);
+  int? _usuarioId;
+  int _version = 0;
   List<Map<String, dynamic>> _cajeros = [];
-  int _cajeroIdFiltro = -1; // -1 = todos los cajeros
-  bool _cargandoDetalle = true;
-  String? _errorDetalle;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _cargarInformeGeneral();
-    _cargarCajeros();
-    _aplicarFiltroDetalle("Hoy"); // Carga inicial del detallado
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  // ==========================================
-  // 📥 LOGICA DE CARGA DE DATOS
-  // ==========================================
-
-  void _cargarInformeGeneral() async {
-    setState(() => _cargandoGeneral = true);
-    final db = DBHelper();
-    DateTime now = DateTime.now();
-
-    // Fechas mágicas
-    String hoyI = "${DateFormat('yyyy-MM-dd').format(now)}T00:00:00";
-    String hoyF = "${DateFormat('yyyy-MM-dd').format(now)}T23:59:59";
-    String mesI = "${DateFormat('yyyy-MM-01').format(now)}T00:00:00";
-    String mesF =
-        "${DateFormat('yyyy-MM-dd').format(DateTime(now.year, now.month + 1, 0))}T23:59:59";
-    String anioI = "${DateFormat('yyyy-01-01').format(now)}T00:00:00";
-    String anioF = "${DateFormat('yyyy-12-31').format(now)}T23:59:59";
-
-    final rHoy = await db.obtenerReporteFinanciero(hoyI, hoyF);
-    final rMes = await db.obtenerReporteFinanciero(mesI, mesF);
-    final rAnio = await db.obtenerReporteFinanciero(anioI, anioF);
-    final vInv = await db.obtenerValorInventario();
-    final vCart = await db.obtenerTotalCuentasPorCobrar();
-
-    if (!mounted) return;
-    setState(() {
-      _hoy = rHoy;
-      _mes = rMes;
-      _anio = rAnio;
-      _inventarioValor = vInv;
-      _cartera = vCart;
-      _cargandoGeneral = false;
+    DBHelper().obtenerCajeros().then((c) {
+      if (mounted) setState(() => _cajeros = c);
     });
   }
 
-  void _aplicarFiltroDetalle(String tipo) {
-    DateTime now = DateTime.now();
-    DateTime inicio;
-    DateTime fin = now;
-
-    if (tipo == "Hoy") {
-      inicio = now;
-    } else if (tipo == "Ayer") {
-      inicio = now.subtract(const Duration(days: 1));
-      fin = inicio;
-    } else if (tipo == "Esta Semana") {
-      inicio = now.subtract(Duration(days: now.weekday - 1));
-    } else if (tipo == "Este Mes") {
-      inicio = DateTime(now.year, now.month, 1);
-    } else if (tipo == "Este Año") {
-      inicio = DateTime(now.year, 1, 1);
-    } else {
-      inicio = now; // Fallback
+  Periodo _rangoDe(_Atajo a) {
+    final h = DateTime.now();
+    DateTime d(int menos) => DateTime(h.year, h.month, h.day - menos);
+    switch (a) {
+      case _Atajo.ayer:
+        return Periodo(d(1), d(1));
+      case _Atajo.d7:
+        return Periodo(d(6), d(0));
+      case _Atajo.d30:
+        return Periodo(d(29), d(0));
+      case _Atajo.mes:
+        return Periodo(DateTime(h.year, h.month, 1), d(0));
+      case _Atajo.mesPasado:
+        return Periodo(DateTime(h.year, h.month - 1, 1), DateTime(h.year, h.month, 0));
+      case _Atajo.anio:
+        return Periodo(DateTime(h.year, 1, 1), d(0));
+      default:
+        return Periodo(d(0), d(0));
     }
-
-    setState(() {
-      _rangoSeleccionado = tipo;
-      _fechaInicioDetalle = inicio;
-      _fechaFinDetalle = fin;
-    });
-    _cargarInformeDetallado();
   }
 
-  void _seleccionarRangoManual() async {
+  String _textoAtajo(_Atajo a) => {
+        _Atajo.hoy: 'Hoy',
+        _Atajo.ayer: 'Ayer',
+        _Atajo.d7: '7 días',
+        _Atajo.d30: '30 días',
+        _Atajo.mes: 'Este mes',
+        _Atajo.mesPasado: 'Mes pasado',
+        _Atajo.anio: 'Este año',
+        _Atajo.rango: 'Rango',
+      }[a]!;
+
+  Future<void> _elegirRango() async {
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2023),
       lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: context.isDarkMode
-              ? ThemeData.dark().copyWith(
-                  colorScheme: const ColorScheme.dark(
-                    primary: Colors.orange,
-                    surface: Color(0xFF1F2937),
-                  ),
-                )
-              : ThemeData.light().copyWith(
-                  colorScheme: const ColorScheme.light(primary: Color(0xFF1A1F2B)),
-                ),
-          child: child!,
-        );
-      },
+      initialDateRange: DateTimeRange(start: _periodo.desde, end: _periodo.hasta),
+      builder: (context, child) => Theme(
+        data: context.isDarkMode
+            ? ThemeData.dark().copyWith(
+                colorScheme: const ColorScheme.dark(primary: FinColor.violeta, surface: Color(0xFF1F2937)))
+            : ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: FinColor.violeta)),
+        child: child!,
+      ),
     );
-
-    if (picked != null) {
-      setState(() {
-        _rangoSeleccionado = "Rango";
-        _fechaInicioDetalle = picked.start;
-        _fechaFinDetalle = picked.end;
-      });
-      _cargarInformeDetallado();
-    }
-  }
-
-  void _cargarCajeros() async {
-    final data = await DBHelper().obtenerCajeros();
-    if (!mounted) return;
-    setState(() => _cajeros = data);
-  }
-
-  void _cargarInformeDetallado() async {
+    if (picked == null) return;
     setState(() {
-      _cargandoDetalle = true;
-      _errorDetalle = null;
+      _atajo = _Atajo.rango;
+      _periodo = Periodo(picked.start, picked.end);
     });
-    try {
-      final db = DBHelper();
-
-      String iStr =
-          "${DateFormat('yyyy-MM-dd').format(_fechaInicioDetalle)}T00:00:00";
-      String fStr =
-          "${DateFormat('yyyy-MM-dd').format(_fechaFinDetalle)}T23:59:59";
-
-      final finanzas = await db.obtenerReporteFinanciero(
-        iStr,
-        fStr,
-        usuarioId: _cajeroIdFiltro == -1 ? null : _cajeroIdFiltro,
-      );
-      final top = await db.obtenerTopProductosPorRango(iStr, fStr);
-      final cats = await db.obtenerVentasPorCategoria(iStr, fStr);
-      final pagos = await db.obtenerMetodosPagoPorRango(iStr, fStr);
-
-      if (!mounted) return;
-      setState(() {
-        _finanzasDetalle = finanzas;
-        _topProductos = top;
-        _ventasCategoria = cats;
-        _metodosPago = pagos;
-        _cargandoDetalle = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _cargandoDetalle = false;
-        _errorDetalle = "${_t('No se pudo cargar el informe')}: $e";
-      });
-    }
   }
 
-  // ==========================================
-  // 🖥️ INTERFAZ GRÁFICA
-  // ==========================================
+  String get _textoPeriodo {
+    final f = DateFormat("EEE d 'de' MMM yyyy", 'es_CO');
+    if (_periodo.dias == 1) return f.format(_periodo.desde);
+    return '${f.format(_periodo.desde)}  →  ${f.format(_periodo.hasta)}  ·  ${_periodo.dias} días';
+  }
+
+  String get _clave => '$_seccion|${_periodo.inicioIso}|${_periodo.finExclusivoIso}|$_usuarioId|$_version';
+
+  Future<void> _exportar() async {
+    final opcion = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: context.cardBg,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(ft('Exportar a Excel'),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: context.textPrimary)),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const CircleAvatar(
+                    backgroundColor: Color(0x2210B981), child: Icon(Icons.auto_graph, color: FinColor.verde)),
+                title: Text(ft('Informe financiero del período'),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: context.textPrimary)),
+                subtitle: Text('${ft('Resultados, gastos, compras, rentabilidad, control y cierres')} · $_textoPeriodo',
+                    style: TextStyle(color: context.textSecondary, fontSize: 12)),
+                onTap: () => Navigator.pop(ctx, 'PERIODO'),
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                    backgroundColor: Color(0x223B82F6), child: Icon(Icons.table_chart_outlined, color: FinColor.azul)),
+                title: Text(ft('Otros reportes'), style: TextStyle(fontWeight: FontWeight.bold, color: context.textPrimary)),
+                subtitle: Text(ft('Inventario, ventas detalladas, mermas, compras y resumen Hoy/Mes/Año'),
+                    style: TextStyle(color: context.textSecondary, fontSize: 12)),
+                onTap: () => Navigator.pop(ctx, 'CLASICOS'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || opcion == null) return;
+    if (opcion == 'PERIODO') {
+      String? nombreCajero;
+      if (_usuarioId != null) {
+        for (final c in _cajeros) {
+          if (c['id'] == _usuarioId) {
+            nombreCajero = (c['nombre'] ?? 'Cajero').toString();
+            break;
+          }
+        }
+      }
+      await ExcelExportService().ejecutarExportacion(
+        context,
+        titulo: ft('Informe financiero del período'),
+        accion: () => ExcelExportService().exportarInformePeriodo(
+          fin: _fin,
+          periodo: _periodo,
+          usuarioId: _usuarioId,
+          nombreCajero: nombreCajero,
+        ),
+      );
+      return;
+    }
+    final hoy = await _fin.resultados(Periodo(DateTime.now(), DateTime.now()));
+    final n = DateTime.now();
+    final mes = await _fin.resultados(Periodo(DateTime(n.year, n.month, 1), n));
+    final anio = await _fin.resultados(Periodo(DateTime(n.year, 1, 1), n));
+    final pat = await _fin.patrimonio();
+    if (!mounted) return;
+    ExcelExportService().mostrarModalExportacion(
+      context,
+      hoy: resultadosComoMapa(hoy),
+      mes: resultadosComoMapa(mes),
+      anio: resultadosComoMapa(anio),
+      inventarioValor: pat['inventario'],
+      cartera: pat['cartera'],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final appBarColor = context.isDarkMode ? const Color(0xFF0F172A) : const Color(0xFF1A1F2B);
     if (!PermissionService.can('REPORTES_VER')) {
       return Scaffold(
         backgroundColor: context.scaffoldBg,
-        appBar: AppBar(
-          title: Text(_t('Inteligencia de Negocio')),
-          backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : const Color(0xFF1A1F2B),
-        ),
+        appBar: AppBar(title: Text(ft('Centro Financiero')), backgroundColor: appBarColor, foregroundColor: Colors.white),
         body: Center(
-          child: Text(_t('No tienes permiso para ver los reportes'), style: TextStyle(color: context.textPrimary)),
+          child: Text(ft('No tienes permiso para ver los reportes'), style: TextStyle(color: context.textPrimary)),
         ),
       );
     }
+    final sec = _secciones.firstWhere((s) => s.id == _seccion);
     return Scaffold(
       backgroundColor: context.scaffoldBg,
       appBar: AppBar(
-        title: Text(_t('Inteligencia de Negocio')),
-        backgroundColor: context.isDarkMode ? const Color(0xFF0F172A) : const Color(0xFF1A1F2B),
+        title: Row(
+          children: [
+            const Icon(Icons.insights_rounded),
+            const SizedBox(width: 10),
+            Text(ft('Centro Financiero'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          ],
+        ),
+        backgroundColor: appBarColor,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.table_chart_outlined),
-            tooltip: "Exportar Reportes a Excel",
-            onPressed: () {
-              ExcelExportService().mostrarModalExportacion(
-                context,
-                hoy: _hoy,
-                mes: _mes,
-                anio: _anio,
-                inventarioValor: _inventarioValor,
-                cartera: _cartera,
-              );
-            },
+            tooltip: ft('Actualizar'),
+            icon: const Icon(Icons.refresh),
+            onPressed: () => setState(() => _version++),
           ),
-          const SizedBox(width: 8),
+          IconButton(
+            tooltip: ft('Exportar a Excel'),
+            icon: const Icon(Icons.table_chart_outlined),
+            onPressed: _exportar,
+          ),
+          const SizedBox(width: 6),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.orange,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.grey,
-          tabs: [
-            Tab(
-              icon: const Icon(Icons.dashboard),
-              text: _t('PANORAMA GENERAL'),
+      ),
+      body: LayoutBuilder(builder: (context, c) {
+        final ancho = c.maxWidth >= 1100;
+        final contenido = Column(
+          children: [
+            if (!ancho) _barraSecciones(),
+            if (sec.usaPeriodo) _cabeceraPeriodo(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1280),
+                    child: _contenido(),
+                  ),
+                ),
+              ),
             ),
-            Tab(
-              icon: const Icon(Icons.analytics),
-              text: _t('ANALIZADOR DETALLADO'),
+          ],
+        );
+        if (!ancho) return contenido;
+        return Row(
+          children: [
+            _menuLateral(),
+            Expanded(child: contenido),
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _contenido() {
+    final args = (periodo: _periodo, usuarioId: _usuarioId, clave: _clave);
+    switch (_seccion) {
+      case 'PANORAMA':
+        return PanoramaSeccion(fin: _fin, clave: _clave);
+      case 'RESULTADOS':
+        return ResultadosSeccion(fin: _fin, periodo: args.periodo, usuarioId: args.usuarioId, clave: args.clave);
+      case 'GASTOS':
+        return GastosSeccion(fin: _fin, periodo: args.periodo, usuarioId: args.usuarioId, clave: args.clave);
+      case 'RENTABILIDAD':
+        return RentabilidadSeccion(fin: _fin, periodo: args.periodo, usuarioId: args.usuarioId, clave: args.clave);
+      case 'VENTAS':
+        return VentasSeccion(fin: _fin, periodo: args.periodo, usuarioId: args.usuarioId, clave: args.clave);
+      case 'CONTROL':
+        return ControlSeccion(fin: _fin, periodo: args.periodo, usuarioId: args.usuarioId, clave: args.clave);
+      default:
+        return CierresSeccion(
+          fin: _fin,
+          periodo: args.periodo,
+          usuarioId: args.usuarioId,
+          clave: args.clave,
+          alCambiar: () => setState(() => _version++),
+        );
+    }
+  }
+
+  Widget _menuLateral() {
+    return Container(
+      width: 250,
+      decoration: BoxDecoration(
+        color: context.cardBg,
+        border: Border(right: BorderSide(color: context.borderSubtle)),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 10),
+            child: Text(ft('SECCIONES'),
+                style: TextStyle(
+                    fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800, color: context.textSecondary)),
+          ),
+          ..._secciones.map((s) {
+            final activa = s.id == _seccion;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Material(
+                color: activa ? FinColor.fondo(context, s.color) : Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => setState(() => _seccion = s.id),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: activa ? FinColor.borde(context, s.color) : Colors.transparent),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(s.icono, size: 20, color: activa ? FinColor.texto(context, s.color) : context.textSecondary),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(ft(s.titulo),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13.5,
+                                    color: activa ? FinColor.texto(context, s.color) : context.textPrimary,
+                                  )),
+                              Text(ft(s.ayuda), style: TextStyle(fontSize: 11, color: context.textSecondary)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _barraSecciones() {
+    return Container(
+      color: context.cardBg,
+      height: 58,
+      child: ListView(
+        key: const ValueKey('barra_secciones'),
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        children: _secciones.map((s) {
+          final activa = s.id == _seccion;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              avatar: Icon(s.icono, size: 16, color: activa ? Colors.white : FinColor.texto(context, s.color)),
+              label: Text(ft(s.titulo)),
+              selected: activa,
+              showCheckmark: false,
+              selectedColor: s.color,
+              backgroundColor: context.chipBg,
+              labelStyle: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: activa ? Colors.white : context.textPrimary,
+              ),
+              onSelected: (_) => setState(() => _seccion = s.id),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _cabeceraPeriodo() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: context.cardBg,
+        border: Border(bottom: BorderSide(color: context.borderSubtle)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.calendar_month_rounded, size: 16, color: context.textSecondary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _textoPeriodo,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontWeight: FontWeight.w700, color: context.textPrimary, fontSize: 13),
+                ),
+              ),
+              if (_cajeros.isNotEmpty)
+                DropdownButtonHideUnderline(
+                  child: DropdownButton<int?>(
+                    value: _usuarioId,
+                    isDense: true,
+                    borderRadius: BorderRadius.circular(12),
+                    dropdownColor: context.cardBg,
+                    icon: Icon(Icons.person_search_rounded, size: 18, color: context.textSecondary),
+                    style: TextStyle(color: context.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                    items: [
+                      DropdownMenuItem<int?>(value: null, child: Text(ft('Todos los cajeros'))),
+                      ..._cajeros.map((u) => DropdownMenuItem<int?>(
+                            value: u['id'] as int,
+                            child: Text((u['nombre'] ?? 'Cajero').toString()),
+                          )),
+                    ],
+                    onChanged: (v) => setState(() => _usuarioId = v),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 34,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                ..._Atajo.values.where((a) => a != _Atajo.rango).map((a) => Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: _chipAtajo(a, () => setState(() {
+                            _atajo = a;
+                            _periodo = _rangoDe(a);
+                          })),
+                    )),
+                _chipAtajo(_Atajo.rango, _elegirRango, icono: Icons.date_range_rounded),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chipAtajo(_Atajo a, VoidCallback onTap, {IconData? icono}) {
+    final activo = _atajo == a;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: activo ? FinColor.violeta : context.chipBg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: activo ? FinColor.violeta : context.borderSubtle),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icono != null) ...[
+              Icon(icono, size: 14, color: activo ? Colors.white : context.textSecondary),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              ft(_textoAtajo(a)),
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: activo ? Colors.white : context.textPrimary,
+              ),
             ),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildTabGeneral(), // Tab 1: Lo que ya tenías mejorado
-          _buildTabDetalle(), // Tab 2: Lo nuevo y potente
-        ],
-      ),
     );
   }
+}
 
-  // --- TAB 1: PANORAMA GENERAL ---
-  Widget _buildTabGeneral() {
-    if (_cargandoGeneral) {
-      return const Center(child: CircularProgressIndicator());
+/// Resultados en el formato que usa la exportación clásica de Excel.
+Map<String, double> resultadosComoMapa(Resultados r) => {
+      'ventas': r.ventas,
+      'costos': r.costoVentas,
+      'utilidad_bruta': r.utilidadBruta,
+      'gastos': r.gastos + r.descuadreNeto,
+      'mermas': r.mermas,
+      'utilidad_neta': r.utilidadNeta,
+    };
+
+/// Carga datos de una sección y conserva los anteriores mientras recarga.
+class CargaSeccion<T> extends StatefulWidget {
+  final String clave;
+  final Future<T> Function() cargar;
+  final Widget Function(BuildContext context, T datos) construir;
+  const CargaSeccion({super.key, required this.clave, required this.cargar, required this.construir});
+
+  @override
+  State<CargaSeccion<T>> createState() => _CargaSeccionState<T>();
+}
+
+class _CargaSeccionState<T> extends State<CargaSeccion<T>> {
+  T? _datos;
+  Object? _error;
+  bool _cargando = false;
+  int _seq = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  @override
+  void didUpdateWidget(covariant CargaSeccion<T> old) {
+    super.didUpdateWidget(old);
+    if (old.clave != widget.clave) _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final mio = ++_seq;
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+    try {
+      final d = await widget.cargar();
+      if (!mounted || mio != _seq) return;
+      setState(() {
+        _datos = d;
+        _cargando = false;
+      });
+    } catch (e) {
+      if (!mounted || mio != _seq) return;
+      setState(() {
+        _error = e;
+        _cargando = false;
+      });
     }
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(15),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _t('ESTADO DE RESULTADOS'),
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 15,
-                    horizontal: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: context.isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFE0E0E0),
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(10),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          _t('Concepto'),
-                          style: TextStyle(
-                            color: context.textPrimary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          _t('HOY'),
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue[900],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          _t('MES'),
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue[900],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          _t('AÑO'),
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue[900],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(15),
-                  child: Column(
-                    children: [
-                      _filaTabla(
-                        _t('Ventas'),
-                        _hoy['ventas']!,
-                        _mes['ventas']!,
-                        _anio['ventas']!,
-                        esNegrita: true,
-                        color: Colors.blue[700],
-                      ),
-                      const Divider(),
-                      _filaTabla(
-                        _t('(-) Costos'),
-                        _hoy['costos']!,
-                        _mes['costos']!,
-                        _anio['costos']!,
-                        color: Colors.red[300],
-                      ),
-                      const SizedBox(height: 5),
-                      _filaTabla(
-                        _t('= Utilidad Bruta'),
-                        _hoy['utilidad_bruta']!,
-                        _mes['utilidad_bruta']!,
-                        _anio['utilidad_bruta']!,
-                        esNegrita: true,
-                        color: Colors.green[700],
-                      ),
-                      const Divider(),
-                      _filaTabla(
-                        _t('(-) Gastos'),
-                        _hoy['gastos']!,
-                        _mes['gastos']!,
-                        _anio['gastos']!,
-                        color: Colors.orange[800],
-                      ),
-                      const SizedBox(height: 5),
-                      _filaTabla(
-                        _t('(-) Mermas'),
-                        _hoy['mermas'] ?? 0,
-                        _mes['mermas'] ?? 0,
-                        _anio['mermas'] ?? 0,
-                        color: Colors.purple[700],
-                      ),
-                      const Divider(thickness: 2),
-                      _filaTabla(
-                        _t('= UTILIDAD NETA'),
-                        _hoy['utilidad_neta']!,
-                        _mes['utilidad_neta']!,
-                        _anio['utilidad_neta']!,
-                        esNegrita: true,
-                        color: context.textPrimary,
-                        fontSize: 15,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _kpiCard(
-                  _t('INVENTARIO'),
-                  _inventarioValor,
-                  Icons.inventory_2,
-                  Colors.purple,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _kpiCard(
-                  _t('CARTERA'),
-                  _cartera,
-                  Icons.groups,
-                  Colors.orange,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 
-  // --- TAB 2: EXPLORADOR DETALLADO ---
-  Widget _buildTabDetalle() {
+  @override
+  Widget build(BuildContext context) {
+    if (_datos == null && _error == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 80),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_datos == null) {
+      return FinCard(
+        child: Row(
+          children: [
+            const Icon(Icons.error_outline, color: FinColor.rojo),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('${ft('No se pudo cargar')}: $_error', style: TextStyle(color: context.textPrimary)),
+            ),
+            TextButton(onPressed: _cargar, child: Text(ft('Reintentar'))),
+          ],
+        ),
+      );
+    }
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Selector de Fechas
-        Container(
-          color: context.cardBg,
-          padding: const EdgeInsets.all(10),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _filtroChip("Hoy", Icons.today),
-              _filtroChip("Ayer", Icons.arrow_back),
-              _filtroChip("Esta Semana", Icons.calendar_view_week),
-              _filtroChip("Este Mes", Icons.calendar_month),
-              _filtroChip("Este Año", Icons.event),
-              ActionChip(
-                label: Text(_t('Rango')),
-                avatar: const Icon(Icons.date_range, size: 16),
-                backgroundColor: _rangoSeleccionado == "Rango"
-                    ? (context.isDarkMode ? Colors.orange.shade900.withOpacity(0.4) : Colors.orange[100])
-                    : context.chipBg,
-                onPressed: _seleccionarRangoManual,
-              ),
-              if (_cajeros.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(left: 10, top: 2),
-                  child: DropdownButton<int>(
-                    dropdownColor: context.cardBg,
-                    style: TextStyle(color: context.textPrimary),
-                    value: _cajeroIdFiltro,
-                    isDense: true,
-                    underline: const SizedBox.shrink(),
-                    items: [
-                      DropdownMenuItem<int>(
-                        value: -1,
-                        child: Text(_t('Todos los cajeros')),
-                      ),
-                      ..._cajeros.map(
-                        (u) => DropdownMenuItem<int>(
-                          value: u['id'] as int,
-                          child: Text(u['nombre'] ?? _t('Cajero')),
-                        ),
-                      ),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _cajeroIdFiltro = v);
-                      _cargarInformeDetallado();
-                    },
-                  ),
-                ),
-            ],
+        AnimatedOpacity(
+          opacity: _cargando ? 1 : 0,
+          duration: const Duration(milliseconds: 200),
+          child: const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: LinearProgressIndicator(minHeight: 2),
           ),
         ),
-        if (_cargandoDetalle)
-          const Expanded(child: Center(child: CircularProgressIndicator()))
-        else if (_errorDetalle != null)
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Text(
-                  _errorDetalle ?? "",
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red, fontSize: 13),
-                ),
-              ),
-            ),
-          )
-        else
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(15),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Resumen Financiero del Periodo
-                  Card(
-                    elevation: 0,
-                    color: const Color(0xFF1A1F2B),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        children: [
-                          Text(
-                            "${_t('RESULTADOS')}: $_rangoSeleccionado",
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _datoResumenBlanco(
-                                _t('Ventas'),
-                                _finanzasDetalle['ventas'] ?? 0,
-                                Colors.green,
-                              ),
-                              _datoResumenBlanco(
-                                _t('Gastos'),
-                                _finanzasDetalle['gastos'] ?? 0,
-                                Colors.red,
-                              ),
-                              _datoResumenBlanco(
-                                _t('Ganancia Neta'),
-                                _finanzasDetalle['utilidad_neta'] ?? 0,
-                                Colors.white,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // TOP PRODUCTOS
-                  Text(
-                    _t('🏆 Productos Más Vendidos'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Card(
-                    child: _topProductos.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Center(
-                              child: Text(_t('Sin ventas en este periodo')),
-                            ),
-                          )
-                        : ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _topProductos.length,
-                            separatorBuilder: (c, i) =>
-                                const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final p = _topProductos[index];
-                              return ListTile(
-                                dense: true,
-                                leading: CircleAvatar(
-                                  backgroundColor: context.isDarkMode ? const Color(0xFF1E293B) : Colors.blue[50],
-                                  child: Text(
-                                    "${index + 1}",
-                                    style: TextStyle(
-                                      color: context.isDarkMode ? Colors.lightBlueAccent : Colors.blue[900],
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                title: Text(
-                                  p['nombre_producto'],
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                subtitle: Text("${p['cantidad_total']} ${_t('Unds')}"),
-                                trailing: Text(
-                                  formater.format(p['dinero_total']),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // VENTAS POR CATEGORÍA
-                  Text(
-                    _t('📦 Ventas por Categoría'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Card(
-                    child: _ventasCategoria.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Center(child: Text(_t('Sin datos'))),
-                          )
-                        : Column(
-                            children: _ventasCategoria.map((c) {
-                              double totalVentas =
-                                  (_finanzasDetalle['ventas'] ?? 0) > 0
-                                  ? _finanzasDetalle['ventas'] ?? 0
-                                  : 1;
-                              double porcentaje = (c['total'] / totalVentas);
-                              return Column(
-                                children: [
-                                  ListTile(
-                                    title: Text(c['categoria']),
-                                    trailing: Text(formater.format(c['total'])),
-                                    subtitle: LinearProgressIndicator(
-                                      value: porcentaje,
-                                      backgroundColor: context.isDarkMode ? const Color(0xFF374151) : Colors.grey[200],
-                                      color: Colors.orange,
-                                      minHeight: 5,
-                                      borderRadius: BorderRadius.circular(5),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }).toList(),
-                          ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // MÉTODOS DE PAGO
-                  Text(
-                    _t('💳 Métodos de Pago'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: _metodosPago.map((m) {
-                      IconData icon = Icons.money;
-                      Color color = Colors.green;
-                      if (m['metodo_pago'] == 'NEQUI') {
-                        icon = Icons.phone_android;
-                        color = Colors.purple;
-                      }
-                      if (m['metodo_pago'] == 'CREDITO') {
-                        icon = Icons.people;
-                        color = Colors.orange;
-                      }
-
-                      return Expanded(
-                        child: Card(
-                          color: color.withOpacity(0.1),
-                          elevation: 0,
-                          child: Padding(
-                            padding: const EdgeInsets.all(15),
-                            child: Column(
-                              children: [
-                                Icon(icon, color: color),
-                                const SizedBox(height: 5),
-                                Text(
-                                  m['metodo_pago'],
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: color,
-                                  ),
-                                ),
-                                Text(
-                                  formater.format(m['total']),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 30),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  // --- WIDGETS AUXILIARES ---
-
-  Widget _filtroChip(String label, IconData icon) {
-    bool selected = _rangoSeleccionado == label;
-    return ChoiceChip(
-      label: Text(_t(label)),
-      avatar: Icon(
-        icon,
-        size: 17,
-        color: selected
-            ? Colors.orangeAccent
-            : (context.isDarkMode ? Colors.grey[400] : Colors.grey[600]),
-      ),
-      selected: selected,
-      selectedColor: context.isDarkMode ? const Color(0xFF374151) : const Color(0xFF1A1F2B),
-      backgroundColor: context.chipBg,
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : context.textPrimary,
-        fontWeight: FontWeight.bold,
-      ),
-      onSelected: (v) => _aplicarFiltroDetalle(label),
-    );
-  }
-
-  Widget _datoResumenBlanco(
-    String titulo,
-    double valor,
-    Color colorImportante,
-  ) {
-    return Column(
-      children: [
-        Text(
-          titulo,
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          formater.format(valor),
-          style: TextStyle(
-            color: colorImportante,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+        AnimatedOpacity(
+          opacity: _cargando ? 0.55 : 1,
+          duration: const Duration(milliseconds: 200),
+          child: widget.construir(context, _datos as T),
         ),
       ],
     );
   }
+}
 
-  Widget _filaTabla(
-    String label,
-    double v1,
-    double v2,
-    double v3, {
-    bool esNegrita = false,
-    Color? color,
-    double fontSize = 13,
-  }) {
-    TextStyle estilo = TextStyle(
-      fontSize: fontSize,
-      fontWeight: esNegrita ? FontWeight.w900 : FontWeight.normal,
-      color: color ?? (context.isDarkMode ? Colors.white70 : Colors.black87),
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: Text(label, style: estilo.copyWith(color: context.textPrimary)),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              formater.format(v1),
-              textAlign: TextAlign.right,
-              style: estilo,
+/// Panorama: estado de resultados Hoy / Mes / Año y foto del negocio.
+class PanoramaSeccion extends StatelessWidget {
+  final FinanzasService fin;
+  final String clave;
+  const PanoramaSeccion({super.key, required this.fin, required this.clave});
+
+  Future<Map<String, Object>> _cargar() async {
+    final n = DateTime.now();
+    return {
+      'hoy': await fin.resultados(Periodo(n, n)),
+      'mes': await fin.resultados(Periodo(DateTime(n.year, n.month, 1), n)),
+      'anio': await fin.resultados(Periodo(DateTime(n.year, 1, 1), n)),
+      'pat': await fin.patrimonio(),
+      'caja': await DBHelper().obtenerResumenCaja(),
+      'abierta': await DBHelper().verificarCajaAbiertaHoy(),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CargaSeccion<Map<String, Object>>(
+      clave: clave,
+      cargar: _cargar,
+      construir: (context, d) {
+        final hoy = d['hoy'] as Resultados;
+        final mes = d['mes'] as Resultados;
+        final anio = d['anio'] as Resultados;
+        final pat = d['pat'] as Map<String, double>;
+        final caja = d['caja'] as Map<String, double>;
+        final abierta = d['abierta'] as bool;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Rejilla(anchoMinimo: 230, hijos: [
+              KpiTile(
+                etiqueta: ft('Ventas de hoy'),
+                valor: dinero(hoy.ventas),
+                detalle: '${hoy.cantidadVentas} ${ft('ventas')} · ${ft('ticket')} ${dinero(hoy.ticketPromedio)}',
+                icono: Icons.today_rounded,
+                color: FinColor.verde,
+              ),
+              KpiTile(
+                etiqueta: hoy.utilidadNeta >= 0 ? ft('Ganancia de hoy') : ft('Pérdida de hoy'),
+                valor: dinero(hoy.utilidadNeta),
+                detalle: hoy.ventas > 0 ? '${ft('Margen')} ${porcentaje(hoy.margenNeto)}' : ft('Sin ventas todavía'),
+                icono: Icons.savings_rounded,
+                color: hoy.utilidadNeta >= 0 ? FinColor.verde : FinColor.rojo,
+              ),
+              KpiTile(
+                etiqueta: ft('Efectivo en esta caja'),
+                valor: abierta ? dinero(caja['total_en_caja'] ?? 0) : '—',
+                detalle: abierta ? ft('Turno abierto') : ft('Caja cerrada'),
+                icono: Icons.point_of_sale_rounded,
+                color: FinColor.violeta,
+              ),
+              KpiTile(
+                etiqueta: ft('Inventario al costo'),
+                valor: dinero(pat['inventario'] ?? 0),
+                detalle: ft('Mercancía en bodega'),
+                icono: Icons.inventory_2_rounded,
+                color: FinColor.azul,
+              ),
+              KpiTile(
+                etiqueta: ft('Cartera por cobrar'),
+                valor: dinero(pat['cartera'] ?? 0),
+                detalle: ft('Fiados pendientes'),
+                icono: Icons.people_alt_rounded,
+                color: FinColor.ambar,
+              ),
+            ]),
+            const SizedBox(height: 14),
+            FinCard(
+              titulo: ft('Estado de resultados'),
+              subtitulo: ft('Hoy, lo que va del mes y lo que va del año'),
+              icono: Icons.table_rows_rounded,
+              colorIcono: FinColor.azul,
+              child: _tabla(context, hoy, mes, anio),
             ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              formater.format(v2),
-              textAlign: TextAlign.right,
-              style: estilo,
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              formater.format(v3),
-              textAlign: TextAlign.right,
-              style: estilo,
-            ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _kpiCard(String titulo, double valor, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: context.cardBg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border(
-          left: BorderSide(color: color, width: 5),
-          top: BorderSide(color: context.borderSubtle),
-          right: BorderSide(color: context.borderSubtle),
-          bottom: BorderSide(color: context.borderSubtle),
-        ),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  titulo,
-                  style: TextStyle(
-                    color: context.textSecondary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            formater.format(valor),
+  Widget _tabla(BuildContext context, Resultados hoy, Resultados mes, Resultados anio) {
+    TableRow fila(String c, double Function(Resultados) v, {bool fuerte = false, bool resta = false}) {
+      Widget celda(Resultados r) {
+        final valor = v(r);
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
+          child: Text(
+            resta && valor != 0 ? '− ${dinero(valor)}' : dinero(valor),
+            textAlign: TextAlign.right,
             style: TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 18,
-              color: context.textPrimary,
+              fontWeight: fuerte ? FontWeight.w900 : FontWeight.w600,
+              fontSize: fuerte ? 14 : 13,
+              color: fuerte
+                  ? FinColor.texto(context, valor >= 0 ? FinColor.verde : FinColor.rojo)
+                  : context.textPrimary,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
+        );
+      }
+
+      return TableRow(
+        decoration: fuerte
+            ? BoxDecoration(color: context.cardSubtle, borderRadius: BorderRadius.circular(8))
+            : BoxDecoration(border: Border(bottom: BorderSide(color: context.borderSubtle))),
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
+            child: Text(c,
+                style: TextStyle(
+                    fontWeight: fuerte ? FontWeight.w900 : FontWeight.w500, color: context.textPrimary, fontSize: 13)),
+          ),
+          celda(hoy),
+          celda(mes),
+          celda(anio),
         ],
+      );
+    }
+
+    Widget enc(String t) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+          child: Text(t,
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: context.textSecondary, letterSpacing: 0.6)),
+        );
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 560),
+        child: Table(
+          columnWidths: const {0: FlexColumnWidth(1.6), 1: FlexColumnWidth(), 2: FlexColumnWidth(), 3: FlexColumnWidth()},
+          children: [
+            TableRow(children: [
+              Padding(
+                padding: const EdgeInsets.all(6),
+                child: Text(ft('CONCEPTO'),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: context.textSecondary)),
+              ),
+              enc(ft('HOY')),
+              enc(ft('MES')),
+              enc(ft('AÑO')),
+            ]),
+            fila(ft('Ventas'), (r) => r.ventas),
+            fila(ft('Costo de lo vendido'), (r) => r.costoVentas, resta: true),
+            fila(ft('= Utilidad bruta'), (r) => r.utilidadBruta, fuerte: true),
+            fila(ft('Gastos'), (r) => r.gastos, resta: true),
+            fila(ft('Mermas'), (r) => r.mermas, resta: true),
+            fila(ft('Faltantes de caja (neto)'), (r) => r.descuadreNeto, resta: true),
+            fila(ft('= UTILIDAD NETA'), (r) => r.utilidadNeta, fuerte: true),
+          ],
+        ),
       ),
     );
   }

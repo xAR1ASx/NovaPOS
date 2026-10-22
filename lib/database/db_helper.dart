@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import '../services/password_service.dart';
 import '../data/catalogo_maestro.dart';
+import '../utils/categorias_caja.dart';
 
 class DBHelper {
   static final DBHelper _instance = DBHelper._internal();
@@ -28,7 +29,24 @@ class DBHelper {
     final db = await databaseFactory.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(
-        version: 12,
+        version: 13,
+        onCreate: _createDB,
+        onUpgrade: _upgradeDB,
+      ),
+    );
+    _database = db;
+    return db;
+  }
+
+  /// Abre un archivo con el mismo proceso de creación y migración de la app.
+  @visibleForTesting
+  Future<Database> abrirArchivoParaPruebas(String path) async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    final db = await databaseFactory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 13,
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
       ),
@@ -58,7 +76,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 12,
+      version: 13,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -286,6 +304,7 @@ CREATE TABLE roles_permisos(
     await db.execute(
       "INSERT INTO clientes (nombre, telefono, direccion) VALUES ('Cliente Casual', '000', 'Local')",
     );
+    await _asegurarEsquemaFinanzas(db);
   }
 
   /// Obtiene todos los permisos de un rol
@@ -366,6 +385,26 @@ CREATE TABLE roles_permisos(
     return id;
   }
 
+  Future<List<Map<String, dynamic>>> _componentesComboPayload(
+    DatabaseExecutor db,
+    int comboId,
+  ) async {
+    final filas = await db.rawQuery('''
+      SELECT cd.cantidad, p.uuid AS producto_uuid
+      FROM combo_detalles cd
+      INNER JOIN productos p ON p.id = cd.producto_id
+      WHERE cd.combo_id = ?
+    ''', [comboId]);
+    return [
+      for (final f in filas)
+        if ((f['producto_uuid'] ?? '').toString().isNotEmpty)
+          {
+            'producto_uuid': f['producto_uuid'].toString(),
+            'cantidad': (f['cantidad'] as num?)?.toDouble() ?? 1.0,
+          }
+    ];
+  }
+
   /// Construye y encola la subida de un producto. Si [stockRecon] es true se
   /// incluye el stock actual como punto de partida en la nube.
   Future<void> encolarProductoCambio(
@@ -373,6 +412,7 @@ CREATE TABLE roles_permisos(
     bool stockRecon = false,
   }) async {
     final disp = await obtenerDispositivoUuid();
+    final esCombo = (p['es_combo'] as num?)?.toInt() == 1 ? 1 : 0;
     final payload = <String, dynamic>{
       'uuid': p['uuid'],
       'nombre': p['nombre'],
@@ -382,11 +422,17 @@ CREATE TABLE roles_permisos(
       'precio_costo': p['precio_costo'],
       'precio_venta': p['precio_venta'],
       'es_pesable': p['es_pesable'] ?? 0,
+      'es_combo': esCombo,
       'esta_activo': p['esta_activo'] ?? 1,
       'imagen_path_local': p['imagen_path'],
       'actualizado_epoch': DateTime.now().millisecondsSinceEpoch,
       'dispositivo_uuid': disp,
     };
+    if (esCombo == 1 && p['id'] != null) {
+      final db = await database;
+      payload['combo_componentes'] =
+          await _componentesComboPayload(db, (p['id'] as num).toInt());
+    }
     if (stockRecon) {
       payload['stock_recon'] =
           ((p['stock_actual'] as num?)?.toDouble() ?? 0).toInt();
@@ -411,6 +457,36 @@ CREATE TABLE roles_permisos(
     await encolarPendiente('STOCK_OP', opUuid, payload);
     await guardarAplicado('STOCK_OP', opUuid, epoch);
     return opUuid;
+  }
+
+  /// Encola el cambio de stock de un ítem vendido/devuelto. En un combo el
+  /// stock que cambia es el de sus componentes, no el del combo.
+  Future<void> _encolarStockDeItem(
+    int productoId,
+    double cantidad, {
+    double cantidadCombo = 0,
+    bool? esCombo,
+  }) async {
+    final db = await database;
+    bool combo = esCombo ?? false;
+    if (esCombo == null) {
+      final p = await db.query('productos',
+          columns: ['es_combo'], where: 'id = ?', whereArgs: [productoId], limit: 1);
+      combo = p.isNotEmpty && (p.first['es_combo'] as num?)?.toInt() == 1;
+    }
+    if (!combo) {
+      await encolarStockOp(productoId, cantidad);
+      return;
+    }
+    final signo = cantidad < 0 ? -1.0 : 1.0;
+    final comps = await db.query('combo_detalles',
+        where: 'combo_id = ?', whereArgs: [productoId]);
+    for (final c in comps) {
+      final cant = (c['cantidad'] as num).toDouble() * cantidadCombo * signo;
+      if (cant != 0) {
+        await encolarStockOp((c['producto_id'] as num).toInt(), cant);
+      }
+    }
   }
 
   /// Encola un movimiento de cartera (abono, fiado, devolución, anulación).
@@ -510,163 +586,247 @@ CREATE TABLE roles_permisos(
   }
 
   // --- CAJA Y VENTAS ---
-  Future<Map<String, double>> obtenerResumenCaja() async {
-    final db = await database;
-    final lastApertura = await db.query(
+  // --- CAJA: CÁLCULO DEL TURNO ---
+  /// Filas de esta caja. Las que no tienen dispositivo son anteriores a la
+  /// sincronización de la caja y siempre son locales.
+  static const String _deEstaCaja =
+      '(dispositivo_uuid IS NULL OR dispositivo_uuid = ?)';
+
+  static const Map<String, double> _turnoVacio = {
+    'base': 0,
+    'ventas_efectivo': 0,
+    'ventas_global': 0,
+    'gastos': 0,
+    'ingresos_extra': 0,
+    'devoluciones': 0,
+    'devoluciones_otros_turnos': 0,
+    'total_en_caja': 0,
+  };
+
+  /// Reparte un pago mixto: lo digital se toma exacto (hasta el total) y el
+  /// efectivo cubre el resto. Lo que el cliente entregó de más en efectivo
+  /// fue cambio, no entra al cajón.
+  static Map<String, double> partesMixto(double total, String? detalleJson) {
+    double ef = 0, dig = 0;
+    if (detalleJson != null && detalleJson.isNotEmpty) {
+      try {
+        final d = jsonDecode(detalleJson);
+        if (d is Map) {
+          ef = (d['efectivo'] as num?)?.toDouble() ?? 0;
+          dig = (d['digital'] as num?)?.toDouble() ?? 0;
+        }
+      } catch (_) {}
+    }
+    if (total <= 0) return {'efectivo': 0, 'digital': 0};
+    dig = dig.clamp(0, total).toDouble();
+    ef = ef.clamp(0, total - dig).toDouble();
+    return {'efectivo': ef, 'digital': dig};
+  }
+
+  /// Efectivo que le corresponde a una venta según su estado actual.
+  static double efectivoDeVenta(Map<String, dynamic> v) {
+    final total = (v['total'] as num?)?.toDouble() ?? 0;
+    final metodo = (v['metodo_pago'] ?? '').toString();
+    if (metodo == 'EFECTIVO') return total;
+    if (metodo != 'MIXTO') return 0;
+    return partesMixto(total, v['metodo_pago_detalle']?.toString())['efectivo']!;
+  }
+
+  /// Último APERTURA de esta caja si su turno sigue abierto.
+  Future<Map<String, dynamic>?> _turnoAbierto(
+    DatabaseExecutor ex,
+    String disp,
+  ) async {
+    final ap = await ex.query(
       'caja_movimientos',
-      where: "tipo = 'APERTURA'",
-      orderBy: "id DESC",
+      where: "tipo = 'APERTURA' AND $_deEstaCaja",
+      whereArgs: [disp],
+      orderBy: 'id DESC',
       limit: 1,
     );
-    if (lastApertura.isEmpty) {
-      return {
-        'base': 0,
-        'ventas_efectivo': 0,
-        'ventas_global': 0,
-        'gastos': 0,
-        'ingresos_extra': 0,
-        'total_en_caja': 0,
-      };
-    }
-    String fechaInicio = lastApertura.first['fecha'] as String;
-    final lastCierre = await db.query(
+    if (ap.isEmpty) return null;
+    final ci = await ex.query(
       'caja_movimientos',
-      where: "tipo = 'CIERRE' AND fecha > ?",
-      whereArgs: [fechaInicio],
+      where: "tipo = 'CIERRE' AND fecha > ? AND $_deEstaCaja",
+      whereArgs: [ap.first['fecha'], disp],
       limit: 1,
     );
-    if (lastCierre.isNotEmpty) {
-      return {
-        'base': 0,
-        'ventas_efectivo': 0,
-        'ventas_global': 0,
-        'gastos': 0,
-        'ingresos_extra': 0,
-        'total_en_caja': 0,
-      };
-    }
+    return ci.isEmpty ? ap.first : null;
+  }
 
-    final dispId = await obtenerDispositivoUuid();
-    final ventasRes = await db.rawQuery(
-      "SELECT SUM(total) as total FROM ventas WHERE fecha >= ? AND metodo_pago = 'EFECTIVO' AND anulada = 0 AND (dispositivo_uuid IS NULL OR dispositivo_uuid = ?)",
-      [fechaInicio, dispId],
-    );
-    double ventas = (ventasRes.first['total'] as num?)?.toDouble() ?? 0;
-
-    final mixtasLocal = await db.query(
+  /// Cuadre del turno como flujo de efectivo del cajón:
+  /// base + efectivo cobrado en ventas + ingresos − gastos/compras −
+  /// efectivo devuelto (anulaciones y devoluciones), sea de la venta que sea.
+  /// Así devolver una venta de otro turno o de otra caja nunca descuadra.
+  Future<Map<String, double>> _calcularTurno(
+    DatabaseExecutor ex,
+    String fi,
+    String disp,
+  ) async {
+    final ventas = await ex.query(
       'ventas',
-      columns: ['metodo_pago_detalle'],
-      where: "fecha >= ? AND metodo_pago = 'MIXTO' AND anulada = 0 AND (dispositivo_uuid IS NULL OR dispositivo_uuid = ?)",
-      whereArgs: [fechaInicio, dispId],
+      columns: [
+        'id',
+        'total',
+        'metodo_pago',
+        'metodo_pago_detalle',
+        'anulada',
+        'efectivo_cobrado',
+      ],
+      where: "fecha >= ? AND $_deEstaCaja",
+      whereArgs: [fi, disp],
     );
-    for (var row in mixtasLocal) {
-      final d = row['metodo_pago_detalle']?.toString();
-      if (d != null && d.isNotEmpty) {
-        try {
-          final parsed = jsonDecode(d);
-          if (parsed is Map && parsed['efectivo'] != null) {
-            ventas += (parsed['efectivo'] as num).toDouble();
-          }
-        } catch (_) {}
+    double cobrado = 0;
+    final idsTurno = <int>{};
+    for (final v in ventas) {
+      idsTurno.add(v['id'] as int);
+      final ec = (v['efectivo_cobrado'] as num?)?.toDouble();
+      if (ec != null) {
+        cobrado += ec;
+      } else if ((v['anulada'] ?? 0) != 1) {
+        cobrado += efectivoDeVenta(v);
       }
     }
 
-    final ventasGlobalRes = await db.rawQuery(
-      "SELECT SUM(total) as total FROM ventas WHERE fecha >= ? AND metodo_pago = 'EFECTIVO' AND anulada = 0",
-      [fechaInicio],
+    final movs = await ex.query(
+      'caja_movimientos',
+      where: "fecha >= ? AND $_deEstaCaja",
+      whereArgs: [fi, disp],
     );
-    double ventasGlobal =
-        (ventasGlobalRes.first['total'] as num?)?.toDouble() ?? 0;
-
-    final mixtasGlobal = await db.query(
-      'ventas',
-      columns: ['metodo_pago_detalle'],
-      where: "fecha >= ? AND metodo_pago = 'MIXTO' AND anulada = 0",
-      whereArgs: [fechaInicio],
-    );
-    for (var row in mixtasGlobal) {
-      final d = row['metodo_pago_detalle']?.toString();
-      if (d != null && d.isNotEmpty) {
-        try {
-          final parsed = jsonDecode(d);
-          if (parsed is Map && parsed['efectivo'] != null) {
-            ventasGlobal += (parsed['efectivo'] as num).toDouble();
+    double base = 0, ingresos = 0, gastos = 0, devTurno = 0, devOtros = 0;
+    for (final m in movs) {
+      final v = (m['monto'] as num?)?.toDouble() ?? 0;
+      switch (m['tipo']) {
+        case 'APERTURA':
+          base += v;
+          break;
+        case 'INGRESO':
+          ingresos += v;
+          break;
+        case 'GASTO':
+        case 'COMPRA':
+          gastos += v;
+          break;
+        case 'DEVOLUCION':
+        case 'ANULACION':
+          if ((m['resta_caja'] ?? 0) == 1) {
+            final vid = (m['venta_id'] as num?)?.toInt();
+            if (vid != null && idsTurno.contains(vid)) {
+              devTurno += v;
+            } else {
+              devOtros += v;
+            }
           }
-        } catch (_) {}
+          break;
       }
     }
-    final cajaRes = await db.query(
-      'caja_movimientos',
-      where: "fecha >= ?",
-      whereArgs: [fechaInicio],
+
+    // Informativo: efectivo vendido por todas las cajas desde la apertura.
+    final globales = await ex.query(
+      'ventas',
+      columns: ['total', 'metodo_pago', 'metodo_pago_detalle'],
+      where: "fecha >= ? AND anulada = 0 AND metodo_pago IN ('EFECTIVO', 'MIXTO')",
+      whereArgs: [fi],
     );
-    double base = 0, gastos = 0, ingresos = 0;
-    for (var m in cajaRes) {
-      double v = (m['monto'] as num).toDouble();
-      if (m['tipo'] == 'APERTURA') base += v;
-      if (m['tipo'] == 'INGRESO') ingresos += v;
-      if (m['tipo'] == 'GASTO' || m['tipo'] == 'COMPRA') gastos += v;
+    double ventasGlobal = 0;
+    for (final v in globales) {
+      ventasGlobal += efectivoDeVenta(v);
     }
+
+    // Lo devuelto de ventas de este mismo turno se muestra como menos venta;
+    // lo de otros turnos o cajas, como una salida más.
+    final ventasEfectivo = cobrado - devTurno;
+    final salidas = gastos + devOtros;
     return {
       'base': base,
-      'ventas_efectivo': ventas,
+      'ventas_efectivo': ventasEfectivo,
       'ventas_global': ventasGlobal,
       'ingresos_extra': ingresos,
-      'gastos': gastos,
-      'total_en_caja': (base + ventas + ingresos) - gastos,
+      'gastos': salidas,
+      'devoluciones': devTurno + devOtros,
+      'devoluciones_otros_turnos': devOtros,
+      'total_en_caja': (base + ventasEfectivo + ingresos) - salidas,
     };
+  }
+
+  Future<Map<String, double>> obtenerResumenCaja() async {
+    final db = await database;
+    final disp = await obtenerDispositivoUuid();
+    final turno = await _turnoAbierto(db, disp);
+    if (turno == null) return Map<String, double>.from(_turnoVacio);
+    return _calcularTurno(db, turno['fecha'] as String, disp);
   }
 
   Future<bool> verificarCajaAbiertaHoy() async {
     final db = await database;
-    final lastApertura = await db.query(
-      'caja_movimientos',
-      where: "tipo = 'APERTURA'",
-      orderBy: "id DESC",
-      limit: 1,
-    );
-    if (lastApertura.isEmpty) return false;
-    final fi = lastApertura.first['fecha'] as String;
-    final lc = await db.query(
-      'caja_movimientos',
-      where: "tipo = 'CIERRE' AND fecha > ?",
-      whereArgs: [fi],
-      limit: 1,
-    );
-    return lc.isEmpty;
+    return (await _turnoAbierto(db, await obtenerDispositivoUuid())) != null;
   }
 
   Future<List<Map<String, dynamic>>> obtenerMovimientosTurnoActual() async {
     final db = await database;
-    final lastApertura = await db.query(
-      'caja_movimientos',
-      where: "tipo = 'APERTURA'",
-      orderBy: "id DESC",
-      limit: 1,
-    );
-    if (lastApertura.isEmpty) return [];
-    String fi = lastApertura.first['fecha'] as String;
-    final lc = await db.query(
-      'caja_movimientos',
-      where: "tipo = 'CIERRE' AND fecha > ?",
-      whereArgs: [fi],
-      limit: 1,
-    );
-    if (lc.isNotEmpty) return [];
+    final disp = await obtenerDispositivoUuid();
+    final turno = await _turnoAbierto(db, disp);
+    if (turno == null) return [];
     return await db.query(
       'caja_movimientos',
-      where: "fecha >= ?",
-      whereArgs: [fi],
+      where: "fecha >= ? AND $_deEstaCaja",
+      whereArgs: [turno['fecha'], disp],
       orderBy: "id DESC",
     );
+  }
+
+  /// Fila lista para insertar en caja_movimientos, ya marcada con esta caja.
+  Map<String, dynamic> _filaMovCaja({
+    required String tipo,
+    required double monto,
+    required String descripcion,
+    required int usuarioId,
+    required String disp,
+    String? categoria,
+    int? ventaId,
+    bool restaCaja = false,
+  }) {
+    return {
+      'fecha': DateTime.now().toIso8601String(),
+      'tipo': tipo,
+      'monto': monto,
+      'descripcion': descripcion,
+      'usuario_id': usuarioId,
+      'uuid': generateUuidV4(),
+      'dispositivo_uuid': disp,
+      'categoria': categoria ?? CategoriasCaja.porDefecto(tipo),
+      'venta_id': ventaId,
+      'resta_caja': restaCaja ? 1 : 0,
+    };
+  }
+
+  /// Sube a la nube un movimiento de caja (para los reportes del dueño en
+  /// todas las cajas). No cambia el cuadre de las otras cajas.
+  Future<void> _encolarMovCaja(Map<String, dynamic> fila) async {
+    final db = await database;
+    final fecha = fila['fecha']?.toString() ?? '';
+    await encolarPendiente('CAJA_MOV', fila['uuid'] as String, jsonEncode({
+      'uuid': fila['uuid'],
+      'fecha': fecha,
+      'fecha_epoch': DateTime.tryParse(fecha)?.millisecondsSinceEpoch ?? 0,
+      'tipo': fila['tipo'],
+      'monto': fila['monto'],
+      'descripcion': fila['descripcion'],
+      'categoria': fila['categoria'],
+      'resta_caja': fila['resta_caja'] ?? 0,
+      'venta_uuid': await _uuidDeTabla(db, 'ventas', fila['venta_id']),
+      'usuario_uid': await authUidPorUsuario(fila['usuario_id']),
+      'dispositivo_uuid': fila['dispositivo_uuid'],
+    }));
   }
 
   Future<int> registrarMovimientoCaja(
     String tipo,
     double monto,
     String descripcion,
-    int usuarioId,
-  ) async {
+    int usuarioId, {
+    String? categoria,
+  }) async {
     final db = await database;
     if (tipo == 'APERTURA') {
       final abierta = await verificarCajaAbiertaHoy();
@@ -692,13 +852,17 @@ CREATE TABLE roles_permisos(
       }
     }
 
-    return await db.insert('caja_movimientos', {
-      'fecha': DateTime.now().toIso8601String(),
-      'tipo': tipo,
-      'monto': monto,
-      'descripcion': descripcion,
-      'usuario_id': usuarioId,
-    });
+    final fila = _filaMovCaja(
+      tipo: tipo,
+      monto: monto,
+      descripcion: descripcion,
+      usuarioId: usuarioId,
+      disp: await obtenerDispositivoUuid(),
+      categoria: categoria,
+    );
+    final id = await db.insert('caja_movimientos', fila);
+    await _encolarMovCaja(fila);
+    return id;
   }
 
   /// Ingresa efectivo a la caja (refuerzo) y paga un gasto en UNA sola
@@ -713,6 +877,8 @@ CREATE TABLE roles_permisos(
     required String descripcionIngreso,
     required String descripcionGasto,
     required int usuarioId,
+    String? categoriaIngreso,
+    String? categoriaGasto,
   }) async {
     if (ingreso.isNaN || ingreso.isInfinite || ingreso <= 0 ||
         gasto.isNaN || gasto.isInfinite || gasto <= 0) {
@@ -726,24 +892,31 @@ CREATE TABLE roles_permisos(
       throw Exception('Fondos insuficientes en caja');
     }
     final db = await database;
+    final disp = await obtenerDispositivoUuid();
+    final filaIngreso = _filaMovCaja(
+      tipo: 'INGRESO',
+      monto: ingreso,
+      descripcion: descripcionIngreso,
+      usuarioId: usuarioId,
+      disp: disp,
+      categoria: categoriaIngreso,
+    );
+    final filaGasto = _filaMovCaja(
+      tipo: 'GASTO',
+      monto: gasto,
+      descripcion: descripcionGasto,
+      usuarioId: usuarioId,
+      disp: disp,
+      categoria: categoriaGasto,
+    );
     late int ingresoId;
     late int gastoId;
     await db.transaction((txn) async {
-      ingresoId = await txn.insert('caja_movimientos', {
-        'fecha': DateTime.now().toIso8601String(),
-        'tipo': 'INGRESO',
-        'monto': ingreso,
-        'descripcion': descripcionIngreso,
-        'usuario_id': usuarioId,
-      });
-      gastoId = await txn.insert('caja_movimientos', {
-        'fecha': DateTime.now().toIso8601String(),
-        'tipo': 'GASTO',
-        'monto': gasto,
-        'descripcion': descripcionGasto,
-        'usuario_id': usuarioId,
-      });
+      ingresoId = await txn.insert('caja_movimientos', filaIngreso);
+      gastoId = await txn.insert('caja_movimientos', filaGasto);
     });
+    await _encolarMovCaja(filaIngreso);
+    await _encolarMovCaja(filaGasto);
     return {
       'exito': true,
       'ingreso_id': ingresoId,
@@ -801,149 +974,91 @@ CREATE TABLE roles_permisos(
     required String fechaInicio,
     required int usuarioId,
   }) async {
+    if (realContado.isNaN || realContado.isInfinite || realContado < 0) {
+      throw Exception('El efectivo contado no es válido');
+    }
     final db = await database;
     final disp = await obtenerDispositivoUuid();
-    return await db.transaction((txn) async {
-      final lastApertura = await txn.query(
-        'caja_movimientos',
-        where: "tipo = 'APERTURA'",
-        orderBy: "id DESC",
-        limit: 1,
-      );
-      if (lastApertura.isEmpty) {
-        throw Exception('No hay un turno abierto para cerrar');
+    late Map<String, dynamic> filaMov;
+    final resultado = await db.transaction((txn) async {
+      final turno = await _turnoAbierto(txn, disp);
+      if (turno == null) {
+        final hubo = await txn.query(
+          'caja_movimientos',
+          where: "tipo = 'APERTURA' AND $_deEstaCaja",
+          whereArgs: [disp],
+          limit: 1,
+        );
+        throw Exception(hubo.isEmpty
+            ? 'No hay un turno abierto para cerrar'
+            : 'El turno ya fue cerrado');
       }
-      final fi = lastApertura.first['fecha'] as String;
-      final yaCerrada = await txn.query(
-        'caja_movimientos',
-        where: "tipo = 'CIERRE' AND fecha > ?",
-        whereArgs: [fi],
-        limit: 1,
-      );
-      if (yaCerrada.isNotEmpty) {
-        throw Exception('El turno ya fue cerrado');
-      }
+      final fi = turno['fecha'] as String;
+      final t = await _calcularTurno(txn, fi, disp);
+      final totalSistema = t['total_en_caja']!;
 
-      final ventasRes = await txn.rawQuery(
-        "SELECT SUM(total) as total FROM ventas WHERE fecha >= ? AND metodo_pago = 'EFECTIVO' AND anulada = 0 AND (dispositivo_uuid IS NULL OR dispositivo_uuid = ?)",
-        [fi, disp],
-      );
-      double ventas = (ventasRes.first['total'] as num?)?.toDouble() ?? 0;
-
-      final mixtasLocal = await txn.query(
+      // --- DESGLOSE EXACTO POR MÉTODO DE PAGO (todas las cajas) ---
+      final ventasPeriodo = await txn.query(
         'ventas',
-        columns: ['metodo_pago_detalle'],
-        where: "fecha >= ? AND metodo_pago = 'MIXTO' AND anulada = 0 AND (dispositivo_uuid IS NULL OR dispositivo_uuid = ?)",
-        whereArgs: [fi, disp],
-      );
-      for (var row in mixtasLocal) {
-        final d = row['metodo_pago_detalle']?.toString();
-        if (d != null && d.isNotEmpty) {
-          try {
-            final parsed = jsonDecode(d);
-            if (parsed is Map && parsed['efectivo'] != null) {
-              ventas += (parsed['efectivo'] as num).toDouble();
-            }
-          } catch (_) {}
-        }
-      }
-
-      final ventasGlobalRes = await txn.rawQuery(
-        "SELECT SUM(total) as total FROM ventas WHERE fecha >= ? AND metodo_pago = 'EFECTIVO' AND anulada = 0",
-        [fi],
-      );
-      double ventasGlobal =
-          (ventasGlobalRes.first['total'] as num?)?.toDouble() ?? 0;
-
-      final mixtasGlobal = await txn.query(
-        'ventas',
-        columns: ['metodo_pago_detalle'],
-        where: "fecha >= ? AND metodo_pago = 'MIXTO' AND anulada = 0",
+        columns: ['total', 'metodo_pago', 'metodo_pago_detalle'],
+        where: 'fecha >= ? AND anulada = 0',
         whereArgs: [fi],
       );
-      for (var row in mixtasGlobal) {
-        final d = row['metodo_pago_detalle']?.toString();
-        if (d != null && d.isNotEmpty) {
-          try {
-            final parsed = jsonDecode(d);
-            if (parsed is Map && parsed['efectivo'] != null) {
-              ventasGlobal += (parsed['efectivo'] as num).toDouble();
-            }
-          } catch (_) {}
-        }
-      }
-
-      final cajaRes = await txn.query(
-        'caja_movimientos',
-        where: 'fecha >= ?',
-        whereArgs: [fi],
-      );
-      double baseTurno = 0, gastos = 0, ingresos = 0;
-      for (var m in cajaRes) {
-        double v = (m['monto'] as num).toDouble();
-        if (m['tipo'] == 'APERTURA') baseTurno += v;
-        if (m['tipo'] == 'INGRESO') ingresos += v;
-        if (m['tipo'] == 'GASTO' || m['tipo'] == 'COMPRA') gastos += v;
-      }
-      final totalSistema = (baseTurno + ventas + ingresos) - gastos;
-
-      // --- EXTRAER DESGLOSE DE MÉTODOS DE PAGO EXACTO ---
-      final breakdownRes = await txn.rawQuery(
-        "SELECT metodo_pago, SUM(total) as total FROM ventas WHERE fecha >= ? AND anulada = 0 GROUP BY metodo_pago",
-        [fi],
-      );
-      Map<String, double> metodos = {};
-      for (var row in breakdownRes) {
-        final mp = row['metodo_pago'].toString();
+      final metodos = <String, double>{};
+      for (final v in ventasPeriodo) {
+        final mp = (v['metodo_pago'] ?? '').toString();
+        final total = (v['total'] as num?)?.toDouble() ?? 0;
         if (mp != 'MIXTO') {
-          metodos[mp] = (row['total'] as num).toDouble();
+          metodos[mp] = (metodos[mp] ?? 0) + total;
+          continue;
         }
-      }
-      for (var row in mixtasGlobal) {
-        final d = row['metodo_pago_detalle']?.toString();
-        if (d != null && d.isNotEmpty) {
+        final detalleMixto = v['metodo_pago_detalle']?.toString();
+        final partes = partesMixto(total, detalleMixto);
+        if (partes['efectivo']! > 0) {
+          metodos['EFECTIVO'] = (metodos['EFECTIVO'] ?? 0) + partes['efectivo']!;
+        }
+        if (partes['digital']! > 0) {
+          String nombreDig = 'DIGITAL';
           try {
-            final parsed = jsonDecode(d);
-            if (parsed is Map) {
-              if (parsed['efectivo'] != null) {
-                final ef = (parsed['efectivo'] as num).toDouble();
-                metodos['EFECTIVO'] = (metodos['EFECTIVO'] ?? 0) + ef;
-              }
-              if (parsed['digital'] != null) {
-                String nombreDig = (parsed['metodo_digital'] ?? 'DIGITAL').toString().toUpperCase();
-                final dig = (parsed['digital'] as num).toDouble();
-                metodos[nombreDig] = (metodos[nombreDig] ?? 0) + dig;
-              }
+            final d = jsonDecode(detalleMixto ?? '');
+            if (d is Map && d['metodo_digital'] != null) {
+              nombreDig = d['metodo_digital'].toString().toUpperCase();
             }
           } catch (_) {}
+          metodos[nombreDig] = (metodos[nombreDig] ?? 0) + partes['digital']!;
         }
       }
-      String desgloseJson = jsonEncode(metodos);
-      String nuevoDetalle = detalle.isEmpty ? 'METODOS:$desgloseJson' : '$detalle|METODOS:$desgloseJson';
+      final desgloseJson = jsonEncode(metodos);
+      final nuevoDetalle = detalle.isEmpty
+          ? 'METODOS:$desgloseJson'
+          : '$detalle|METODOS:$desgloseJson';
 
-      await txn.insert('caja_movimientos', {
-        'fecha': DateTime.now().toIso8601String(),
-        'tipo': 'CIERRE',
-        'monto': realContado,
-        'descripcion': detalle, // Para el movimiento dejamos el detalle normal
-        'usuario_id': usuarioId,
-      });
+      filaMov = _filaMovCaja(
+        tipo: 'CIERRE',
+        monto: realContado,
+        descripcion: detalle, // Para el movimiento dejamos el detalle normal
+        usuarioId: usuarioId,
+        disp: disp,
+      );
+      await txn.insert('caja_movimientos', filaMov);
       final fechaCierreNow = DateTime.now().toIso8601String();
       final idCierre = await txn.insert('cierres_caja', {
         'fecha': fechaCierreNow,
         'fecha_inicio': fi,
         'fecha_fin': fechaCierreNow,
-        'base': baseTurno,
-        'ventas_turno': ventas,
-        'ventas_turno_global': ventasGlobal,
-        'ingresos_turno': ingresos,
-        'gastos_turno': gastos,
+        'base': t['base'],
+        'ventas_turno': t['ventas_efectivo'],
+        'ventas_turno_global': t['ventas_global'],
+        'ingresos_turno': t['ingresos_extra'],
+        'gastos_turno': t['gastos'],
         'total_sistema': totalSistema,
         'real_contado': realContado,
         'diferencia': diferencia,
         'estado': estado,
         'usuario_id': usuarioId,
         'detalle': nuevoDetalle,
+        'uuid': generateUuidV4(),
+        'dispositivo_uuid': disp,
       });
 
       final cierreCreado = (await txn.query(
@@ -957,16 +1072,32 @@ CREATE TABLE roles_permisos(
         'exito': true,
         'cierre': cierreCreado,
         'total_sistema': totalSistema,
-        'ventas_turno_global': ventasGlobal,
+        'ventas_turno_global': t['ventas_global'],
       };
     });
+    await _encolarMovCaja(filaMov);
+    await _encolarCierre(resultado['cierre'] as Map<String, dynamic>);
+    return resultado;
+  }
+
+  /// Sube un cierre a la nube para la auditoría de cierres en todas las cajas.
+  Future<void> _encolarCierre(Map<String, dynamic> c) async {
+    final uuid = (c['uuid'] ?? '').toString();
+    if (uuid.isEmpty) return;
+    final datos = Map<String, dynamic>.from(c)..remove('id');
+    datos['usuario_uid'] = await authUidPorUsuario(c['usuario_id']);
+    datos.remove('usuario_id');
+    datos['fecha_epoch'] =
+        DateTime.tryParse(c['fecha']?.toString() ?? '')?.millisecondsSinceEpoch ?? 0;
+    await encolarPendiente('CIERRE', uuid, jsonEncode(datos));
   }
 
   Future<String?> obtenerFechaAperturaActual() async {
     final db = await database;
     final res = await db.query(
       'caja_movimientos',
-      where: "tipo = 'APERTURA'",
+      where: "tipo = 'APERTURA' AND $_deEstaCaja",
+      whereArgs: [await obtenerDispositivoUuid()],
       orderBy: "id DESC",
       limit: 1,
     );
@@ -1014,6 +1145,22 @@ CREATE TABLE roles_permisos(
         return {'exito': false, 'mensaje': 'Debe seleccionar un cliente válido'};
       }
     }
+    // Pago mixto: se guarda lo que realmente queda en el cajón (el efectivo
+    // entregado de más fue cambio) y se conserva lo recibido como referencia.
+    if (metodo == 'MIXTO') {
+      final partes = partesMixto(total, metodoPagoDetalle);
+      Map<String, dynamic> original = {};
+      try {
+        final d = jsonDecode(metodoPagoDetalle ?? '');
+        if (d is Map) original = Map<String, dynamic>.from(d);
+      } catch (_) {}
+      metodoPagoDetalle = jsonEncode({
+        ...original,
+        'efectivo': partes['efectivo'],
+        'digital': partes['digital'],
+        if (original['efectivo'] != null) 'efectivo_recibido': original['efectivo'],
+      });
+    }
     try {
       int ventaId = await db.transaction((txn) async {
         if (metodo == 'CREDITO' && clienteId > 0) {
@@ -1058,14 +1205,33 @@ CREATE TABLE roles_permisos(
           'uuid': ventaUuid,
           'dispositivo_uuid': disp,
           'metodo_pago_detalle': metodoPagoDetalle,
+          'efectivo_cobrado': efectivoDeVenta({
+            'total': totalCalculado,
+            'metodo_pago': metodo,
+            'metodo_pago_detalle': metodoPagoDetalle,
+          }),
         });
         for (var i in items) {
-          bool esCombo = (i['es_combo'] as num?)?.toInt() == 1;
+          // Se consulta la base: el carrito del POS no trae la marca de combo.
+          final prodInfo = await txn.query('productos',
+              columns: ['es_combo'], where: 'id = ?', whereArgs: [i['id']], limit: 1);
+          bool esCombo = (i['es_combo'] as num?)?.toInt() == 1 ||
+              (prodInfo.isNotEmpty && (prodInfo.first['es_combo'] as num?)?.toInt() == 1);
           double factorPack = (i['contenido_pack'] as num?)?.toDouble() ?? 1.0;
           double cantidadReal = (i['cantidad'] as num).toDouble() * factorPack;
+          double costoUnitario = (i['costo_unitario'] as num?)?.toDouble() ?? 0;
 
           if (esCombo) {
             final componentes = await txn.query('combo_detalles', where: 'combo_id = ?', whereArgs: [i['id']]);
+            // Costo real del combo: la suma del costo de sus componentes.
+            double costoCombo = 0;
+            for (var comp in componentes) {
+              final pc = await txn.query('productos',
+                  columns: ['precio_costo'], where: 'id = ?', whereArgs: [comp['producto_id']], limit: 1);
+              costoCombo += (comp['cantidad'] as num).toDouble() *
+                  (pc.isEmpty ? 0 : ((pc.first['precio_costo'] as num?)?.toDouble() ?? 0));
+            }
+            if (costoCombo > 0) costoUnitario = costoCombo;
             for (var comp in componentes) {
               double cantComp = (comp['cantidad'] as num).toDouble() * (i['cantidad'] as num).toDouble();
               int compResStock;
@@ -1111,7 +1277,7 @@ CREATE TABLE roles_permisos(
             'cantidad': i['cantidad'],
             'cantidad_descontada': cantidadReal,
             'precio_unitario': i['precio'],
-            'costo_unitario': i['costo_unitario'] ?? 0,
+            'costo_unitario': costoUnitario,
             'subtotal': i['subtotal'],
           });
         }
@@ -1157,12 +1323,17 @@ CREATE TABLE roles_permisos(
         'anulada': 0,
         'dispositivo_uuid': disp,
         'metodo_pago_detalle': metodoPagoDetalle,
+        'efectivo_cobrado': vRow['efectivo_cobrado'],
         'detalle': detallePayload,
       }));
       for (var i in items) {
         double factorPack = (i['contenido_pack'] as num?)?.toDouble() ?? 1.0;
         double cantidadReal = (i['cantidad'] as num).toDouble() * factorPack;
-        await encolarStockOp((i['id'] as num).toInt(), -cantidadReal);
+        await _encolarStockDeItem(
+          (i['id'] as num).toInt(),
+          -cantidadReal,
+          cantidadCombo: (i['cantidad'] as num).toDouble(),
+        );
       }
       if (metodo == 'CREDITO' && clienteId > 0) {
         await _encolarCartera(
@@ -1208,6 +1379,72 @@ CREATE TABLE roles_permisos(
     }
   }
 
+  static double _redondear(double v) => (v * 100).roundToDouble() / 100;
+
+  /// $12.500 para mensajes al usuario.
+  static String _pesos(double v) {
+    final entero = v.round().abs().toString();
+    final b = StringBuffer();
+    for (var i = 0; i < entero.length; i++) {
+      if (i > 0 && (entero.length - i) % 3 == 0) b.write('.');
+      b.write(entero[i]);
+    }
+    return '${v < 0 ? '-' : ''}\$$b';
+  }
+
+  /// Valida que esta caja pueda entregar [efectivo] (turno abierto y fondos).
+  /// Devuelve el mensaje de error o null si se puede.
+  Future<String?> _validarSalidaEfectivo(double efectivo, String accion) async {
+    if (efectivo <= 0) return null;
+    final db = await database;
+    final disp = await obtenerDispositivoUuid();
+    final turno = await _turnoAbierto(db, disp);
+    if (turno == null) {
+      return 'Abra la caja para $accion: se deben entregar ${_pesos(efectivo)} en efectivo';
+    }
+    final disponible =
+        (await _calcularTurno(db, turno['fecha'] as String, disp))['total_en_caja']!;
+    if (efectivo > disponible + 0.005) {
+      return 'Fondos insuficientes en caja para $accion: se necesitan ${_pesos(efectivo)} y hay ${_pesos(disponible)}';
+    }
+    return null;
+  }
+
+  /// Sube el estado actual completo de una venta (total, pago y detalle).
+  /// Las demás cajas lo aplican tal cual, así una devolución hecha en una
+  /// caja queda igual en todas.
+  Future<void> _encolarVentaActualizada(int ventaId, int epoch) async {
+    final db = await database;
+    final v = await db.query('ventas', where: 'id = ?', whereArgs: [ventaId], limit: 1);
+    if (v.isEmpty) return;
+    final venta = v.first;
+    final uuid = (venta['uuid'] ?? '').toString();
+    if (uuid.isEmpty) return;
+    final detalle = await db.query('detalle_ventas', where: 'venta_id = ?', whereArgs: [ventaId]);
+    await encolarPendiente('VENTA_ACTUALIZA', uuid, jsonEncode({
+      'uuid': uuid,
+      'total': venta['total'],
+      'metodo_pago_detalle': venta['metodo_pago_detalle'],
+      'anulada': venta['anulada'] ?? 0,
+      'actualizado_epoch': epoch,
+      'detalle': await _detalleVentaPayload(db, detalle),
+    }));
+    // Que el eco de este mismo cambio desde la nube no se vuelva a aplicar.
+    await guardarAplicado('VENTA', uuid, epoch);
+  }
+
+  /// Devuelve [cantidadADevolver] (en la unidad en que se vendió la línea:
+  /// kilos, unidades o paquetes) de un artículo de una venta.
+  ///
+  /// El dinero se calcula aquí, en proporción al subtotal real de la línea
+  /// (la devolución total devuelve exactamente lo cobrado). Según el pago:
+  /// - Efectivo: sale del cajón del turno abierto de esta caja, sea la venta
+  ///   de este turno, de uno anterior o de otra caja. Se valida que alcance.
+  /// - Mixto: se devuelve primero el efectivo cobrado y luego lo digital.
+  /// - Crédito: se descuenta de la deuda del cliente.
+  /// - Digital (Nequi, tarjeta...): se devuelve por el mismo medio.
+  /// [cant] y [dinero] se conservan por compatibilidad; el cálculo usa la
+  /// línea guardada.
   Future<Map<String, dynamic>> devolverArticulo(
     int detId,
     int prodId,
@@ -1216,9 +1453,11 @@ CREATE TABLE roles_permisos(
     double dinero, {
     double? cantidadADevolver,
     required int usuarioId,
+    String motivo = '',
   }) async {
     final db = await database;
-    final vi = await db.query('ventas', where: 'id = ?', whereArgs: [ventId]);
+    final disp = await obtenerDispositivoUuid();
+    final vi = await db.query('ventas', where: 'id = ?', whereArgs: [ventId], limit: 1);
     if (vi.isEmpty) {
       return {'exito': false, 'mensaje': 'Venta no encontrada'};
     }
@@ -1226,124 +1465,242 @@ CREATE TABLE roles_permisos(
     if ((venta['anulada'] ?? 0) == 1) {
       return {'exito': false, 'mensaje': 'La venta está anulada'};
     }
-    double cantDev = cantidadADevolver ?? cant;
-    if (cantDev <= 0 || dinero < 0) {
+    final det = await db.query(
+      'detalle_ventas',
+      where: 'id = ? AND venta_id = ?',
+      whereArgs: [detId, ventId],
+      limit: 1,
+    );
+    if (det.isEmpty) {
+      return {'exito': false, 'mensaje': 'El artículo ya no está en la venta'};
+    }
+    final linea = det.first;
+    final productoId = (linea['producto_id'] as num?)?.toInt() ?? prodId;
+    final cantLinea = (linea['cantidad'] as num?)?.toDouble() ?? 0;
+    final descLinea =
+        (linea['cantidad_descontada'] as num?)?.toDouble() ?? cantLinea;
+    final subLinea = (linea['subtotal'] as num?)?.toDouble() ?? 0;
+    final cantDev = cantidadADevolver ?? cantLinea;
+    if (cantDev.isNaN || cantDev <= 0 || cantDev > cantLinea + 0.0001) {
       return {'exito': false, 'mensaje': 'Cantidad o monto inválido'};
     }
-    String metodo = venta['metodo_pago'] as String;
-    int cid = (venta['cliente_id'] as num?)?.toInt() ?? 0;
+    final esTotal = cantDev >= cantLinea - 0.0001;
+    final proporcion = cantLinea > 0 ? (cantDev / cantLinea).clamp(0.0, 1.0) : 1.0;
+    final totalVenta = (venta['total'] as num?)?.toDouble() ?? 0;
+    final monto = (esTotal ? subLinea : _redondear(subLinea * proporcion))
+        .clamp(0.0, totalVenta)
+        .toDouble();
+    // Unidades de inventario (un paquete de 6 devuelve 6 unidades).
+    final baseDev = esTotal ? descLinea : descLinea * proporcion;
+
+    final metodo = (venta['metodo_pago'] ?? '').toString();
+    final cid = (venta['cliente_id'] as num?)?.toInt() ?? 0;
+    String? detallePago = venta['metodo_pago_detalle']?.toString();
+    double efectivoDev = 0;
+    if (metodo == 'EFECTIVO') {
+      efectivoDev = monto;
+    } else if (metodo == 'MIXTO') {
+      final partes = partesMixto(totalVenta, detallePago);
+      efectivoDev = min(monto, partes['efectivo']!);
+      final digitalDev = monto - efectivoDev;
+      Map<String, dynamic> original = {};
+      try {
+        final d = jsonDecode(detallePago ?? '');
+        if (d is Map) original = Map<String, dynamic>.from(d);
+      } catch (_) {}
+      detallePago = jsonEncode({
+        ...original,
+        'efectivo': _redondear(partes['efectivo']! - efectivoDev),
+        'digital': _redondear(max(0.0, partes['digital']! - digitalDev)),
+      });
+    }
+
+    final error = await _validarSalidaEfectivo(efectivoDev, 'hacer la devolución');
+    if (error != null) return {'exito': false, 'mensaje': error};
+
+    final nombre = (linea['nombre_producto'] ?? 'Producto').toString();
+    final filaCaja = efectivoDev > 0
+        ? _filaMovCaja(
+            tipo: 'DEVOLUCION',
+            monto: efectivoDev,
+            descripcion: 'Devolución Venta #$ventId: $nombre',
+            usuarioId: usuarioId,
+            disp: disp,
+            ventaId: ventId,
+            restaCaja: true,
+          )
+        : null;
+    final epoch = DateTime.now().millisecondsSinceEpoch;
+    final devUuid = generateUuidV4();
+    final filaDev = {
+      'fecha': DateTime.now().toIso8601String(),
+      'venta_id': ventId,
+      'producto_id': productoId,
+      'nombre_producto': nombre,
+      'cantidad': cantDev,
+      'monto': monto,
+      'efectivo': efectivoDev,
+      'metodo_pago': metodo,
+      'motivo': motivo,
+      'usuario_id': usuarioId,
+      'dispositivo_uuid': disp,
+      'uuid': devUuid,
+    };
+    bool esCombo = false;
     try {
       await db.transaction((txn) async {
-        final det = await txn.query(
-          'detalle_ventas',
-          where: 'id = ?',
-          whereArgs: [detId],
-          limit: 1,
-        );
-        if (det.isEmpty) throw Exception('DETALLE_NO_EXISTE');
-        final detalle = det.first;
-        double cantActual = (detalle['cantidad'] as num).toDouble();
-        double cantDescontada =
-            (detalle['cantidad_descontada'] as num?)?.toDouble() ??
-            cantActual;
-
-        final prod = await txn.query('productos', columns: ['es_combo'], where: 'id = ?', whereArgs: [prodId]);
-        bool esCombo = prod.isNotEmpty && (prod.first['es_combo'] as num?)?.toInt() == 1;
-
-        if (esCombo) {
-             final componentes = await txn.query('combo_detalles', where: 'combo_id = ?', whereArgs: [prodId]);
-             for (var comp in componentes) {
-                 double cantComp = (comp['cantidad'] as num).toDouble() * cantDev;
-                 await txn.rawUpdate(
-                   'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
-                   [cantComp, comp['producto_id']],
-                 );
-             }
-        } else {
-            await txn.rawUpdate(
-              'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
-              [cantDev, prodId],
-            );
+        // La línea no cambió mientras se confirmaba (doble toque, otra caja).
+        final actual = await txn.query('detalle_ventas', where: 'id = ?', whereArgs: [detId], limit: 1);
+        if (actual.isEmpty ||
+            (((actual.first['cantidad'] as num?)?.toDouble() ?? 0) - cantLinea).abs() > 0.0001) {
+          throw Exception('LINEA_CAMBIO');
         }
 
-        if (cantDev >= cantDescontada) {
-          await txn.delete('detalle_ventas', where: 'id = ?', whereArgs: [detId]);
+        final prod = await txn.query('productos', columns: ['es_combo'], where: 'id = ?', whereArgs: [productoId]);
+        esCombo = prod.isNotEmpty && (prod.first['es_combo'] as num?)?.toInt() == 1;
+        if (esCombo) {
+          final componentes = await txn.query('combo_detalles', where: 'combo_id = ?', whereArgs: [productoId]);
+          for (var comp in componentes) {
+            final cantComp = (comp['cantidad'] as num).toDouble() * cantDev;
+            await txn.rawUpdate(
+              'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+              [cantComp, comp['producto_id']],
+            );
+          }
+        } else {
           await txn.rawUpdate(
-            'UPDATE ventas SET total = total - ? WHERE id = ? AND total >= ?',
-            [dinero, ventId, dinero],
+            'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+            [baseDev, productoId],
           );
+        }
+
+        if (esTotal) {
+          await txn.delete('detalle_ventas', where: 'id = ?', whereArgs: [detId]);
         } else {
           await txn.update(
             'detalle_ventas',
             {
-              'cantidad': cantActual - cantDev,
-              'cantidad_descontada': cantDescontada - cantDev,
-              'subtotal':
-                  ((detalle['subtotal'] as num).toDouble() - dinero)
-                      .clamp(0, double.infinity),
+              'cantidad': cantLinea - cantDev,
+              'cantidad_descontada': max(0.0, descLinea - baseDev),
+              'subtotal': max(0.0, subLinea - monto),
             },
             where: 'id = ?',
             whereArgs: [detId],
           );
-          await txn.rawUpdate(
-            'UPDATE ventas SET total = total - ? WHERE id = ? AND total >= ?',
-            [dinero, ventId, dinero],
-          );
-          if (venta['total'] as num < dinero) {
-            throw Exception('MONTO_EXCEDE_TOTAL');
-          }
         }
+        final upd = await txn.rawUpdate(
+          'UPDATE ventas SET total = MAX(total - ?, 0), metodo_pago_detalle = ?, actualizado_epoch = ? '
+          'WHERE id = ? AND anulada = 0 AND total >= ? - 0.005',
+          [monto, detallePago, epoch, ventId, monto],
+        );
+        if (upd == 0) throw Exception('MONTO_EXCEDE_TOTAL');
+
         if (metodo == 'CREDITO' && cid > 0) {
           await txn.rawUpdate(
             'UPDATE clientes SET deuda_actual = deuda_actual - ? WHERE id = ?',
-            [dinero, cid],
+            [monto, cid],
           );
           await txn.insert('movimientos_cartera', {
             'cliente_id': cid,
             'tipo': 'DEVOLUCION',
             'venta_id': ventId,
             'fecha': DateTime.now().toIso8601String(),
-            'monto': -dinero,
+            'monto': -monto,
             'usuario_id': usuarioId,
           });
-        } else if (metodo == 'EFECTIVO')
-          await txn.insert('caja_movimientos', {
-            'fecha': DateTime.now().toIso8601String(),
-            'tipo': 'DEVOLUCION',
-            'monto': dinero,
-            'descripcion': 'Devolución Venta #$ventId',
-            'usuario_id': usuarioId,
-          });
+        }
+        if (filaCaja != null) await txn.insert('caja_movimientos', filaCaja);
+        await txn.insert('devoluciones', filaDev);
       });
-      final nowEpoch = DateTime.now().millisecondsSinceEpoch;
-      await encolarStockOp(prodId, cantDev);
-      if (metodo == 'CREDITO' && cid > 0) {
-        await _encolarCartera(
-          clienteId: cid,
-          tipo: 'DEVOLUCION',
-          monto: -dinero,
-          deudaCambio: -dinero,
-          ventaId: ventId,
-          usuarioId: usuarioId,
-          fechaEpoch: nowEpoch,
-        );
-      }
     } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('LINEA_CAMBIO')) {
+        return {'exito': false, 'mensaje': 'El artículo cambió mientras se devolvía. Abra la venta de nuevo.'};
+      }
+      if (msg.contains('MONTO_EXCEDE_TOTAL')) {
+        return {'exito': false, 'mensaje': 'El monto a devolver supera el total de la venta'};
+      }
       return {'exito': false, 'mensaje': 'Error al devolver: $e'};
     }
-    return {'exito': true, 'mensaje': 'Devolución registrada'};
+
+    // Sincronización (después de la transacción).
+    await _encolarStockDeItem(productoId, esCombo ? 1 : baseDev,
+        cantidadCombo: cantDev, esCombo: esCombo);
+    if (metodo == 'CREDITO' && cid > 0) {
+      await _encolarCartera(
+        clienteId: cid,
+        tipo: 'DEVOLUCION',
+        monto: -monto,
+        deudaCambio: -monto,
+        ventaId: ventId,
+        usuarioId: usuarioId,
+        fechaEpoch: epoch,
+      );
+    }
+    if (filaCaja != null) await _encolarMovCaja(filaCaja);
+    await _encolarVentaActualizada(ventId, epoch);
+    await encolarPendiente('DEVOLUCION', devUuid, jsonEncode({
+      ...filaDev,
+      'venta_uuid': venta['uuid'],
+      'producto_uuid': await _uuidDeTabla(db, 'productos', productoId),
+      'usuario_uid': await authUidPorUsuario(usuarioId),
+      'fecha_epoch': epoch,
+    }..remove('venta_id')..remove('producto_id')..remove('usuario_id')));
+
+    final mensaje = efectivoDev > 0
+        ? 'Devolución registrada. Entregue ${_pesos(efectivoDev)} en efectivo'
+        : (metodo == 'CREDITO'
+            ? 'Devolución registrada. Se descontaron ${_pesos(monto)} de la deuda del cliente'
+            : 'Devolución registrada por ${_pesos(monto)}');
+    return {
+      'exito': true,
+      'mensaje': mensaje,
+      'monto': monto,
+      'efectivo': efectivoDev,
+    };
   }
 
+  /// Anula una venta completa: devuelve el inventario, ajusta la deuda si
+  /// fue fiada y, si se cobró en efectivo, entrega ese efectivo desde el
+  /// cajón del turno abierto de esta caja (validando que alcance).
   Future<Map<String, dynamic>> anularVenta(
     int vId, {
     required int usuarioId,
+    String motivo = '',
   }) async {
     final db = await database;
+    final disp = await obtenerDispositivoUuid();
+    final vi = await db.query('ventas', where: 'id = ?', whereArgs: [vId], limit: 1);
+    if (vi.isEmpty) {
+      return {'exito': false, 'mensaje': 'Venta no encontrada'};
+    }
+    final venta = vi.first;
+    if ((venta['anulada'] ?? 0) == 1) {
+      return {'exito': false, 'mensaje': 'La venta ya está anulada'};
+    }
+    final efectivo = efectivoDeVenta(venta);
+    final error = await _validarSalidaEfectivo(efectivo, 'anular la venta');
+    if (error != null) return {'exito': false, 'mensaje': error};
+
+    final filaCaja = efectivo > 0
+        ? _filaMovCaja(
+            tipo: 'ANULACION',
+            monto: efectivo,
+            descripcion: 'ANULACIÓN Venta #$vId',
+            usuarioId: usuarioId,
+            disp: disp,
+            ventaId: vId,
+            restaCaja: true,
+          )
+        : null;
+    final ahora = DateTime.now();
+    final ahoraEpoch = ahora.millisecondsSinceEpoch;
     try {
       await db.transaction((txn) async {
         final res = await txn.rawUpdate(
-          'UPDATE ventas SET anulada = 1 WHERE id = ? AND anulada = 0',
-          [vId],
+          'UPDATE ventas SET anulada = 1, anulada_en = ?, anulada_por = ?, motivo_anulacion = ?, actualizado_epoch = ? '
+          'WHERE id = ? AND anulada = 0',
+          [ahora.toIso8601String(), usuarioId, motivo, ahoraEpoch, vId],
         );
         if (res == 0) {
           throw Exception('VENTA_YA_ANULADA');
@@ -1357,7 +1714,7 @@ CREATE TABLE roles_permisos(
           double cantReal =
               (i['cantidad_descontada'] as num?)?.toDouble() ??
               (i['cantidad'] as num).toDouble();
-          
+
           final prod = await txn.query('productos', columns: ['es_combo'], where: 'id = ?', whereArgs: [i['producto_id']]);
           bool esCombo = prod.isNotEmpty && (prod.first['es_combo'] as num?)?.toInt() == 1;
 
@@ -1377,11 +1734,9 @@ CREATE TABLE roles_permisos(
              );
           }
         }
-        final v = await txn.query('ventas', where: 'id = ?', whereArgs: [vId]);
-        if (v.isEmpty) throw Exception('VENTA_NO_EXISTE');
-        double tot = (v.first['total'] as num).toDouble();
-        String metodo = v.first['metodo_pago'] as String;
-        int cid = (v.first['cliente_id'] as num?)?.toInt() ?? 0;
+        double tot = (venta['total'] as num).toDouble();
+        String metodo = venta['metodo_pago'] as String;
+        int cid = (venta['cliente_id'] as num?)?.toInt() ?? 0;
         if (metodo == 'CREDITO' && cid > 0) {
           await txn.rawUpdate(
             'UPDATE clientes SET deuda_actual = deuda_actual - ? WHERE id = ?',
@@ -1396,66 +1751,64 @@ CREATE TABLE roles_permisos(
             'usuario_id': usuarioId,
           });
         }
-        if (metodo == 'EFECTIVO') {
-          await txn.insert('caja_movimientos', {
-            'fecha': DateTime.now().toIso8601String(),
-            'tipo': 'ANULACION',
-            'monto': tot,
-            'descripcion': 'ANULACIÓN Venta #$vId',
-            'usuario_id': usuarioId,
-          });
-        }
+        if (filaCaja != null) await txn.insert('caja_movimientos', filaCaja);
       });
-      final ahoraEpoch = DateTime.now().millisecondsSinceEpoch;
-      final vRow = (await db.query(
-        'ventas',
-        where: 'id = ?',
-        whereArgs: [vId],
-        limit: 1,
-      )).first;
-      final ventaUuid = vRow['uuid']?.toString() ?? '';
-      final tot = (vRow['total'] as num).toDouble();
-      final metodo = (vRow['metodo_pago'] as String?) ?? '';
-      final cid = (vRow['cliente_id'] as num?)?.toInt() ?? 0;
-      if (ventaUuid.isNotEmpty) {
-        await encolarPendiente('VENTA_ANULA', ventaUuid, jsonEncode({
-          'uuid': ventaUuid,
-          'actualizado_epoch': ahoraEpoch,
-        }));
-      }
-      final items2 = await db.query(
-        'detalle_ventas',
-        where: 'venta_id = ?',
-        whereArgs: [vId],
-      );
-      for (var i in items2) {
-        double cantReal =
-            (i['cantidad_descontada'] as num?)?.toDouble() ??
-            (i['cantidad'] as num).toDouble();
-        await encolarStockOp((i['producto_id'] as num).toInt(), cantReal);
-      }
-      if (metodo == 'CREDITO' && cid > 0) {
-        await _encolarCartera(
-          clienteId: cid,
-          tipo: 'ANULACION',
-          monto: -tot,
-          deudaCambio: -tot,
-          ventaId: vId,
-          usuarioId: usuarioId,
-          fechaEpoch: ahoraEpoch,
-        );
-      }
-      return {'exito': true, 'mensaje': 'Venta anulada correctamente'};
     } catch (e) {
       final msg = e.toString();
       if (msg.contains('VENTA_YA_ANULADA')) {
         return {'exito': false, 'mensaje': 'La venta ya está anulada'};
       }
-      if (msg.contains('VENTA_NO_EXISTE')) {
-        return {'exito': false, 'mensaje': 'Venta no encontrada'};
-      }
       return {'exito': false, 'mensaje': 'Error al anular la venta: $e'};
     }
+
+    final ventaUuid = venta['uuid']?.toString() ?? '';
+    final tot = (venta['total'] as num).toDouble();
+    final metodo = (venta['metodo_pago'] as String?) ?? '';
+    final cid = (venta['cliente_id'] as num?)?.toInt() ?? 0;
+    if (ventaUuid.isNotEmpty) {
+      await encolarPendiente('VENTA_ANULA', ventaUuid, jsonEncode({
+        'uuid': ventaUuid,
+        'actualizado_epoch': ahoraEpoch,
+        'anulada_en': ahora.toIso8601String(),
+        'anulada_por_uid': await authUidPorUsuario(usuarioId),
+        'motivo_anulacion': motivo,
+      }));
+      await guardarAplicado('VENTA', ventaUuid, ahoraEpoch);
+    }
+    final items2 = await db.query(
+      'detalle_ventas',
+      where: 'venta_id = ?',
+      whereArgs: [vId],
+    );
+    for (var i in items2) {
+      double cantReal =
+          (i['cantidad_descontada'] as num?)?.toDouble() ??
+          (i['cantidad'] as num).toDouble();
+      await _encolarStockDeItem(
+        (i['producto_id'] as num).toInt(),
+        cantReal,
+        cantidadCombo: (i['cantidad'] as num).toDouble(),
+      );
+    }
+    if (metodo == 'CREDITO' && cid > 0) {
+      await _encolarCartera(
+        clienteId: cid,
+        tipo: 'ANULACION',
+        monto: -tot,
+        deudaCambio: -tot,
+        ventaId: vId,
+        usuarioId: usuarioId,
+        fechaEpoch: ahoraEpoch,
+      );
+    }
+    if (filaCaja != null) await _encolarMovCaja(filaCaja);
+    return {
+      'exito': true,
+      'mensaje': efectivo > 0
+          ? 'Venta anulada. Entregue ${_pesos(efectivo)} en efectivo'
+          : 'Venta anulada correctamente',
+      'efectivo': efectivo,
+    };
   }
 
   // --- COMPRAS ---
@@ -1467,6 +1820,7 @@ CREATE TABLE roles_permisos(
     required int usuarioId,
   }) async {
     final db = await database;
+    Map<String, dynamic>? filaCaja;
     if (pagoConCaja) {
       final cajaAbierta = await verificarCajaAbiertaHoy();
       if (!cajaAbierta) {
@@ -1476,6 +1830,23 @@ CREATE TABLE roles_permisos(
               'Compra pagada con caja: debe abrir la caja antes de registrar',
         };
       }
+      final disponible = (await obtenerResumenCaja())['total_en_caja'] ?? 0;
+      if (total > disponible + 0.005) {
+        return {
+          'exito': false,
+          'mensaje':
+              'Fondos insuficientes en caja para pagar la compra: cuesta ${_pesos(total)} y hay ${_pesos(disponible)}. '
+              'Ingrese dinero a la caja o regístrela como pagada por fuera de la caja.',
+        };
+      }
+      filaCaja = _filaMovCaja(
+        tipo: 'COMPRA',
+        monto: total,
+        descripcion: 'Compra Mercancía ($proveedor)',
+        usuarioId: usuarioId,
+        disp: await obtenerDispositivoUuid(),
+        categoria: 'COMPRA',
+      );
     }
     // Fusionar productos repetidos en la misma factura y validar datos
     final Map<int, Map<String, dynamic>> agrupados = {};
@@ -1554,16 +1925,11 @@ CREATE TABLE roles_permisos(
             'subtotal': subtotalLinea,
           });
         }
-        if (pagoConCaja) {
-          await txn.insert('caja_movimientos', {
-            'fecha': DateTime.now().toIso8601String(),
-            'tipo': 'COMPRA',
-            'monto': total,
-            'descripcion': 'Compra Mercancía ($proveedor)',
-            'usuario_id': usuarioId,
-          });
+        if (filaCaja != null) {
+          await txn.insert('caja_movimientos', filaCaja);
         }
       });
+      if (filaCaja != null) await _encolarMovCaja(filaCaja);
       final fechaEpoch = DateTime.now().millisecondsSinceEpoch;
       final usuarioUid = await authUidPorUsuario(usuarioId);
       final detalleCompras = await db.query(
@@ -1852,6 +2218,8 @@ CREATE TABLE roles_permisos(
       [dispositivoUuid],
     );
 
+    await _sembrarFinanzas(db, dispositivoUuid);
+
     final cfg = await db.query(
       'configuracion',
       where: "clave = 'sync_semilla'",
@@ -1862,6 +2230,41 @@ CREATE TABLE roles_permisos(
     await db.insert(
       'configuracion',
       {'clave': 'sync_semilla', 'valor': dispositivoUuid},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Una sola vez por caja: marca sus movimientos y cierres anteriores con
+  /// el dispositivo y los sube, para que los reportes del dueño muestren el
+  /// historial de todas las cajas.
+  Future<void> _sembrarFinanzas(Database db, String dispositivoUuid) async {
+    final cfg = await db.query('configuracion',
+        where: "clave = 'sync_semilla_finanzas'", limit: 1);
+    if (cfg.isNotEmpty && cfg.first['valor'] == dispositivoUuid) return;
+
+    await db.rawUpdate(
+      "UPDATE caja_movimientos SET dispositivo_uuid = ? WHERE dispositivo_uuid IS NULL OR dispositivo_uuid = ''",
+      [dispositivoUuid],
+    );
+    await db.rawUpdate(
+      "UPDATE cierres_caja SET dispositivo_uuid = ? WHERE dispositivo_uuid IS NULL OR dispositivo_uuid = ''",
+      [dispositivoUuid],
+    );
+    final movs = await db.query('caja_movimientos',
+        where: 'dispositivo_uuid = ?', whereArgs: [dispositivoUuid], orderBy: 'id ASC');
+    for (final m in movs) {
+      if ((m['uuid'] ?? '').toString().isEmpty) continue;
+      await _encolarMovCaja(Map<String, dynamic>.from(m)
+        ..['categoria'] = CategoriasCaja.de(m));
+    }
+    final cierres = await db.query('cierres_caja',
+        where: 'dispositivo_uuid = ?', whereArgs: [dispositivoUuid], orderBy: 'id ASC');
+    for (final c in cierres) {
+      await _encolarCierre(c);
+    }
+    await db.insert(
+      'configuracion',
+      {'clave': 'sync_semilla_finanzas', 'valor': dispositivoUuid},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -1895,6 +2298,7 @@ CREATE TABLE roles_permisos(
           whereArgs: [p['id']],
         );
       }
+      final esCombo = (p['es_combo'] as num?)?.toInt() == 1 ? 1 : 0;
       await encolarPendiente('PRODUCTO', pu, jsonEncode({
         'uuid': pu,
         'nombre': p['nombre'],
@@ -1904,6 +2308,10 @@ CREATE TABLE roles_permisos(
         'precio_costo': p['precio_costo'],
         'precio_venta': p['precio_venta'],
         'es_pesable': p['es_pesable'] ?? 0,
+        'es_combo': esCombo,
+        if (esCombo == 1 && p['id'] != null)
+          'combo_componentes':
+              await _componentesComboPayload(db, (p['id'] as num).toInt()),
         'esta_activo': p['esta_activo'] ?? 1,
         'imagen_path': p['imagen_path'],
         'stock_recon':
@@ -1969,6 +2377,8 @@ CREATE TABLE roles_permisos(
         'anulada': v['anulada'] ?? 0,
         'dispositivo_uuid':
             (v['dispositivo_uuid'] as String? ?? dispositivoUuid),
+        'metodo_pago_detalle': v['metodo_pago_detalle'],
+        'efectivo_cobrado': v['efectivo_cobrado'],
         'detalle': detallePayload,
       }));
     }
@@ -2180,6 +2590,14 @@ CREATE TABLE roles_permisos(
     if (m <= 0) {
       return {'exito': false, 'mensaje': 'El monto del abono debe ser mayor a cero'};
     }
+    final filaCaja = _filaMovCaja(
+      tipo: 'INGRESO',
+      monto: m,
+      descripcion: 'Abono: $nom',
+      usuarioId: usuarioId,
+      disp: await obtenerDispositivoUuid(),
+      categoria: 'ABONO_CLIENTE',
+    );
     try {
       await db.transaction((txn) async {
         final res = await txn.rawUpdate(
@@ -2189,13 +2607,7 @@ CREATE TABLE roles_permisos(
         if (res == 0) {
           throw Exception('ABONO_EXCEDE_DEUDA');
         }
-        await txn.insert('caja_movimientos', {
-          'fecha': DateTime.now().toIso8601String(),
-          'tipo': 'INGRESO',
-          'monto': m,
-          'descripcion': 'Abono: $nom',
-          'usuario_id': usuarioId,
-        });
+        await txn.insert('caja_movimientos', filaCaja);
         await txn.insert('movimientos_cartera', {
           'cliente_id': id,
           'tipo': 'ABONO',
@@ -2205,6 +2617,7 @@ CREATE TABLE roles_permisos(
           'usuario_id': usuarioId,
         });
       });
+      await _encolarMovCaja(filaCaja);
       await _encolarCartera(
         clienteId: id,
         tipo: 'ABONO',
@@ -2839,6 +3252,81 @@ CREATE TABLE roles_permisos(
         "UPDATE configuracion SET valor = '0' WHERE clave = 'permitir_stock_negativo'",
       );
     }
+    if (oldVersion < 13) {
+      await _asegurarEsquemaFinanzas(db);
+      await _rellenarEfectivoCobrado(db);
+    }
+  }
+
+  // --- ESQUEMA FINANCIERO (v13) ---
+  /// Columnas y tablas del módulo financiero. Es idempotente: se puede correr
+  /// sobre una base nueva o sobre una que ya las tenga.
+  Future<void> _asegurarEsquemaFinanzas(Database db) async {
+    Future<void> columna(String tabla, String nombre, String tipo) async {
+      final cols = await db.rawQuery('PRAGMA table_info($tabla)');
+      if (!cols.any((c) => c['name'] == nombre)) {
+        await db.execute('ALTER TABLE $tabla ADD COLUMN $nombre $tipo');
+      }
+    }
+
+    // Movimientos de caja: categoría del gasto/ingreso, caja que lo hizo,
+    // venta asociada (devoluciones/anulaciones) y si el dinero sale del cajón.
+    await columna('caja_movimientos', 'categoria', 'TEXT');
+    await columna('caja_movimientos', 'dispositivo_uuid', 'TEXT');
+    await columna('caja_movimientos', 'venta_id', 'INTEGER');
+    await columna('caja_movimientos', 'resta_caja', 'INTEGER DEFAULT 0');
+    await columna('cierres_caja', 'dispositivo_uuid', 'TEXT');
+    // Ventas: efectivo que entró al cajón al cobrar (no cambia con
+    // devoluciones) y auditoría de la anulación.
+    await columna('ventas', 'efectivo_cobrado', 'REAL');
+    await columna('ventas', 'anulada_en', 'TEXT');
+    await columna('ventas', 'anulada_por', 'INTEGER');
+    await columna('ventas', 'motivo_anulacion', 'TEXT');
+    await columna('ventas', 'actualizado_epoch', 'INTEGER DEFAULT 0');
+    await columna('mermas', 'producto_uuid', 'TEXT');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS devoluciones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT,
+        venta_id INTEGER,
+        producto_id INTEGER,
+        nombre_producto TEXT,
+        cantidad REAL,
+        monto REAL,
+        efectivo REAL DEFAULT 0,
+        metodo_pago TEXT,
+        motivo TEXT,
+        usuario_id INTEGER,
+        dispositivo_uuid TEXT,
+        uuid TEXT
+      )
+    ''');
+
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_detalle_ventas_venta ON detalle_ventas(venta_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_caja_mov_fecha ON caja_movimientos(fecha)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_compras_fecha ON compras(fecha)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_mermas_fecha ON mermas(fecha)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_devoluciones_fecha ON devoluciones(fecha)');
+  }
+
+  /// Ventas anteriores a v13: el efectivo cobrado se toma de su estado actual.
+  /// Sus devoluciones/anulaciones viejas ya están descontadas en ese estado
+  /// (y no restan del cajón), así que el cuadre del turno abierto no cambia.
+  Future<void> _rellenarEfectivoCobrado(Database db) async {
+    final filas = await db.query(
+      'ventas',
+      columns: ['id', 'total', 'metodo_pago', 'metodo_pago_detalle', 'anulada'],
+      where: 'efectivo_cobrado IS NULL',
+    );
+    final batch = db.batch();
+    for (final v in filas) {
+      final ef = (v['anulada'] ?? 0) == 1 ? 0.0 : efectivoDeVenta(v);
+      batch.update('ventas', {'efectivo_cobrado': ef},
+          where: 'id = ?', whereArgs: [v['id']]);
+    }
+    await batch.commit(noResult: true);
   }
 
   // --- GESTIÓN DE PROMOCIONES Y DÍAS DE PLAZA ---
@@ -2967,6 +3455,7 @@ CREATE TABLE roles_permisos(
         'motivo': motivo,
         'usuario_id': usuarioId,
         'uuid': mermaUuid,
+        'producto_uuid': p['uuid'],
       };
 
       final mermaId = await txn.insert('mermas', datosMerma);
@@ -3187,12 +3676,14 @@ CREATE TABLE roles_permisos(
   // --- GESTIÓN DE COMBOS ---
   Future<int> crearCombo(Map<String, dynamic> datosCombo, List<Map<String, dynamic>> componentes) async {
     final db = await database;
+    final disp = await obtenerDispositivoUuid();
     int comboId = 0;
-    
+
     await db.transaction((txn) async {
       datosCombo['uuid'] = datosCombo['uuid'] ?? generateUuidV4();
+      datosCombo['dispositivo_uuid'] = datosCombo['dispositivo_uuid'] ?? disp;
       datosCombo['es_combo'] = 1;
-      
+
       comboId = await txn.insert('productos', datosCombo);
 
       for (var comp in componentes) {
@@ -3205,8 +3696,52 @@ CREATE TABLE roles_permisos(
       }
     });
 
-    // TODO: Encolar sincronización si es necesario
+    final actualizado = await db.query(
+      'productos',
+      where: 'id = ?',
+      whereArgs: [comboId],
+      limit: 1,
+    );
+    if (actualizado.isNotEmpty) {
+      await encolarProductoCambio(actualizado.first, stockRecon: true);
+    }
     return comboId;
+  }
+
+  /// Actualiza los componentes locales de un combo recibido de otra caja.
+  Future<void> sincronizarComponentesCombo(
+    int comboId,
+    List<dynamic> componentes,
+  ) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('combo_detalles', where: 'combo_id = ?', whereArgs: [comboId]);
+      for (final item in componentes) {
+        if (item is! Map) continue;
+        final prodUuid = (item['producto_uuid'] ?? '').toString();
+        if (prodUuid.isEmpty) continue;
+        final prod = await txn.query(
+          'productos',
+          columns: ['id'],
+          where: 'uuid = ?',
+          whereArgs: [prodUuid],
+          limit: 1,
+        );
+        if (prod.isEmpty) continue;
+        await txn.insert('combo_detalles', {
+          'combo_id': comboId,
+          'producto_id': prod.first['id'],
+          'cantidad': (item['cantidad'] as num?)?.toDouble() ?? 1.0,
+          'uuid': generateUuidV4(),
+        });
+      }
+    });
+  }
+
+  Future<void> eliminarCombo(int comboId) async {
+    final db = await database;
+    await db.delete('combo_detalles', where: 'combo_id = ?', whereArgs: [comboId]);
+    await desactivarProducto(comboId);
   }
 
   Future<List<Map<String, dynamic>>> obtenerDetallesCombo(int comboId) async {

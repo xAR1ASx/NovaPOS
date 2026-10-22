@@ -34,7 +34,7 @@ class _CombosAdminScreenState extends State<CombosAdminScreen> {
 
   Future<void> _cargarCombos() async {
     final db = await _db.database;
-    final data = await db.query('productos', where: 'es_combo = 1', orderBy: 'id DESC');
+    final data = await db.query('productos', where: 'es_combo = 1 AND esta_activo = 1', orderBy: 'id DESC');
     setState(() {
       _combos = data;
       _cargando = false;
@@ -86,9 +86,9 @@ class _CombosAdminScreenState extends State<CombosAdminScreen> {
       ),
     );
     if (confirmar == true) {
-      final db = await _db.database;
-      await db.delete('productos', where: 'id = ?', whereArgs: [id]);
-      await db.delete('combo_detalles', where: 'combo_id = ?', whereArgs: [id]);
+      // Se desactiva (no se borra) para conservar el historial de ventas
+      // y que las demás cajas también lo quiten.
+      await _db.eliminarCombo(id);
       _cargarCombos();
     }
   }

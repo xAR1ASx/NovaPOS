@@ -7,6 +7,7 @@ import '../services/session_service.dart';
 import '../services/auto_backup_service.dart';
 import '../services/printer_service.dart';
 import '../utils/numero.dart';
+import '../utils/categorias_caja.dart';
 import '../services/locale_service.dart';
 import 'cierre_history_screen.dart';
 import '../services/theme_service.dart';
@@ -110,6 +111,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
   double _gastos = 0;
   double _ingresosExtra = 0;
   double _totalEnCajaSistema = 0;
+  double _devolucionesOtrosTurnos = 0;
 
   List<Map<String, dynamic>> _movimientos = [];
   bool _cajaAbierta = false;
@@ -141,6 +143,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
       _gastos = resumen['gastos'] ?? 0;
       _ingresosExtra = resumen['ingresos_extra'] ?? 0;
       _totalEnCajaSistema = resumen['total_en_caja'] ?? 0;
+      _devolucionesOtrosTurnos = resumen['devoluciones_otros_turnos'] ?? 0;
       _movimientos = lista;
       _cajaAbierta = estaAbierta;
       _cargando = false; // Desactivamos carga
@@ -179,10 +182,13 @@ class _CashControlScreenState extends State<CashControlScreen> {
       colorFondoAvatar = Colors.orange.shade100;
       hintTexto = _t("Ej: Pago Domicilio");
     }
+    // Tipo de gasto/ingreso: ordena el estado de resultados.
+    String? categoria = esIngreso ? 'BASE_EXTRA' : null;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
@@ -253,6 +259,40 @@ class _CashControlScreenState extends State<CashControlScreen> {
                 ),
               ),
             ),
+            if (!esApertura) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  esIngreso ? _t("¿De dónde viene el dinero?") : _t("¿En qué se gastó?"),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: context.textSecondary),
+                ),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: 420,
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: (esIngreso ? CategoriasCaja.ingresosElegibles : CategoriasCaja.gastosElegibles)
+                      .map((c) => ChoiceChip(
+                            label: Text(
+                              _t(CategoriasCaja.nombre(tipo, c)),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: categoria == c ? Colors.white : context.textPrimary,
+                              ),
+                            ),
+                            selected: categoria == c,
+                            selectedColor: colorPrimario,
+                            backgroundColor: context.chipBg,
+                            showCheckmark: false,
+                            onSelected: (_) => setStateDialog(() => categoria = c),
+                          ))
+                      .toList(),
+                ),
+              ),
+            ],
             const SizedBox(height: 15),
             TextField(
               controller: descCtrl,
@@ -277,11 +317,21 @@ class _CashControlScreenState extends State<CashControlScreen> {
               double? m = parseNumero(montoCtrl.text);
 
               if (m != null && m > 0) {
+                if (!esApertura && !esIngreso && categoria == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_t("Elige en qué se gastó el dinero")),
+                      backgroundColor: Colors.orange.shade800,
+                    ),
+                  );
+                  return;
+                }
                 // Caso: Salida de dinero superior al saldo disponible
                 if (!esApertura && !esIngreso && m > _totalEnCajaSistema) {
                   Navigator.pop(ctx);
                   _mostrarDialogoInyectarYPagar(
                     gastoMonto: m,
+                    categoriaGasto: categoria,
                     gastoDescripcion: descCtrl.text.trim().isEmpty
                         ? _t("Pago de Pedido / Gasto")
                         : descCtrl.text.trim(),
@@ -296,6 +346,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
                     descripcion: descCtrl.text.trim().isEmpty
                         ? (esIngreso ? 'Ingreso de Efectivo' : (esApertura ? 'Base inicial' : 'Gasto de caja'))
                         : descCtrl.text.trim(),
+                    categoria: esApertura ? null : categoria,
                   );
                 } catch (e) {
                   if (mounted) {
@@ -333,6 +384,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -341,6 +393,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
   void _mostrarDialogoInyectarYPagar({
     required double gastoMonto,
     required String gastoDescripcion,
+    String? categoriaGasto,
   }) {
     final double faltanteMinimo = (gastoMonto - _totalEnCajaSistema).clamp(0, double.infinity);
     final TextEditingController ingresoCtrl = TextEditingController(
@@ -534,6 +587,8 @@ class _CashControlScreenState extends State<CashControlScreen> {
                                 ? "Inyección para pago de pedido"
                                 : motivoIngresoCtrl.text.trim(),
                             descripcionGasto: gastoDescripcion,
+                            categoriaIngreso: 'BASE_EXTRA',
+                            categoriaGasto: categoriaGasto,
                           );
                           if (ctx.mounted) Navigator.pop(ctx);
                           _cargarDatosCaja();
@@ -587,7 +642,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
             double diferencia = dineroReal - _totalEnCajaSistema;
 
             // Sub-función para registrar gasto olvidado
-            void registrarGastoOlvidado(String concepto) async {
+            void registrarGastoOlvidado(String concepto, String categoriaGasto) async {
               final montoCtrl = TextEditingController(
                 text: diferencia.abs().toInt().toString(),
               );
@@ -621,12 +676,26 @@ class _CashControlScreenState extends State<CashControlScreen> {
                     ElevatedButton(
                       onPressed: () async {
                         double? m = parseNumero(montoCtrl.text);
-                        if (m != null) {
-                          await _cashService.registrarMovimiento(
-                            tipo: 'GASTO',
-                            monto: m,
-                            descripcion: descCtrl.text,
-                          );
+                        if (m != null && m > 0) {
+                          try {
+                            await _cashService.registrarMovimiento(
+                              tipo: 'GASTO',
+                              monto: m,
+                              descripcion: descCtrl.text,
+                              categoria: categoriaGasto,
+                            );
+                          } catch (e) {
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                SnackBar(
+                                  content: Text('🚫 ${_t(e.toString())}'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          if (!ctx.mounted) return;
                           Navigator.pop(ctx);
                           final nuevo = await DBHelper().obtenerResumenCaja();
                           setState(() {
@@ -817,6 +886,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
                                 ),
                                 onPressed: () => registrarGastoOlvidado(
                                   "Pago Pedido Proveedor",
+                                  'PROVEEDOR',
                                 ),
                               ),
                             ),
@@ -833,7 +903,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
                                   foregroundColor: Colors.red,
                                 ),
                                 onPressed: () =>
-                                    registrarGastoOlvidado("Gasto Vario Local"),
+                                    registrarGastoOlvidado("Gasto Vario Local", 'OTRO'),
                               ),
                             ),
                           ],
@@ -853,6 +923,17 @@ class _CashControlScreenState extends State<CashControlScreen> {
                 ),
                 ElevatedButton(
                   onPressed: () async {
+                    // Sin conteo no se cierra: tomarlo como $0 registraría
+                    // todo el efectivo como faltante.
+                    if (parseNumero(realController.text) == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(_t("Escribe cuánto efectivo contaste antes de cerrar")),
+                          backgroundColor: Colors.orange.shade800,
+                        ),
+                      );
+                      return;
+                    }
                     final dbHelper = DBHelper();
                     try {
                       // Ajustes automáticos de sobrantes/faltantes
@@ -861,12 +942,14 @@ class _CashControlScreenState extends State<CashControlScreen> {
                           tipo: 'INGRESO',
                           monto: diferencia,
                           descripcion: "Ajuste Sobrante Automático",
+                          categoria: 'SOBRANTE',
                         );
                       } else if (diferencia < 0) {
                         await _cashService.registrarMovimiento(
                           tipo: 'GASTO',
                           monto: diferencia.abs(),
                           descripcion: "Pérdida / Descuadre Cierre",
+                          categoria: 'DESCUADRE',
                         );
                       }
 
@@ -1183,6 +1266,14 @@ class _CashControlScreenState extends State<CashControlScreen> {
                             ),
                           ],
                         ),
+                      if (_cajaAbierta && _devolucionesOtrosTurnos > 0) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '${_t("Gastos incluye devoluciones de otros turnos")}: '
+                          '${formater.format(_devolucionesOtrosTurnos)}',
+                          style: const TextStyle(color: Colors.orangeAccent, fontSize: 12),
+                        ),
+                      ],
                       if (_cajaAbierta) ...[
                         const SizedBox(height: 8),
                         Text(
@@ -1393,7 +1484,10 @@ class _CashControlScreenState extends State<CashControlScreen> {
                             ),
                           ),
                           subtitle: Text(
-                            mov['descripcion'] ?? "",
+                            (esGasto || mov['tipo'] == 'INGRESO')
+                                ? '${_t(CategoriasCaja.nombre(mov['tipo'].toString(), CategoriasCaja.de(mov)))}'
+                                    '${(mov['descripcion'] ?? '').toString().isEmpty ? '' : ' · ${mov['descripcion']}'}'
+                                : (mov['descripcion'] ?? ""),
                             style: TextStyle(
                               color: context.textSecondary,
                             ),

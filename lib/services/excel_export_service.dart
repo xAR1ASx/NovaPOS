@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:excel/excel.dart' hide Border;
 import '../database/db_helper.dart';
+import 'finanzas_service.dart';
 
 class ExcelExportService {
   ExcelExportService._();
@@ -365,6 +366,329 @@ class ExcelExportService {
   }
 
   // ==============================================================
+  // 5B. INFORME FINANCIERO MULTI-HOJA DEL PERÍODO
+  // ==============================================================
+  Future<Excel> construirInformePeriodoExcel({
+    required FinanzasService fin,
+    required Periodo periodo,
+    int? usuarioId,
+    String? nombreCajero,
+  }) async {
+    final res = await fin.resultados(periodo, usuarioId: usuarioId);
+    final gas = await fin.gastosCompras(periodo, usuarioId: usuarioId);
+    final rent = await fin.rentabilidad(periodo, usuarioId: usuarioId);
+    final ctrl = await fin.control(periodo, usuarioId: usuarioId);
+    final cierres = await fin.cierresDe(periodo, usuarioId: usuarioId);
+    final top = await fin.topProductos(periodo, usuarioId: usuarioId, limite: 30);
+
+    final excel = Excel.createExcel();
+    final fFecha = DateFormat('yyyy-MM-dd');
+    final fFechaHora = DateFormat('yyyy-MM-dd HH:mm');
+    final def = excel.getDefaultSheet() ?? 'Sheet1';
+    if (def != 'Resultados') {
+      excel.rename(def, 'Resultados');
+    }
+
+    // 1. Hoja Resultados
+    final sRes = excel['Resultados'];
+    sRes.appendRow([
+      TextCellValue('Período'),
+      TextCellValue('${fFecha.format(periodo.desde)} a ${fFecha.format(periodo.hasta)} (${periodo.dias} días)'),
+      TextCellValue('Cajero'),
+      TextCellValue(nombreCajero ?? 'Todos los cajeros'),
+    ]);
+    sRes.appendRow([TextCellValue('')]);
+    sRes.appendRow([
+      TextCellValue('Concepto'),
+      TextCellValue('Valor (\$)'),
+      TextCellValue('Detalle'),
+    ]);
+    void filaRes(String c, double v, [String det = '']) {
+      sRes.appendRow([TextCellValue(c), DoubleCellValue(v), TextCellValue(det)]);
+    }
+
+    filaRes('Ventas netas', res.ventas, '${res.cantidadVentas} ventas · ticket promedio \$${res.ticketPromedio.round()}');
+    filaRes('(-) Costo de lo vendido', res.costoVentas);
+    filaRes('(=) Utilidad bruta', res.utilidadBruta, 'Margen bruto ${res.margenBruto.toStringAsFixed(1)} %');
+    filaRes('(-) Gastos operativos', res.gastos);
+    filaRes('(-) Mermas y desperdicios', res.mermas);
+    filaRes('(-) Faltantes de caja', res.faltantesCaja);
+    filaRes('(+) Sobrantes de caja', res.sobrantesCaja);
+    filaRes('(=) UTILIDAD NETA', res.utilidadNeta, 'Margen neto ${res.margenNeto.toStringAsFixed(1)} %');
+    filaRes('Ventas período anterior', res.ventasAnterior);
+    filaRes('Utilidad neta período anterior', res.utilidadAnterior);
+
+    sRes.appendRow([TextCellValue('')]);
+    sRes.appendRow([
+      TextCellValue('Otros movimientos (no restan utilidad directamente)'),
+      TextCellValue('Valor (\$)'),
+      TextCellValue('Detalle'),
+    ]);
+    filaRes('Compras de mercancía', res.compras, '${res.cantidadCompras} facturas');
+    filaRes('Vendido fiado (crédito)', res.ventasFiadas);
+    filaRes('Abonos de clientes', res.abonosClientes);
+    filaRes('Devoluciones', res.devoluciones, '${res.cantidadDevoluciones} artículos');
+    filaRes('Ventas anuladas', res.anuladas, '${res.cantidadAnuladas} ventas');
+    filaRes('Préstamos desde caja', res.prestamos);
+    filaRes('Retiros del dueño', res.retiros);
+    filaRes('Ventas sin costo registrado', res.ventasSinCosto);
+
+    sRes.appendRow([TextCellValue('')]);
+    sRes.appendRow([
+      TextCellValue('Fecha'),
+      TextCellValue('Ventas (\$)'),
+      TextCellValue('Costo (\$)'),
+      TextCellValue('Gastos (\$)'),
+      TextCellValue('Mermas (\$)'),
+      TextCellValue('Utilidad (\$)'),
+    ]);
+    for (final d in res.diario) {
+      sRes.appendRow([
+        TextCellValue(fFecha.format(d.fecha)),
+        DoubleCellValue(d.ventas),
+        DoubleCellValue(d.costo),
+        DoubleCellValue(d.gastos),
+        DoubleCellValue(d.mermas),
+        DoubleCellValue(d.utilidad),
+      ]);
+    }
+
+    // 2. Hoja Gastos y Compras
+    final sGas = excel['Gastos_y_Compras'];
+    sGas.appendRow([TextCellValue('Flujo de efectivo'), TextCellValue('Monto (\$)')]);
+    sGas.appendRow([TextCellValue('(+) Ventas cobradas en efectivo'), DoubleCellValue(gas.entroVentas)]);
+    sGas.appendRow([TextCellValue('(+) Abonos de clientes'), DoubleCellValue(gas.entroAbonos)]);
+    sGas.appendRow([TextCellValue('(+) Bases extra, aportes y otros ingresos'), DoubleCellValue(gas.entroOtros)]);
+    sGas.appendRow([TextCellValue('(=) Total entradas'), DoubleCellValue(gas.totalEntradas)]);
+    sGas.appendRow([TextCellValue('(-) Gastos operativos'), DoubleCellValue(gas.salioGastos)]);
+    sGas.appendRow([TextCellValue('(-) Compras pagadas con caja'), DoubleCellValue(gas.salioCompras)]);
+    sGas.appendRow([TextCellValue('(-) Devoluciones y anulaciones en efectivo'), DoubleCellValue(gas.salioDevoluciones)]);
+    sGas.appendRow([TextCellValue('(-) Préstamos y retiros'), DoubleCellValue(gas.salioPrestamosRetiros)]);
+    sGas.appendRow([TextCellValue('(=) Total salidas'), DoubleCellValue(gas.totalSalidas)]);
+    sGas.appendRow([TextCellValue('(=) FLUJO NETO DE EFECTIVO'), DoubleCellValue(gas.flujoNeto)]);
+
+    sGas.appendRow([TextCellValue('')]);
+    sGas.appendRow([TextCellValue('Medio de pago'), TextCellValue('Operaciones'), TextCellValue('Total (\$)')]);
+    for (final m in gas.metodosPago) {
+      sGas.appendRow([TextCellValue(m.nombre), IntCellValue(m.cantidad), DoubleCellValue(m.total)]);
+    }
+
+    sGas.appendRow([TextCellValue('')]);
+    sGas.appendRow([TextCellValue('Categoría de gasto'), TextCellValue('Movimientos'), TextCellValue('Total (\$)')]);
+    for (final c in gas.gastosPorCategoria) {
+      sGas.appendRow([TextCellValue(c.nombre), IntCellValue(c.cantidad), DoubleCellValue(c.total)]);
+    }
+
+    sGas.appendRow([TextCellValue('')]);
+    sGas.appendRow([TextCellValue('Proveedor'), TextCellValue('Facturas'), TextCellValue('Total compras (\$)')]);
+    for (final p in gas.comprasPorProveedor) {
+      sGas.appendRow([TextCellValue(p.nombre), IntCellValue(p.cantidad), DoubleCellValue(p.total)]);
+    }
+
+    sGas.appendRow([TextCellValue('')]);
+    sGas.appendRow([
+      TextCellValue('Fecha y Hora'),
+      TextCellValue('Categoría'),
+      TextCellValue('Descripción'),
+      TextCellValue('Registró'),
+      TextCellValue('Monto (\$)'),
+    ]);
+    for (final g in gas.gastos) {
+      sGas.appendRow([
+        TextCellValue(g.fecha == null ? '' : fFechaHora.format(g.fecha!)),
+        TextCellValue(g.categoria),
+        TextCellValue(g.descripcion),
+        TextCellValue(g.usuario),
+        DoubleCellValue(g.monto),
+      ]);
+    }
+
+    // 3. Hoja Rentabilidad y Ventas
+    final sRent = excel['Rentabilidad'];
+    sRent.appendRow([
+      TextCellValue('Categoría'),
+      TextCellValue('Cantidad'),
+      TextCellValue('Ventas (\$)'),
+      TextCellValue('Costo (\$)'),
+      TextCellValue('Utilidad (\$)'),
+      TextCellValue('Margen (%)'),
+      TextCellValue('Estado costo'),
+    ]);
+    for (final c in rent.categorias) {
+      sRent.appendRow([
+        TextCellValue(c.nombre),
+        DoubleCellValue(c.cantidad),
+        DoubleCellValue(c.ventas),
+        DoubleCellValue(c.costo),
+        DoubleCellValue(c.utilidad),
+        DoubleCellValue(double.parse(c.margen.toStringAsFixed(1))),
+        TextCellValue(c.sinCosto ? 'Costo incompleto' : 'OK'),
+      ]);
+    }
+
+    sRent.appendRow([TextCellValue('')]);
+    sRent.appendRow([
+      TextCellValue('Producto'),
+      TextCellValue('Cantidad'),
+      TextCellValue('Ventas (\$)'),
+      TextCellValue('Costo (\$)'),
+      TextCellValue('Utilidad (\$)'),
+      TextCellValue('Margen (%)'),
+      TextCellValue('Estado costo'),
+    ]);
+    final prodsOrdenados = List.of(rent.productos)..sort((a, b) => b.utilidad.compareTo(a.utilidad));
+    for (final p in prodsOrdenados) {
+      sRent.appendRow([
+        TextCellValue(p.nombre),
+        DoubleCellValue(p.cantidad),
+        DoubleCellValue(p.ventas),
+        DoubleCellValue(p.costo),
+        DoubleCellValue(p.utilidad),
+        DoubleCellValue(double.parse(p.margen.toStringAsFixed(1))),
+        TextCellValue(p.sinCosto ? 'Sin costo registrado' : 'OK'),
+      ]);
+    }
+
+    if (top.isNotEmpty) {
+      sRent.appendRow([TextCellValue('')]);
+      sRent.appendRow([
+        TextCellValue('#'),
+        TextCellValue('Más vendidos'),
+        TextCellValue('Cantidad'),
+        TextCellValue('Ventas (\$)'),
+      ]);
+      for (var i = 0; i < top.length; i++) {
+        final t = top[i];
+        sRent.appendRow([
+          IntCellValue(i + 1),
+          TextCellValue((t['nombre_producto'] ?? '').toString()),
+          DoubleCellValue((t['cantidad_total'] as num?)?.toDouble() ?? 0),
+          DoubleCellValue((t['dinero_total'] as num?)?.toDouble() ?? 0),
+        ]);
+      }
+    }
+
+    // 4. Hoja Control
+    final sCtrl = excel['Control'];
+    sCtrl.appendRow([
+      TextCellValue('Persona'),
+      TextCellValue('Anulaciones'),
+      TextCellValue('Devoluciones'),
+      TextCellValue('Mermas'),
+      TextCellValue('Descuadres'),
+      TextCellValue('Monto Total (\$)'),
+    ]);
+    for (final p in ctrl.porPersona) {
+      sCtrl.appendRow([
+        TextCellValue(p.usuario),
+        IntCellValue(p.porTipo['ANULACION'] ?? 0),
+        IntCellValue(p.porTipo['DEVOLUCION'] ?? 0),
+        IntCellValue(p.porTipo['MERMA'] ?? 0),
+        IntCellValue(p.porTipo['DESCUADRE'] ?? 0),
+        DoubleCellValue(p.monto),
+      ]);
+    }
+
+    sCtrl.appendRow([TextCellValue('')]);
+    sCtrl.appendRow([
+      TextCellValue('Fecha y Hora'),
+      TextCellValue('Tipo'),
+      TextCellValue('Título'),
+      TextCellValue('Detalle'),
+      TextCellValue('Persona'),
+      TextCellValue('Motivo'),
+      TextCellValue('Monto (\$)'),
+      TextCellValue('Efectivo (\$)'),
+    ]);
+    for (final e in ctrl.eventos) {
+      sCtrl.appendRow([
+        TextCellValue(e.fecha == null ? '' : fFechaHora.format(e.fecha!)),
+        TextCellValue(e.tipo),
+        TextCellValue(e.titulo),
+        TextCellValue(e.detalle),
+        TextCellValue(e.usuario),
+        TextCellValue(e.motivo),
+        DoubleCellValue(e.monto),
+        DoubleCellValue(e.efectivo),
+      ]);
+    }
+
+    // 5. Hoja Cierres
+    final sCie = excel['Cierres'];
+    sCie.appendRow([
+      TextCellValue('Cajero'),
+      TextCellValue('Turnos'),
+      TextCellValue('Cuadrados'),
+      TextCellValue('Faltante (\$)'),
+      TextCellValue('Sobrante (\$)'),
+      TextCellValue('Neto (\$)'),
+      TextCellValue('Ventas Efectivo (\$)'),
+    ]);
+    for (final p in cierres.porCajero) {
+      sCie.appendRow([
+        TextCellValue(p.cajero),
+        IntCellValue(p.turnos),
+        IntCellValue(p.cuadrados),
+        DoubleCellValue(p.faltante),
+        DoubleCellValue(p.sobrante),
+        DoubleCellValue(p.neto),
+        DoubleCellValue(p.ventas),
+      ]);
+    }
+
+    sCie.appendRow([TextCellValue('')]);
+    sCie.appendRow([
+      TextCellValue('ID'),
+      TextCellValue('Cajero'),
+      TextCellValue('Caja'),
+      TextCellValue('Apertura'),
+      TextCellValue('Cierre'),
+      TextCellValue('Estado'),
+      TextCellValue('Base (\$)'),
+      TextCellValue('Ventas Efectivo (\$)'),
+      TextCellValue('Ingresos (\$)'),
+      TextCellValue('Gastos (\$)'),
+      TextCellValue('Esperado (\$)'),
+      TextCellValue('Contado (\$)'),
+      TextCellValue('Diferencia (\$)'),
+    ]);
+    for (final c in cierres.cierres) {
+      sCie.appendRow([
+        IntCellValue(c.id),
+        TextCellValue(c.cajero),
+        TextCellValue(c.caja),
+        TextCellValue(c.apertura == null ? '' : fFechaHora.format(c.apertura!)),
+        TextCellValue(c.cierre == null ? 'En curso' : fFechaHora.format(c.cierre!)),
+        TextCellValue(c.estado),
+        DoubleCellValue(c.base),
+        DoubleCellValue(c.ventas),
+        DoubleCellValue(c.ingresos),
+        DoubleCellValue(c.gastos),
+        DoubleCellValue(c.esperado),
+        DoubleCellValue(c.contado ?? 0),
+        DoubleCellValue(c.diferencia ?? 0),
+      ]);
+    }
+
+    return excel;
+  }
+
+  Future<String> exportarInformePeriodo({
+    required FinanzasService fin,
+    required Periodo periodo,
+    int? usuarioId,
+    String? nombreCajero,
+  }) async {
+    final excel = await construirInformePeriodoExcel(
+      fin: fin,
+      periodo: periodo,
+      usuarioId: usuarioId,
+      nombreCajero: nombreCajero,
+    );
+    return await _guardarArchivoExcel(excel, 'Informe_Periodo');
+  }
+
+  // ==============================================================
   // 6. MODAL INTERACTIVO DE EXPORTACIÓN (Para Reportes y Ajustes)
   // ==============================================================
   Future<void> mostrarModalExportacion(
@@ -551,6 +875,13 @@ class ExcelExportService {
       ),
     );
   }
+
+  Future<void> ejecutarExportacion(
+    BuildContext context, {
+    required String titulo,
+    required Future<String> Function() accion,
+  }) =>
+      _ejecutarExportacion(context, titulo: titulo, accion: accion);
 
   Future<void> _ejecutarExportacion(
     BuildContext context, {

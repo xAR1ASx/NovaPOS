@@ -219,6 +219,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
         MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
     } on FirebaseAuthException catch (e) {
+      debugPrint('Login FirebaseAuthException: ${e.code} - ${e.message}');
       if (!mounted) return;
       String mensaje;
       switch (e.code) {
@@ -240,7 +241,8 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
         _pin = '';
         _cargando = false;
       });
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('Login error: $e\n$st');
       if (!mounted) return;
       setState(() {
         _error = 'Error de conexion';

@@ -1,9 +1,13 @@
 # NovaPOS - Estado del Proyecto y Siguientes Pasos
 
-**Fecha de última actualización:** 2026-10-03
-**Versión Actual:** 1.5.0
+**Fecha de última actualización:** 2026-10-21
+**Versión Actual:** 1.6.0
 
 ## 🎯 Hitos Completados
+- [x] **Centro Financiero v1.6.0**: Panorama, Resultados, Gastos y compras, Rentabilidad, Ventas, Control y Cierres de caja, con informe Excel del período.
+- [x] **Cuadre de caja como flujo de efectivo** (base de datos v13): devoluciones/anulaciones de otros turnos o cajas sin descuadre, pagos mixtos exactos, combos y paquetes correctos, gastos con categoría.
+- [x] **Sincronización financiera**: movimientos de caja, cierres, devoluciones y combos entre cajas.
+- [x] Suite de pruebas: 66 tests pasando.
 - [x] **Modo Oscuro Global y Sistema de Temas Unificado**: Soporte total Claro/Oscuro en el 100% de las pantallas y componentes, contraste asegurado y tipografía adaptable.
 - [x] **Auditoría Integral y Suite de Pruebas de Caja**: 42 pruebas automatizadas en `flutter test` pasando al 100%.
 - [x] **Inyecciones de Dinero en Caja**: Botón nativo de "INGRESAR DINERO" para registrar bases adicionales, préstamos o inyecciones de capital.
@@ -28,6 +32,8 @@
   - [x] L-03: Archivo `novapos_sesion.json` encriptado (Base64+UTF8).
 
 ## ⏳ Tareas Pendientes Inmediatas (Pausa Actual)
+
+0. **Validar v1.6.0 en hardware real** antes de instalar en clientes: abrir una caja, vender, devolver de un turno anterior, cerrar y revisar el Centro Financiero en Windows y en la tablet, con dos cajas sincronizadas.
 
 1. **Inyección de Administrador Android (Hardware Real)**
    - Esperando que llegue la pantalla Android física.
