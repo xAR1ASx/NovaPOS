@@ -51,7 +51,7 @@ El sistema se encuentra en su versión **1.7.0**, completamente blindado con seg
   * Permite devolver unidades o fracciones específicas de un ticket, reintegrando inventario y ajustando caja automáticamente.
 * **Seguridad Estricta de Precios (H-01 Plus)**:
   * El backend intercepta la venta, valida en la BD oculta, evalúa promociones programadas del día y recalcula el importe exacto.
-* **Banco de Pruebas Automatizadas (88 Tests)**:
+* **Banco de Pruebas Automatizadas (101 Tests)**:
   * Test suite integral verificando el 100% de la lógica de negocio: balanzas, promociones, permisos, cálculo de caja, arqueo Z y bloqueo de stock cero.
 
 ---
@@ -101,7 +101,7 @@ flutter build windows --release
 # Compilar paquete APK Release para Tablet Android
 flutter build apk --release
 
-# Ejecutar banco de pruebas automatizadas (Test Suite: 88 tests)
+# Ejecutar banco de pruebas automatizadas (Test Suite: 101 tests)
 flutter test
 ```
 

@@ -258,4 +258,103 @@ void main() {
       expect(p['stock_actual'], 28);
     });
   });
+
+  group('Mantenimiento de la nube', () {
+    CollectionReference<Map<String, dynamic>> col(String c) =>
+        nube.collection('negocios').doc(negocio).collection(c);
+
+    test('Borra de la nube solo los movimientos de stock de más de 60 días', () async {
+      final viejo = DateTime.now().subtract(const Duration(days: 70)).millisecondsSinceEpoch;
+      final nuevo = DateTime.now().subtract(const Duration(days: 5)).millisecondsSinceEpoch;
+      for (var i = 0; i < 5; i++) {
+        await col('stock_ops').doc('viejo$i').set({'producto_uuid': 'x', 'cantidad': -1, 'fecha_epoch': viejo});
+      }
+      await col('stock_ops').doc('reciente').set({'producto_uuid': 'x', 'cantidad': -1, 'fecha_epoch': nuevo});
+
+      await enCaja('caja1', (s) async {
+        final r = await s.mantenimiento(forzar: true);
+        expect(r['nube'], 5);
+        // Una segunda vez el mismo día no hace nada
+        expect((await s.mantenimiento())['nube'], 0);
+      });
+      final quedan = await col('stock_ops').get();
+      expect(quedan.docs.map((d) => d.id), ['reciente']);
+    });
+
+    test('Una caja que estuvo apagada más de 45 días toma el stock real de la nube', () async {
+      await enCaja('caja1', (s) async => darStock('Papa Pastusa', 50));
+      await enCaja('caja2', (s) async {
+        await esperar(() => producto('Papa Pastusa'), (p) => p['stock_actual'] == 50);
+      });
+
+      // La caja 1 vende 7 kg mientras la caja 2 está apagada
+      await enCaja('caja1', (s) async {
+        await db.registrarMovimientoCaja('APERTURA', 10000, 'Base', 1);
+        final p = await producto('Papa Pastusa');
+        final r = await db.registrarVenta(14000, 'EFECTIVO', [
+          {'id': p['id'], 'nombre': 'Papa Pastusa', 'cantidad': 7, 'precio': 2000, 'subtotal': 14000, 'costo_unitario': 1000}
+        ], usuarioId: 1);
+        expect(r['exito'], isTrue);
+      });
+      // Pasaron 50 días: esos movimientos ya se borraron de la nube
+      for (final d in (await col('stock_ops').get()).docs) {
+        await d.reference.delete();
+      }
+      DBHelper.setDatabaseForTesting(dbs['caja2']);
+      await db.guardarConfiguracion('sync_marca_STOCK_OP',
+          DateTime.now().subtract(const Duration(days: 50)).millisecondsSinceEpoch.toString());
+
+      await enCaja('caja2', (s) async {
+        final p = await esperar(() => producto('Papa Pastusa'), (p) => p['stock_actual'] == 43);
+        expect(p['stock_actual'], 43);
+      });
+    });
+
+    test('Limpia en el equipo lo que ya se subió hace más de 7 días', () async {
+      await enCaja('caja1', (s) async {
+        final d = await db.database;
+        await d.insert('sync_pendientes', {
+          'tipo': 'VENTA', 'uuid': 'u-vieja', 'datos': '{}', 'estado': 1,
+          'creado_en': DateTime.now().subtract(const Duration(days: 10)).toIso8601String(),
+        });
+        await d.insert('sync_pendientes', {
+          'tipo': 'VENTA', 'uuid': 'u-sin-subir', 'datos': '{}', 'estado': 0,
+          'creado_en': DateTime.now().subtract(const Duration(days: 10)).toIso8601String(),
+        });
+        await s.mantenimiento(forzar: true);
+        final quedan = (await d.query('sync_pendientes')).map((r) => r['uuid']).toList();
+        expect(quedan, isNot(contains('u-vieja')));
+        expect(quedan, contains('u-sin-subir')); // lo no subido nunca se borra
+        await d.delete('sync_pendientes', where: "uuid = 'u-sin-subir'");
+      });
+    });
+  });
+
+  test('Subir dos veces el mismo movimiento no suma dos veces (reintento o copia restaurada)', () async {
+    await enCaja('caja1', (s) async {
+      await darStock('Papa Pastusa', 20);
+      await db.registrarMovimientoCaja('APERTURA', 10000, 'Base', 1);
+      final c = await db.crearCliente({'nombre': 'Doña Rosa', 'cupo_credito': 100000, 'deuda_actual': 0});
+      final p = await producto('Papa Pastusa');
+      await db.registrarVenta(6000, 'CREDITO', [
+        {'id': p['id'], 'nombre': 'Papa Pastusa', 'cantidad': 3, 'precio': 2000, 'subtotal': 6000, 'costo_unitario': 1000}
+      ], usuarioId: 1, clienteId: c);
+    });
+    DBHelper.setDatabaseForTesting(dbs['caja1']);
+    final d = await db.database;
+    final pu = (await producto('Papa Pastusa'))['uuid'] as String;
+    final cu = (await d.query('clientes', where: "nombre = 'Doña Rosa'")).single['uuid'] as String;
+    Future<num> stockNube() async =>
+        (await nube.collection('negocios').doc(negocio).collection('productos').doc(pu).get())['stock_recon'] as num;
+    Future<num> deudaNube() async =>
+        (await nube.collection('negocios').doc(negocio).collection('clientes').doc(cu).get())['deuda_actual'] as num;
+    expect(await stockNube(), 17);
+    expect(await deudaNube(), 6000);
+
+    // Como si la confirmación se hubiera perdido: todo vuelve a quedar pendiente
+    await d.update('sync_pendientes', {'estado': 0});
+    await enCaja('caja1', (s) async {});
+    expect(await stockNube(), 17);
+    expect(await deudaNube(), 6000);
+  });
 }

@@ -46,6 +46,7 @@ class SyncService {
       [];
   Timer? _timerImagenes;
   Timer? _timerAutoSync;
+  Timer? _timerMantenimiento;
 
   /// Notificador reactivo para que pantallas abiertas (POS, Inventario) refresquen en tiempo real
   static final ValueNotifier<int> cambiosRemotosNotifier = ValueNotifier<int>(0);
@@ -100,6 +101,7 @@ class SyncService {
       if (nProds > 0) {
         await _db.prepararParaSincronizar(_dispositivoUuid);
         await _subirPendientes();
+        await _reconciliarStockSiHaceFalta();
       } else {
         await _descargaInicial();
         // Negocio nuevo (la nube no tenía productos): arranca con el catálogo.
@@ -118,6 +120,13 @@ class SyncService {
         const Duration(seconds: 45),
         (_) => _retrabajarImagenes(),
       );
+      // Mantenimiento una vez al día, sin frenar el arranque.
+      _timerMantenimiento = Timer(
+        const Duration(minutes: 2),
+        () => unawaited(mantenimiento().catchError((e) {
+          debugPrint('SyncService mantenimiento: $e');
+        })),
+      );
       _refrescarEstado();
     } catch (e) {
       debugPrint('SyncService iniciar error: $e');
@@ -127,6 +136,110 @@ class SyncService {
       await _refrescarEstado();
       return;
     }
+  }
+
+  // ======================= MANTENIMIENTO =======================
+
+  /// Los movimientos de stock solo sirven para avisar a las otras cajas; el
+  /// total ya está en cada producto (stock_recon). Pasados estos días se
+  /// borran de la nube para no llenar el espacio del plan gratuito.
+  static const int diasMovimientosStock = 60;
+
+  /// Una caja que estuvo más de estos días sin conectarse ya no puede
+  /// confiar en los movimientos (algunos pudieron borrarse): toma el stock de
+  /// cada producto directamente de la nube. Es menor que el borrado para
+  /// dejar margen.
+  static const int diasParaReconciliar = 45;
+
+  static const Duration _cadaMantenimiento = Duration(hours: 20);
+
+  /// Tras mucho tiempo sin conexión, el stock local se iguala al de la nube.
+  Future<void> _reconciliarStockSiHaceFalta() async {
+    await _cargarMarcas();
+    final marca = _marcas['STOCK_OP'];
+    if (marca == null) return;
+    final dias = DateTime.now()
+        .difference(DateTime.fromMillisecondsSinceEpoch(marca))
+        .inDays;
+    if (dias < diasParaReconciliar) return;
+    await reconciliarStock();
+  }
+
+  /// Iguala el stock de cada producto al de la nube. Solo se hace si no
+  /// quedan movimientos propios sin subir (si no, se perderían).
+  @visibleForTesting
+  Future<bool> reconciliarStock() async {
+    final pendientes = (await _db.obtenerPendientes())
+        .where((p) => p['tipo'] == 'STOCK_OP')
+        .length;
+    if (pendientes > 0) return false;
+    final base = DateTime.now().millisecondsSinceEpoch;
+    final productos = await _col('productos').get();
+    final db = await _db.database;
+    await db.transaction((txn) async {
+      for (final doc in productos.docs) {
+        final recon = (doc.data()['stock_recon'] as num?)?.toDouble();
+        if (recon == null) continue;
+        await txn.rawUpdate(
+          'UPDATE productos SET stock_actual = ? WHERE uuid = ?',
+          [recon, doc.id],
+        );
+      }
+    });
+    // Lo anterior a este momento ya está en el stock de cada producto.
+    _baseStockMs = base;
+    await _db.guardarConfiguracion('sync_base_stock', base.toString());
+    await _guardarMarca('STOCK_OP', base);
+    cambiosRemotosNotifier.value++;
+    return true;
+  }
+
+  /// Limpieza diaria: borra de la nube los movimientos de stock viejos y,
+  /// en este equipo, los registros internos que ya no se necesitan.
+  @visibleForTesting
+  Future<Map<String, int>> mantenimiento({bool forzar = false}) async {
+    final res = {'nube': 0, 'subidos': 0, 'aplicados': 0};
+    if (!activo) return res;
+    final cfg = await _db.obtenerConfiguracion();
+    final ultima = int.tryParse(cfg['sync_mantenimiento_ms'] ?? '') ?? 0;
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    if (!forzar && ahora - ultima < _cadaMantenimiento.inMilliseconds) return res;
+
+    // 1. Nube: movimientos de stock de más de 60 días, por tandas pequeñas
+    //    (cada borrado cuenta en la cuota diaria gratuita).
+    final limite = ahora - const Duration(days: diasMovimientosStock).inMilliseconds;
+    for (var tanda = 0; tanda < 10; tanda++) {
+      final viejos = await _col('stock_ops')
+          .where('fecha_epoch', isLessThan: limite)
+          .limit(400)
+          .get();
+      if (viejos.docs.isEmpty) break;
+      final batch = _f.batch();
+      for (final d in viejos.docs) {
+        batch.delete(d.reference);
+      }
+      await batch.commit();
+      res['nube'] = res['nube']! + viejos.docs.length;
+      if (viejos.docs.length < 400) break;
+    }
+
+    // 2. Este equipo: lo que ya se subió hace más de 7 días.
+    final db = await _db.database;
+    final hace7 = DateTime.now().subtract(const Duration(days: 7)).toIso8601String();
+    res['subidos'] = await db.delete('sync_pendientes',
+        where: 'estado = 1 AND creado_en < ?', whereArgs: [hace7]);
+
+    // 3. Este equipo: marcas de movimientos de stock ya borrados de la nube
+    //    (con margen extra; no se vuelven a leer porque la escucha es
+    //    incremental).
+    if (_marcas.containsKey('STOCK_OP')) {
+      final limiteLocal = ahora - const Duration(days: diasMovimientosStock + 15).inMilliseconds;
+      res['aplicados'] = await db.delete('sync_aplicados',
+          where: "tipo = 'STOCK_OP' AND epoch > 0 AND epoch < ?", whereArgs: [limiteLocal]);
+    }
+
+    await _db.guardarConfiguracion('sync_mantenimiento_ms', ahora.toString());
+    return res;
   }
 
   /// Precarga el catálogo maestro si este equipo no tiene productos.
@@ -148,6 +261,8 @@ class SyncService {
     _timerAutoSync = null;
     _timerImagenes?.cancel();
     _timerImagenes = null;
+    _timerMantenimiento?.cancel();
+    _timerMantenimiento = null;
     _imagenesPorSubir.clear();
     _imagenesPorBajar.clear();
     for (final s in _subs) {
@@ -1093,6 +1208,7 @@ class SyncService {
         };
         if (data.containsKey('stock_recon')) {
           payload['stock_recon'] = data['stock_recon'];
+          payload['stock_recon_epoch'] = data['stock_recon_epoch'] ?? data['actualizado_epoch'] ?? 0;
         }
         // Componentes del combo y paquetes: viajan con el producto.
         if (data['combo_componentes'] != null) {
@@ -1116,40 +1232,60 @@ class SyncService {
             debugPrint('SyncService imagen upload $uuid: $e');
           }
         }
-        // Siembra (datos que el equipo tenía antes de sincronizar o catálogo
-        // maestro): si el producto ya existe en la nube no se pisa, así una
-        // caja nueva no reemplaza los precios ni el stock del negocio.
-        if (data['semilla'] == true) {
-          final existe = await _col('productos').doc(uuid).get();
-          if (existe.exists) return true;
-        }
         payload['sync_ts'] = FieldValue.serverTimestamp();
-        await _col('productos').doc(uuid).set(
-              payload,
-              SetOptions(merge: true),
-            );
+        final esSemilla = data['semilla'] == true;
+        if (!esSemilla && !payload.containsKey('stock_recon')) {
+          await _col('productos').doc(uuid).set(payload, SetOptions(merge: true));
+          return true;
+        }
+        await _f.runTransaction((tx) async {
+          final ref = _col('productos').doc(uuid);
+          final actual = await tx.get(ref);
+          // Siembra (datos que el equipo tenía antes de sincronizar o
+          // catálogo maestro): si el producto ya existe en la nube no se
+          // pisa, así una caja nueva no reemplaza precios ni stock.
+          if (esSemilla && actual.exists) return;
+          // Ajuste absoluto de stock: solo si es más nuevo que el último que
+          // tiene la nube (un reintento o una copia restaurada traen uno viejo
+          // que borraría las ventas hechas después).
+          final previo = (actual.data()?['stock_recon_epoch'] as num?)?.toInt() ?? 0;
+          final este = (payload['stock_recon_epoch'] as num?)?.toInt() ?? 0;
+          if (!actual.exists) {
+            tx.set(ref, payload);
+            return;
+          }
+          if (previo >= este) {
+            payload.remove('stock_recon');
+            payload.remove('stock_recon_epoch');
+          }
+          // update: solo cambia los campos enviados, nunca borra los demás.
+          tx.update(ref, payload);
+        });
         return true;
 
       case 'STOCK_OP':
-        final batch = _f.batch();
-        batch.set(
-          _col('stock_ops').doc(uuid),
-          {
-            'producto_uuid': data['producto_uuid'],
-            'cantidad': data['cantidad'],
-            'fecha_epoch': data['fecha_epoch'],
-            'dispositivo_uuid': data['dispositivo_uuid'],
+        // En una transacción y solo si el movimiento no existe: si la
+        // conexión se corta después de guardarlo y se reintenta (o se
+        // restaura una copia), el stock de la nube no se suma dos veces.
+        final op = data;
+        final pu = (op['producto_uuid'] ?? '').toString();
+        await _f.runTransaction((tx) async {
+          final ref = _col('stock_ops').doc(uuid);
+          if ((await tx.get(ref)).exists) return;
+          tx.set(ref, {
+            'producto_uuid': op['producto_uuid'],
+            'cantidad': op['cantidad'],
+            'fecha_epoch': op['fecha_epoch'],
+            'dispositivo_uuid': op['dispositivo_uuid'],
             'sync_ts': FieldValue.serverTimestamp(),
-          },
-        );
-        final pu = (data['producto_uuid'] ?? '').toString();
-        if (pu.isNotEmpty) {
-          batch.update(
-            _col('productos').doc(pu),
-            {'stock_recon': FieldValue.increment(data['cantidad'] ?? 0)},
-          );
-        }
-        await batch.commit();
+          });
+          if (pu.isNotEmpty) {
+            tx.update(
+              _col('productos').doc(pu),
+              {'stock_recon': FieldValue.increment(op['cantidad'] ?? 0)},
+            );
+          }
+        });
         return true;
 
       case 'VENTA':
@@ -1219,25 +1355,31 @@ class SyncService {
         return true;
 
       case 'CARTERA':
-        await _col('cartera').doc(uuid).set({
-          'cliente_uuid': data['cliente_uuid'],
-          'tipo': data['tipo'],
-          'monto': data['monto'],
-          'deuda_cambio': data['deuda_cambio'],
-          'venta_uuid': data['venta_uuid'],
-          'fecha_epoch': data['fecha_epoch'],
-          'usuario_uid': data['usuario_uid'],
-          'dispositivo_uuid': data['dispositivo_uuid'],
-          'sync_ts': FieldValue.serverTimestamp(),
-        });
-        final cp = (data['cliente_uuid'] ?? '').toString();
-        if (data['sin_deuda'] != true && cp.isNotEmpty) {
-          await _col('clientes').doc(cp).update({
-            'deuda_actual': FieldValue.increment(
-              (data['deuda_cambio'] as num?)?.toDouble() ?? 0,
-            ),
+        // Igual que el stock: la deuda del cliente nunca se suma dos veces.
+        final op = data;
+        final cp = (op['cliente_uuid'] ?? '').toString();
+        await _f.runTransaction((tx) async {
+          final ref = _col('cartera').doc(uuid);
+          if ((await tx.get(ref)).exists) return;
+          tx.set(ref, {
+            'cliente_uuid': op['cliente_uuid'],
+            'tipo': op['tipo'],
+            'monto': op['monto'],
+            'deuda_cambio': op['deuda_cambio'],
+            'venta_uuid': op['venta_uuid'],
+            'fecha_epoch': op['fecha_epoch'],
+            'usuario_uid': op['usuario_uid'],
+            'dispositivo_uuid': op['dispositivo_uuid'],
+            'sync_ts': FieldValue.serverTimestamp(),
           });
-        }
+          if (op['sin_deuda'] != true && cp.isNotEmpty) {
+            tx.update(_col('clientes').doc(cp), {
+              'deuda_actual': FieldValue.increment(
+                (op['deuda_cambio'] as num?)?.toDouble() ?? 0,
+              ),
+            });
+          }
+        });
         return true;
 
       case 'COMPRA':

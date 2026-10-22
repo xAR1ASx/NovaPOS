@@ -249,7 +249,15 @@ class _SettingsScreenState extends State<SettingsScreen>
         );
         return;
       }
-      final bytes = await dbFile.readAsBytes();
+      // Foto consistente de la base (no el archivo en uso).
+      final temporal = '${Directory.systemTemp.path}${Platform.pathSeparator}$nombreArchivo';
+      if (!await DBHelper().exportarBackup(temporal)) {
+        throw Exception('No se pudo generar una copia válida');
+      }
+      final bytes = await File(temporal).readAsBytes();
+      try {
+        await File(temporal).delete();
+      } catch (_) {}
 
       final uri = await FilePicker.saveFile(
         dialogTitle: 'Guardar copia de seguridad de NovaPOS',
@@ -305,9 +313,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           ],
         ),
         content: Text(
-          "⚠️ ATENCIÓN: Esta acción reemplazará toda la base de datos actual con la información del archivo:\n\n"
+          "⚠️ Esta acción reemplazará los datos de ESTA caja con los del archivo:\n\n"
           "${path!}\n\n"
-          "Se recomienda hacer una copia previa si deseas conservar los datos actuales.",
+          "• Usa solo una copia de esta misma caja (por ejemplo, para recuperar un PC dañado). "
+          "No restaures la copia de otra caja que siga en uso: las dos quedarían con la misma identidad.\n"
+          "• Antes de restaurar se guarda automáticamente la base actual, por si necesitas volver atrás.\n"
+          "• Con internet, lo que se hizo después de la copia vuelve a bajar de la nube.",
         ),
         actions: [
           TextButton(
@@ -331,18 +342,25 @@ class _SettingsScreenState extends State<SettingsScreen>
     final ok = await DBHelper().restaurarBackup(path);
     if (!mounted) return;
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("✅ Base de datos restaurada correctamente"),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 4),
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text("✅ Copia restaurada"),
+          content: const Text(
+            "Cierra NovaPOS y vuelve a abrirlo para terminar: así la caja carga los datos restaurados "
+            "y se pone al día con la nube.",
+          ),
+          actions: [
+            ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text("ENTENDIDO")),
+          ],
         ),
       );
       _cargarConfiguracion();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("❌ Error al restaurar la base de datos. Verifica el archivo."),
+          content: Text("❌ Ese archivo no es una copia válida de NovaPOS (o está dañado). No se cambió nada."),
           backgroundColor: Colors.red,
         ),
       );

@@ -4,7 +4,7 @@
 **Versión Actual:** 1.7.0
 
 ## 🎯 Hitos Completados
-- [x] **v1.7.0 lista para entregar**: sincronización incremental (plan gratuito), balanza manual, asistente de primer uso, nombre de cajas, copias a USB/Drive, mensajes de login claros y 6 errores de varias cajas corregidos. 88 tests.
+- [x] **v1.7.0 lista para entregar**: sincronización incremental (plan gratuito), balanza manual, asistente de primer uso, nombre de cajas, copias a USB/Drive, mensajes de login claros y 6 errores de varias cajas corregidos. 101 tests.
 - [x] **Centro Financiero v1.6.0**: Panorama, Resultados, Gastos y compras, Rentabilidad, Ventas, Control y Cierres de caja, con informe Excel del período.
 - [x] **Cuadre de caja como flujo de efectivo** (base de datos v13): devoluciones/anulaciones de otros turnos o cajas sin descuadre, pagos mixtos exactos, combos y paquetes correctos, gastos con categoría.
 - [x] **Sincronización financiera**: movimientos de caja, cierres, devoluciones y combos entre cajas.

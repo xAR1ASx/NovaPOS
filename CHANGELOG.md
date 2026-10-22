@@ -23,6 +23,11 @@ Todas las versiones notables de NovaPOS se documentan en este archivo.
   (marca de hora del servidor `sync_ts`), en lugar de releer todo el historial al abrir.
 - Una caja nueva no descarga los movimientos de stock históricos (ya vienen en cada producto).
 - Las fotos del catálogo maestro no se suben a Cloudinary (vienen en cada instalación).
+- Limpieza diaria: se borran de la nube los movimientos de stock de más de 60 días y, en el
+  equipo, los registros ya subidos; una caja que vuelve tras más de 45 días sin conexión toma
+  el stock de cada producto desde la nube.
+- Subidas sin duplicados: un reintento o una copia restaurada no suma dos veces el stock ni
+  la deuda de un cliente, ni un ajuste de inventario viejo pisa el stock actual.
 
 ### Corregido
 - Una caja nueva de un negocio existente quedaba con todos los productos AGOTADOS y pisaba en la
@@ -33,9 +38,12 @@ Todas las versiones notables de NovaPOS se documentan en este archivo.
 - "Restablecer de fábrica" dejaba datos pendientes por subir que iban a parar al siguiente negocio.
 - El stock con decimales (kilos) se truncaba al sincronizar.
 - El botón de prueba "SIMULAR PESO" se mostraba a los cajeros.
+- Las copias de seguridad copiaban el archivo en uso y podían quedar incompletas: ahora son una
+  foto consistente (VACUUM INTO) y se verifican; restaurar valida el archivo y guarda antes la
+  base actual.
 
 ### Técnico
-- Base de datos v14 (nombre de la caja en los cierres). 88 pruebas, incluidas dos cajas
+- Base de datos v14 (nombre de la caja en los cierres). 101 pruebas, incluidas dos cajas
   sincronizándose contra una nube simulada (`fake_cloud_firestore`, solo para pruebas).
 - Todas las cajas de un negocio deben tener la misma versión (las anteriores no marcan `sync_ts`).
 

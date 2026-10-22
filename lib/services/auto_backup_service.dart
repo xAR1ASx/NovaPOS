@@ -176,8 +176,13 @@ class AutoBackupService {
             'No se encontró la carpeta $extra (¿la USB está conectada?)');
         return;
       }
-      await File(origen).copy(join(dir.path, nombre));
-      await _purgarCopiasAntiguas(dir, maxArchivos);
+      final destino = join(dir.path, nombre);
+      await File(origen).copy(destino);
+      if (!await DBHelper().esCopiaValida(destino)) {
+        throw Exception('la copia en la carpeta extra quedó incompleta');
+      }
+      // En la carpeta extra (Drive/USB) se guarda más historial: al menos 7.
+      await _purgarCopiasAntiguas(dir, maxArchivos < 7 ? 7 : maxArchivos);
       await DBHelper().guardarConfiguracion('backup_extra_error', '');
       await DBHelper().guardarConfiguracion('ultimo_backup_extra_fecha', DateTime.now().toIso8601String());
     } catch (e) {

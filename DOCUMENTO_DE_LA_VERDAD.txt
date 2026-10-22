@@ -1,0 +1,581 @@
+===============================================================================
+                       NOVAPOS - DOCUMENTO DE LA VERDAD
+            Sistema de punto de venta para Fruvers y Minimarkets
+===============================================================================
+
+Versión del documento ..... 1.0
+Versión del sistema ....... 1.7.0 (base de datos local v14)
+Fecha ..................... 21 de octubre de 2026
+Repositorio ............... github.com/xAR1ASx/NovaPOS (rama main)
+
+Este documento es la referencia oficial de NovaPOS: qué queremos que sea el
+producto, qué hace hoy, cómo funciona por dentro lo importante, qué cambió en
+las últimas versiones y qué falta. Si el código y este documento no coinciden,
+se corrige el que esté mal y se deja anotado aquí.
+
+
+-------------------------------------------------------------------------------
+ÍNDICE
+-------------------------------------------------------------------------------
+  1. Qué es NovaPOS
+  2. El producto final que queremos
+  3. Lo que hace hoy (módulo por módulo)
+  4. Cómo funciona la sincronización entre varias cajas
+  5. Dinero y caja: las reglas
+  6. Licencia y bloqueo por falta de pago
+  7. Copias de seguridad y recuperación
+  8. Nube: Firebase, costos y plan gratuito
+  9. Instalación en un cliente (resumen)
+ 10. Últimos cambios realizados
+ 11. Pendientes y próximos pasos
+ 12. Datos técnicos de referencia
+
+
+===============================================================================
+1. QUÉ ES NOVAPOS
+===============================================================================
+
+NovaPOS es un sistema de punto de venta para fruvers, minimarkets y tiendas de
+barrio. Se instala en PCs con Windows y en tablets Android. Cada caja guarda
+todo en su propia base de datos (funciona sin internet mientras está abierta)
+y se sincroniza con las demás cajas del mismo negocio a través de la nube
+(Firebase).
+
+Quién lo usa:
+  - El DUEÑO (rol ADMIN): ve todo, configura, mira reportes, anula, ajusta
+    inventario, crea usuarios y promociones.
+  - El CAJERO (rol CAJERO): vende, abre y cierra su caja, registra gastos y
+    atiende clientes. No ve utilidades ni configuración.
+
+Plataformas:
+  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.7.0.exe.
+  - Android 8 o superior (tablets): APK, con modo kiosco opcional.
+  - macOS: solo para desarrollo (no se entrega a clientes).
+
+
+===============================================================================
+2. EL PRODUCTO FINAL QUE QUEREMOS
+===============================================================================
+
+La meta es un sistema que cualquier persona pueda usar sin capacitación larga,
+que no pierda plata ni datos, y que no le cueste nube al dueño de NovaPOS.
+
+Principios:
+
+  a) FÁCIL. Un cajero nuevo debe poder vender en minutos. Botones grandes,
+     mensajes en español claro que digan qué pasó y qué hacer, asistente para
+     dejar la caja lista el primer día y nada técnico a la vista.
+
+  b) LA PLATA SIEMPRE CUADRA. Cada peso que entra o sale del cajón queda
+     registrado. Devoluciones, anulaciones, gastos y compras nunca descuadran
+     la caja ni los reportes, sin importar de qué turno o de qué caja sea la
+     venta.
+
+  c) VARIAS CAJAS, UN SOLO NEGOCIO. Lo normal es que un cliente tenga dos o más
+     cajas. Todas deben estar al día con lo que hace la otra: productos,
+     precios, stock, ventas, clientes, fiados, promociones, combos y cierres.
+     Cada caja cuadra su propio cajón.
+
+  d) FUNCIONA SIN INTERNET. Si se cae la conexión, se sigue vendiendo. Al
+     volver, todo se sincroniza solo. (Ver pendiente 11.1: hoy todavía hace
+     falta internet para INICIAR SESIÓN.)
+
+  e) EL DUEÑO ENTIENDE SU NEGOCIO. Un Centro Financiero que diga cuánto se
+     ganó de verdad, en qué se va la plata, qué productos dejan y cuáles no,
+     cuándo se vende más y quién anuló, devolvió o descuadró.
+
+  f) NO SE PIERDE NADA. Copias automáticas en el PC y fuera de él (USB o
+     Google Drive), y la nube como respaldo: si se daña un PC, se instala en
+     otro y baja todo.
+
+  g) CONTROL DE LICENCIA. El dueño de NovaPOS puede bloquear un cliente que no
+     paga, y no se puede saltar desconectando el internet.
+
+  h) COSTO DE NUBE CERO O MÍNIMO. Funcionar dentro del plan gratuito de
+     Firebase. Si algún día un cliente lo supera, que la cuenta sea del
+     cliente y no del dueño de NovaPOS.
+
+
+===============================================================================
+3. LO QUE HACE HOY (MÓDULO POR MÓDULO)
+===============================================================================
+
+3.1 Punto de venta (POS)
+  - Venta táctil con favoritos, categorías, buscador y lector de códigos de
+    barras (USB tipo teclado).
+  - Productos por unidad, por peso (kg) y por paquete/presentación (ej. "six
+    pack" o "bulto x 5", que descuenta las unidades reales del inventario).
+  - Productos por peso, dos modos (Ajustes -> Balanza):
+      * Con balanza conectada: la balanza digital (puerto COM / RS-232 / USB)
+        pone el peso sola. Se conecta automáticamente al abrir NovaPOS.
+      * Peso a mano: el cajero escribe kilos, gramos o el VALOR en pesos
+        ("deme $2.000 de tomate") y el sistema calcula los kilos. Hay atajos
+        (1/4 kg, 1/2 kg, $1.000, $5.000...) y muestra la cuenta antes de
+        agregar.
+      * Aun con balanza, siempre se puede escribir el peso a mano.
+  - Balanzas etiquetadoras: lee códigos EAN-13 con peso (prefijo 20) o precio
+    (prefijo 21).
+  - Pagos: efectivo, Nequi, Daviplata, tarjeta, transferencia, fiado (crédito
+    al cliente) y mixto (parte efectivo, parte digital).
+  - Promociones y "días de plaza" automáticos por día de la semana, por
+    producto, por categoría o para todo.
+  - Combos: un producto que agrupa varios; al venderlo descuenta el stock de
+    cada componente y su costo es la suma de los componentes.
+  - Bloqueo de productos sin stock (configurable).
+  - Ventas en espera (varios tickets abiertos a la vez).
+  - Impresión del ticket en impresora térmica 58/80 mm y apertura del cajón.
+  - Seguridad de precios: el sistema recalcula el total; un cajero no puede
+    cobrar menos del precio vigente.
+
+3.2 Caja (gestión de efectivo)
+  - Abrir turno con base, ingresar dinero (base extra, aporte, préstamo
+    recibido...) y registrar gastos.
+  - Cada gasto tiene categoría: nómina, adelanto, arriendo, servicios,
+    transporte, proveedor sin factura, insumos, mantenimiento, impuestos,
+    préstamo, retiro del dueño u otros.
+  - Asistente para pagar un pedido mayor al efectivo disponible (ingresa el
+    faltante y paga en una sola operación).
+  - Cierre de turno con conteo obligatorio, semáforo de cuadre (perfecto /
+    sobrante / faltante), ajuste automático y tirilla Z imprimible con
+    desglose por medio de pago y firmas.
+  - Historial de cierres y reimpresión.
+
+3.3 Ventas, devoluciones y anulaciones
+  - Historial de ventas por fecha.
+  - Devolución parcial o total de un artículo, con motivo. Muestra antes de
+    confirmar cuánto se devuelve y por qué medio.
+  - Anulación de una venta completa, con motivo; queda quién y cuándo.
+
+3.4 Inventario y compras
+  - Productos con costo, precio, stock, categoría, PLU, código de barras,
+    foto y presentaciones.
+  - Catálogo maestro de 136 productos típicos de fruver para arrancar.
+  - Importación masiva desde Excel.
+  - Compras a proveedores (actualiza stock y costo); pueden pagarse con la
+    caja (valida que haya fondos) o por fuera.
+  - Mermas (fruta dañada, madura, consumo) solo para el ADMIN; se pueden
+    pesar con la balanza.
+
+3.5 Clientes y fiados
+  - Clientes con cupo de crédito, deuda actual y movimientos (fiado, abono,
+    devolución, anulación). Los abonos en efectivo entran a la caja.
+
+3.6 Centro Financiero (Reportes)
+  Período (hoy, ayer, 7 días, 30 días, este mes, mes pasado, año o rango) y
+  filtro por cajero. Siete secciones:
+    - Panorama: estado de resultados Hoy / Mes / Año, inventario al costo,
+      cartera por cobrar y efectivo en la caja.
+    - Resultados: Ventas - Costo de lo vendido - Gastos - Mermas - Faltantes
+      = Utilidad neta, comparación con el período anterior, "¿en qué se fue
+      cada peso?" y gráfica día a día.
+    - Gastos y compras: gastos por categoría, compras por proveedor, flujo de
+      efectivo (entró / salió) y ventas por medio de pago.
+    - Rentabilidad: margen por categoría y producto, productos con margen
+      bajo y productos sin costo registrado.
+    - Ventas: más vendidos, hora pico, mejor día y mapa de calor.
+    - Control: anulaciones, devoluciones, mermas y descuadres, por persona.
+    - Cierres de caja: cuadrado / faltante / sobrante por turno, por cajero y
+      por caja, con detalle y reimpresión.
+  Exporta a Excel: informe del período y reportes de inventario, ventas,
+  compras, mermas y resumen Hoy/Mes/Año.
+
+3.7 Usuarios y seguridad
+  - El PIN de 6 dígitos es la contraseña real del usuario en Firebase.
+  - Bloqueo de 30 segundos tras 3 intentos fallidos; PINs débiles rechazados.
+  - El ADMIN crea cajeros y puede enviarles recuperación de PIN por correo.
+  - Mensajes claros al entrar: PIN incorrecto, sin internet, usuario
+    desactivado, perfil faltante en la nube, correo mal escrito.
+
+3.8 Configuración y primer uso
+  - Asistente de primer uso (5 pasos) para el ADMIN: datos del ticket
+    (precargados desde la nube), nombre de la caja, balanza e impresora con
+    ticket de prueba. Se puede repetir desde Ajustes -> Asistente.
+  - Ajustes en tres pestañas: Empresa y ticket, Hardware, Sistema y copias.
+  - Modo claro / oscuro y español / inglés.
+
+
+===============================================================================
+4. CÓMO FUNCIONA LA SINCRONIZACIÓN ENTRE VARIAS CAJAS
+===============================================================================
+
+4.1 La idea general
+  Cada caja tiene su propia base de datos en el PC (SQLite) y trabaja sobre
+  ella: por eso vende rápido y sin depender del internet. Todo lo que hace
+  queda en una "cola de salida" y se sube a la nube (Firestore) en cuanto hay
+  conexión. Las demás cajas del negocio "escuchan" la nube y aplican esos
+  cambios en su propia base.
+
+      Caja 1 --(sube)--> NUBE (negocios/<id>/...) --(escucha)--> Caja 2
+      Caja 2 --(sube)--> NUBE                     --(escucha)--> Caja 1
+
+  Cuándo sube: al momento de cada operación y, por si algo quedó pendiente,
+  cada 8 segundos. Sin internet, la cola se guarda y se sube al volver.
+
+  Cuándo baja: la caja escucha la nube todo el tiempo mientras está abierta.
+  Lo que hace la otra caja aparece en segundos.
+
+4.2 Qué se comparte entre cajas
+  - Productos: nombre, precio, costo, categoría, códigos, foto, combos (con
+    sus componentes) y paquetes/presentaciones.
+  - Stock: cada venta, compra, merma, devolución o anulación manda un
+    "movimiento de stock" (+/- cantidad). Las demás cajas lo suman o restan.
+    Así dos cajas pueden vender el mismo producto a la vez sin pisarse.
+  - Ventas completas (con detalle y medio de pago). Si se hace una
+    devolución o anulación, se sube el estado completo de la venta y todas
+    las cajas quedan iguales.
+  - Clientes y movimientos de fiado (la deuda se ajusta por movimiento).
+  - Compras a proveedores, mermas, promociones (crear, activar, desactivar y
+    eliminar) y devoluciones (para el reporte de Control).
+  - Movimientos de caja y cierres de turno: para que el dueño vea en el
+    Centro Financiero los gastos y cierres de TODAS las cajas.
+  - Fotos de productos: van a Cloudinary (gratis). Las del catálogo maestro
+    no se suben porque ya vienen en cada instalación.
+
+4.3 Qué NO se comparte (es de cada caja)
+  - El cuadre del cajón: cada caja solo cuenta SU efectivo. Los gastos y
+    cierres de la otra caja se ven en reportes, pero no entran a su cuadre.
+  - La configuración del equipo: impresora, balanza, nombre de la caja,
+    copias de seguridad.
+  - Los datos del ticket (empresa, NIT, dirección): se configuran en cada
+    caja (el asistente los precarga desde la nube).
+
+4.4 Sincronización incremental (desde la versión 1.7.0)
+  Cada vez que una caja escribe en la nube, el registro lleva la hora del
+  servidor ("sync_ts"). Cada caja recuerda hasta qué hora ya leyó cada tipo
+  de dato y, al abrirse, pide solo lo que cambió desde esa hora (con 30
+  minutos de margen; volver a aplicar algo ya aplicado no tiene efecto).
+  Antes, cada caja releía todo el historial del negocio al abrir, y con unos
+  meses de uso eso agotaba la cuota gratuita de Firebase en una sola
+  apertura.
+
+4.5 Caja nueva que se une a un negocio
+  1. Se instala NovaPOS y se entra con un usuario del negocio.
+  2. Si la caja no tiene productos, descarga una sola vez todo lo del
+     negocio: productos con su stock actual, clientes, fiados, ventas,
+     compras, mermas, promociones, movimientos, cierres y devoluciones.
+     Los movimientos de stock históricos no se descargan (ya están sumados
+     en el stock de cada producto).
+  3. Solo si la nube estaba vacía (negocio nuevo) se carga el catálogo
+     maestro de 136 productos.
+  4. Una caja nueva NUNCA pisa en la nube un producto que ya existe: los
+     precios y el stock del dueño se respetan.
+  5. Desde ahí queda escuchando solo los cambios nuevos.
+
+4.6 Reglas cuando dos cajas cambian lo mismo
+  - Stock: se suman los movimientos de las dos cajas (no se pierde ninguno).
+  - Producto, cliente o promoción editados en dos cajas: queda el cambio
+    más reciente.
+  - Ventas, cierres, gastos, devoluciones y mermas: nunca chocan; cada uno es
+    un registro nuevo con su propio identificador.
+  - Deuda de un cliente: se suma movimiento por movimiento (fiado, abono).
+
+4.7 Cierres con varias cajas
+  - Cada caja abre y cierra su propio turno con su propio efectivo.
+  - Cada cierre lleva el nombre de la caja ("Caja principal", "Caja 2",
+    "Caja frutas"...), que se pone en el asistente o en Ajustes.
+  - En el Centro Financiero -> Cierres de caja, el dueño ve los turnos de
+    todas las cajas, con faltantes y sobrantes por cajero y por caja.
+  - La tirilla Z muestra el desglose por medio de pago y "ventas globales"
+    (lo vendido en efectivo por todas las cajas desde la apertura).
+  - Una devolución de una venta de la Caja 1 hecha en la Caja 2 sale del
+    cajón de la Caja 2; la Caja 1 sigue cuadrando con lo que cobró.
+
+4.8 Condiciones para que funcione bien
+  - Todas las cajas de un negocio deben tener la MISMA versión (1.7.0 o
+    superior). Las versiones anteriores no marcan la hora del servidor y sus
+    cambios no les llegarían a las cajas nuevas.
+  - Cada caja necesita internet para iniciar sesión (pendiente 11.1) y para
+    sincronizar; sin internet sigue vendiendo con lo que tiene.
+  - La sincronización debe estar activa (Ajustes -> Sincronización entre
+    cajas; viene activa de fábrica).
+
+4.9 Protecciones contra malas sincronizaciones
+  - Subir dos veces lo mismo no tiene efecto: si se corta el internet justo
+    después de guardar en la nube y se reintenta (o se restaura una copia),
+    un movimiento de stock o de fiado no se suma dos veces.
+  - Un ajuste de inventario viejo o repetido no pisa el stock actual: cada
+    ajuste lleva su hora y la nube solo acepta uno más nuevo.
+  - Limpieza diaria: cada caja borra de la nube los movimientos de stock de
+    más de 60 días (el total ya está en cada producto) y, en el PC, los
+    registros internos ya subidos hace más de 7 días.
+  - Caja que estuvo más de 45 días sin conectarse: al volver toma el stock
+    de cada producto directamente de la nube.
+
+4.10 Cómo está probado
+  Hay pruebas automáticas con dos cajas reales (cada una con su propia base
+  de datos) contra una nube simulada: caja nueva que se une sin pisar nada;
+  venta, stock, devolución y cierre que llegan a la otra caja; combos y
+  paquetes; promociones creadas, desactivadas y eliminadas; y lectura
+  incremental al reabrir, limpieza de la nube, caja que vuelve tras 50 días
+  apagada y reintentos que no duplican stock ni deudas.
+
+
+===============================================================================
+5. DINERO Y CAJA: LAS REGLAS
+===============================================================================
+
+5.1 El cuadre es flujo de efectivo real
+  Efectivo esperado en el cajón =
+      base del turno
+    + efectivo cobrado en ventas de ESTA caja en el turno
+    + ingresos (bases extra, aportes, abonos de clientes...)
+    - gastos y compras pagadas con la caja
+    - efectivo entregado en devoluciones y anulaciones (de cualquier venta)
+
+  "Efectivo cobrado" se guarda al vender y no cambia después. Por eso:
+  - Devolver una venta de un turno anterior o de otra caja nunca descuadra:
+    el dinero sale del turno que está abierto ahora.
+  - Antes de entregar efectivo, el sistema valida que haya caja abierta y
+    fondos suficientes, y le dice al cajero cuánto entregar.
+
+5.2 Devoluciones
+  - El monto es proporcional a lo realmente cobrado en la línea (respeta
+    promociones); la devolución total devuelve exactamente lo cobrado.
+  - Efectivo: sale del cajón. Mixto: primero el efectivo, luego lo digital.
+    Fiado: se descuenta de la deuda. Digital: por el mismo medio.
+  - El inventario vuelve en sus unidades reales (un paquete de 6 devuelve 6;
+    un combo devuelve sus componentes).
+
+5.3 Pagos mixtos
+  Lo digital se toma exacto y el efectivo cubre el resto. Si el cliente
+  entregó efectivo de más, ese excedente fue cambio y no entra al cuadre.
+
+5.4 Estado de resultados (Centro Financiero)
+  Utilidad neta = Ventas netas - Costo de lo vendido - Gastos - Mermas -
+  Faltantes de caja (neto de sobrantes). El costo es el de cada unidad al
+  momento de venderla, así que las compras no restan el día que se pagan.
+  No restan de la utilidad: préstamos (deben volver) y retiros del dueño.
+
+
+===============================================================================
+6. LICENCIA Y BLOQUEO POR FALTA DE PAGO
+===============================================================================
+
+  Se controla en Firebase, en el documento del negocio (colección negocios):
+  - estado = "bloqueada": la caja se bloquea en máximo 10 minutos (revisa la
+    licencia cada 10 minutos mientras está abierta) o al iniciar sesión.
+  - licencia_fin = fecha: avisa 15, 7, 3 y 1 día antes; al vencer se bloquea.
+  - financiado = true: además, si la caja pasa 72 horas sin internet se
+    suspende (no se puede usar "desconectándola"). En Android activa el modo
+    kiosco de bloqueo.
+  - Para desbloquear: estado = "activa" o correr la fecha de licencia_fin.
+
+  Protecciones (probadas):
+  - Si ya se supo del bloqueo o vencimiento, sigue bloqueada sin internet.
+  - Atrasar el reloj del PC bloquea.
+  - Borrar la marca de última conexión en un equipo financiado bloquea.
+  - "Restablecer de fábrica" no quita el bloqueo.
+  - Hoy, para iniciar sesión siempre hace falta internet, y en ese momento se
+    revisa la licencia en la nube.
+
+
+===============================================================================
+7. COPIAS DE SEGURIDAD Y RECUPERACIÓN
+===============================================================================
+
+  - Copia automática de la base completa en Documentos\NovaPOS_Backups, al
+    cerrar caja (recomendado), una vez al día o semanal. Conserva las 1, 3 o
+    5 más recientes.
+  - Cada copia es una "foto" consistente de la base (aunque se esté
+    vendiendo) y se verifica antes de darla por buena.
+  - Copia extra fuera del PC: se elige una USB o la carpeta de Google Drive /
+    OneDrive de escritorio, y cada copia se guarda también allí (allí se
+    conservan al menos las 7 últimas). Una carpeta por caja.
+  - Si la carpeta extra no está disponible (USB desconectada, Drive cerrado),
+    la copia del PC se hace igual y se avisa en Ajustes y en el inicio.
+  - Las copias NO usan Firebase: no consumen nada del plan gratuito.
+  - Aviso en el inicio (para el ADMIN) si nunca se ha hecho copia, si la
+    última tiene 3 días o más, o si las copias solo están en el PC.
+  - Restaurar: Ajustes -> Sistema & Backup. Antes de reemplazar, verifica que
+    el archivo sea una copia de NovaPOS y guarda la base actual como
+    ..._antes_de_restaurar_<fecha>.db. Una copia de una versión anterior se
+    actualiza sola. Con internet, lo hecho después de la copia vuelve a bajar
+    de la nube. Nunca restaurar la copia de una caja en otra que siga en uso.
+  - La nube también es respaldo: en un PC nuevo, al entrar, baja todo lo
+    sincronizado (no baja la configuración del equipo).
+  - Exportación a Excel de inventario, ventas, compras, mermas e informes.
+
+
+===============================================================================
+8. NUBE: FIREBASE, COSTOS Y PLAN GRATUITO
+===============================================================================
+
+  Proyecto: novapos-bc9d3. Hoy está en el plan GRATUITO (Spark).
+
+  Qué se usa:
+  - Firebase Auth (inicio de sesión con correo y PIN): gratis.
+  - Firestore (datos compartidos entre cajas): gratis hasta aprox. 50.000
+    lecturas y 20.000 escrituras por día, POR PROYECTO.
+  - Cloudinary para fotos (cuenta gratuita, ya configurada de fábrica).
+  - Firebase Storage solo como respaldo de fotos (requiere Blaze; si falla,
+    no afecta).
+  - No se usan Cloud Functions.
+
+  Consumo aproximado:
+  - Lecturas: con la sincronización incremental, cada caja lee solo lo que
+    cambió (antes leía todo el historial en cada apertura).
+  - Escrituras: cada venta cuesta 1 + 2 por cada producto (una venta de 4
+    productos = 9 escrituras). Una caja con unas 200 ventas diarias consume
+    unas 1.800 escrituras por día.
+
+  Espacio: el plan gratuito da 1 GB por proyecto. Un cliente con 2 cajas y
+  unas 200 ventas diarias usa aprox. 150-200 MB al año en ventas; los
+  movimientos de stock se borran solos a los 60 días.
+
+  Importante: la cuota gratis la comparten TODOS los clientes del mismo
+  proyecto. Para los primeros clientes alcanza. Al crecer, lo recomendado es
+  un proyecto de Firebase por cliente: cada uno con su propia cuota gratis
+  y, si algún día la supera, la factura es del cliente.
+
+  Si un día se acaba la cuota: la nube rechaza hasta la madrugada siguiente;
+  las cajas siguen vendiendo con su base local y sincronizan al día siguiente.
+
+  Blaze (pago por uso): incluye la misma cuota gratis y cobra solo lo que la
+  supere; exige tarjeta. Si se activa, configurar alerta de presupuesto.
+
+
+===============================================================================
+9. INSTALACIÓN EN UN CLIENTE (RESUMEN)
+===============================================================================
+
+  Antes (en la oficina):
+  1. En el PC con Windows: git pull, flutter build windows --release y
+     compilar installer/NovaPOS_setup.iss con Inno Setup.
+  2. En Firebase: crear el usuario en Authentication (correo + PIN de 6
+     dígitos), el documento del negocio en "negocios" (nombre, nit,
+     direccion, estado = activa, licencia_fin, financiado) y el perfil en
+     "usuarios" con ID = UID del usuario (email, nombre, rol = ADMIN,
+     negocio_id, esta_activo = true).
+
+  Donde el cliente:
+  3. Instalar en un PC LIMPIO (si tuvo NovaPOS, usar "Restablecer de
+     fábrica" antes de entrar con la cuenta del cliente).
+  4. Si falta VCRUNTIME140.dll, instalar Microsoft Visual C++ Redistributable.
+  5. Entrar con correo y PIN (con internet) y seguir el asistente.
+  6. Cargar productos y costos; crear los cajeros.
+  7. Segunda caja: instalar, entrar con un usuario del mismo negocio y
+     ponerle otro nombre en el asistente (ej. "Caja 2").
+  8. Prueba completa: abrir caja, vender (efectivo y Nequi), devolver, gasto,
+     cerrar e imprimir Z; ver el Centro Financiero. Anular las ventas de
+     prueba al terminar.
+  9. Configurar la copia extra a USB o Google Drive.
+
+
+===============================================================================
+10. ÚLTIMOS CAMBIOS REALIZADOS
+===============================================================================
+
+  Versión 1.7.0 (21-oct-2026) - Varias cajas en el plan gratuito
+  - Sincronización incremental (solo lo nuevo) y caja nueva que no descarga
+    el historial de stock.
+  - Corregido: una caja nueva quedaba con todo AGOTADO y pisaba los precios
+    del dueño en la nube.
+  - Corregido: combos y paquetes no llegaban completos a la otra caja.
+  - Corregido: crear, editar o activar promociones fallaba; eliminar una no
+    la quitaba de las otras cajas.
+  - Corregido: el stock en kilos se truncaba al sincronizar.
+  - Corregido: "Restablecer de fábrica" dejaba datos por subir que iban a
+    parar al siguiente negocio.
+  - Nuevo: peso manual (kilos, gramos o por valor) o con balanza, que se
+    conecta sola. Quitado el botón de prueba "SIMULAR PESO" para cajeros.
+  - Nuevo: asistente de primer uso, nombre de cada caja, copia extra a USB o
+    Google Drive con aviso, mensajes claros al iniciar sesión.
+  - Base de datos v14.
+  - Limpieza automática de la nube (movimientos de stock de más de 60 días)
+    y reconciliación del stock para cajas que vuelven tras mucho tiempo.
+  - Subidas sin duplicados: stock, fiados y ajustes de inventario.
+  - Copias de seguridad consistentes y verificadas; restauración que valida
+    el archivo y guarda la base actual antes de reemplazarla.
+
+  Versión 1.6.0 (21-oct-2026) - Centro Financiero
+  - Nuevo Centro Financiero con 7 secciones y exportación a Excel.
+  - Cuadre de caja como flujo de efectivo real; devoluciones y anulaciones de
+    cualquier turno o caja sin descuadre.
+  - Corregido: devoluciones de paquetes, pagos mixtos con excedente, combos
+    que no descontaban componentes, cierre sin conteo, compras con caja sin
+    fondos, ventas sincronizadas sin desglose de pago.
+  - Gastos con categoría; motivo y responsable en devoluciones y anulaciones.
+  - Base de datos v13 (migración automática sin pérdida de datos).
+
+  Versión 1.5.0 y anteriores: ver CHANGELOG.md.
+
+  Pruebas automáticas: 101, todas pasando (flutter test).
+
+
+===============================================================================
+11. PENDIENTES Y PRÓXIMOS PASOS
+===============================================================================
+
+  11.1 Iniciar sesión sin internet (prioridad alta)
+       Hoy, si se cierra la app y no hay internet, no se puede volver a
+       entrar aunque solo pida el PIN (la entrada siempre se valida con
+       Firebase). Propuesta: guardar en el PC una huella cifrada del PIN de
+       los usuarios que ya entraron con internet y permitir la entrada sin
+       conexión, respetando la licencia guardada (bloqueada, vencida y 72 h
+       para financiados).
+
+  11.2 Validar en hardware real con dos cajas sincronizadas (Windows +
+       tablet), incluyendo impresora, cajón y balanza.
+
+  11.3 Reducir escrituras en la nube: incluir los movimientos de stock dentro
+       de la venta (aprox. la mitad de escrituras por venta).
+
+  11.4 Un proyecto de Firebase por cliente (cuando haya varios clientes):
+       que la app lea la configuración de Firebase desde el equipo en lugar
+       de tenerla fija en el instalador.
+
+  11.5 Compilación automática del .exe y del APK con GitHub Actions al subir
+       una versión (no depender de tener el PC con Windows a mano).
+
+  11.6 Android: activar el modo kiosco con el comando adb en la tablet real.
+
+  11.7 Subir a GitHub los últimos commits.
+
+  11.8 Hacer la auditoría con hardware real: ver GUIA_DE_AUDITORIA.txt.
+
+
+===============================================================================
+12. DATOS TÉCNICOS DE REFERENCIA
+===============================================================================
+
+  Tecnología: Flutter (Dart), SQLite local (sqflite), Firebase Auth +
+  Cloud Firestore, Cloudinary, impresión con pdf/printing, balanza serial
+  con flutter_libserialport, Excel con el paquete excel.
+
+  Archivos clave:
+    lib/database/db_helper.dart ........ base local, ventas, caja, migraciones
+    lib/services/sync_service.dart ..... sincronización entre cajas
+    lib/services/finanzas_service.dart . cálculos del Centro Financiero
+    lib/services/license_monitor.dart .. licencia y bloqueo
+    lib/services/auto_backup_service.dart copias de seguridad
+    lib/screens/pos_screen.dart ........ punto de venta
+    lib/screens/cash_control_screen.dart caja
+    lib/screens/reports_screen.dart .... Centro Financiero
+    lib/screens/asistente_inicio_screen.dart asistente de primer uso
+    firestore.rules .................... reglas de seguridad de la nube
+
+  Colecciones en la nube (negocios/<id>/...):
+    productos, stock_ops, ventas, compras, clientes, cartera, mermas,
+    promociones, caja_movimientos, cierres, devoluciones.
+  Fuera del negocio: usuarios/<uid> (perfil y rol) y negocios/<id>
+  (licencia).
+
+  Base local: archivo mifruver_sistema_v12_imagenes_ok.db en
+  Documentos\Sistema_Fruver_Data (el nombre del archivo se conserva por
+  compatibilidad; la versión real del esquema es 14).
+
+  Comandos:
+    flutter test ........................ correr las 101 pruebas
+    flutter build windows --release ..... compilar para Windows
+    flutter build apk --release ......... compilar para Android
+    ISCC.exe installer\NovaPOS_setup.iss  generar el instalador
+
+  Notas para desarrollo en Mac (no van a GitHub):
+    - pubspec.yaml lleva al final un bloque local "hooks: user_defines:
+      sqlite3: source: system" por el firewall de la red. No se sube.
+    - pubspec.lock y los archivos de macos/ios tienen ajustes de este Mac
+      (Team ID de Apple). No se suben.
+
+===============================================================================
+                                 FIN DEL DOCUMENTO
+===============================================================================

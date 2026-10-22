@@ -450,6 +450,8 @@ CREATE TABLE roles_permisos(
     }
     if (stockRecon) {
       payload['stock_recon'] = (p['stock_actual'] as num?)?.toDouble() ?? 0;
+      // Hora del ajuste: la nube no acepta un ajuste más viejo o repetido.
+      payload['stock_recon_epoch'] = DateTime.now().millisecondsSinceEpoch;
     }
     if (semilla) payload['semilla'] = true;
     await encolarPendiente('PRODUCTO', p['uuid'] as String, jsonEncode(payload));
@@ -2368,6 +2370,7 @@ CREATE TABLE roles_permisos(
         'esta_activo': p['esta_activo'] ?? 1,
         'imagen_path': p['imagen_path'],
         'stock_recon': (p['stock_actual'] as num?)?.toDouble() ?? 0,
+        'stock_recon_epoch': DateTime.now().millisecondsSinceEpoch,
         'actualizado_epoch': DateTime.now().millisecondsSinceEpoch,
         'dispositivo_uuid': dispositivoUuid,
         'semilla': true,
@@ -3570,42 +3573,85 @@ CREATE TABLE roles_permisos(
 
   // --- COPIAS DE SEGURIDAD (BACKUP Y RESTAURACIÓN) ---
   Future<String> obtenerRutaBaseDatos() async {
+    // La del archivo abierto (es la misma que calcula _initDB).
+    final abierta = _database?.path;
+    if (abierta != null && abierta.isNotEmpty && abierta != inMemoryDatabasePath) {
+      return abierta;
+    }
     final directory = await getApplicationDocumentsDirectory();
     final rutaCarpeta = Directory(join(directory.path, 'Sistema_Fruver_Data'));
     return join(rutaCarpeta.path, 'mifruver_sistema_v12_imagenes_ok.db');
   }
 
+  /// Genera una copia completa y consistente de la base en [rutaDestino],
+  /// aunque la app esté vendiendo en ese momento (VACUUM INTO hace una foto
+  /// de la base sin depender de lo que esté a medio escribir). Antes se
+  /// copiaba el archivo directamente y la copia podía quedar incompleta.
   Future<bool> exportarBackup(String rutaDestino) async {
     try {
       final db = await database;
+      final destino = File(rutaDestino);
+      if (await destino.exists()) await destino.delete();
       try {
-        await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
-      } catch (_) {}
-
-      final origenPath = await obtenerRutaBaseDatos();
-      final archivoOrigen = File(origenPath);
-      if (!await archivoOrigen.exists()) return false;
-
-      final archivoDestino = File(rutaDestino);
-      await archivoOrigen.copy(archivoDestino.path);
-      return true;
+        await db.execute('VACUUM INTO ?', [rutaDestino]);
+      } catch (e) {
+        debugPrint('VACUUM INTO no disponible, se copia el archivo: $e');
+        try {
+          await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+        } catch (_) {}
+        final origen = File(await obtenerRutaBaseDatos());
+        if (!await origen.exists()) return false;
+        await origen.copy(rutaDestino);
+      }
+      final ok = await esCopiaValida(rutaDestino);
+      if (!ok && await destino.exists()) await destino.delete();
+      return ok;
     } catch (e) {
       debugPrint('Error exportando backup: $e');
       return false;
     }
   }
 
+  /// Un archivo es una copia válida de NovaPOS si SQLite lo lee sin errores
+  /// y tiene las tablas principales.
+  Future<bool> esCopiaValida(String ruta) async {
+    Database? copia;
+    try {
+      if (!await File(ruta).exists()) return false;
+      copia = await databaseFactory.openDatabase(
+        ruta,
+        options: OpenDatabaseOptions(readOnly: true, singleInstance: false),
+      );
+      final check = await copia.rawQuery('PRAGMA quick_check');
+      if (check.isEmpty || check.first.values.first.toString() != 'ok') return false;
+      final tablas = (await copia.rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'"))
+          .map((t) => t['name'].toString())
+          .toSet();
+      return tablas.containsAll(['productos', 'ventas', 'caja_movimientos', 'configuracion']);
+    } catch (e) {
+      debugPrint('Copia no válida ($ruta): $e');
+      return false;
+    } finally {
+      await copia?.close();
+    }
+  }
+
+  /// Reemplaza la base con una copia. Primero verifica que sea una copia de
+  /// NovaPOS y guarda la base actual al lado ("..._antes_de_restaurar"), para
+  /// poder deshacer si se eligió la copia equivocada.
   Future<bool> restaurarBackup(String rutaArchivoBackup) async {
     try {
-      final archivoBackup = File(rutaArchivoBackup);
-      if (!await archivoBackup.exists()) return false;
+      if (!await esCopiaValida(rutaArchivoBackup)) return false;
+      final destinoPath = await obtenerRutaBaseDatos();
+      final marca = DateTime.now().toIso8601String().replaceAll(RegExp(r'[^0-9]'), '').substring(0, 14);
+      await exportarBackup('${destinoPath}_antes_de_restaurar_$marca.db');
 
       if (_database != null) {
         await _database!.close();
         _database = null;
       }
 
-      final destinoPath = await obtenerRutaBaseDatos();
+      final archivoBackup = File(rutaArchivoBackup);
       final archivoDestino = File(destinoPath);
       await archivoBackup.copy(archivoDestino.path);
 
@@ -3614,13 +3660,19 @@ CREATE TABLE roles_permisos(
       final shmFile = File('$destinoPath-shm');
       if (await shmFile.exists()) await shmFile.delete();
 
-      _database = await _initDB();
+      // Se reabre el mismo archivo, con la misma migración de la app (una
+      // copia de una versión anterior se actualiza sola).
+      _database = await databaseFactory.openDatabase(
+        destinoPath,
+        options: OpenDatabaseOptions(version: 14, onCreate: _createDB, onUpgrade: _upgradeDB),
+      );
       return true;
     } catch (e) {
       debugPrint('Error restaurando backup: $e');
       return false;
     }
   }
+
 
   /// Carga el catálogo maestro de ~120 productos de Fruver y Minimarket
   /// con códigos PLU, costos, precios y categorías colombianas.

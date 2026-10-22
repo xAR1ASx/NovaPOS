@@ -1,0 +1,373 @@
+===============================================================================
+                        NOVAPOS - GUÍA DE AUDITORÍA
+               Verificación paso a paso de la versión 1.7.0
+===============================================================================
+
+Fecha de la guía .......... 21 de octubre de 2026
+Versión a auditar ......... 1.7.0 (base de datos local v14)
+Documento relacionado ..... DOCUMENTO_DE_LA_VERDAD.txt
+
+Para qué sirve: revisar, con los equipos reales, que todo lo que se hizo
+funciona como debe antes de instalarlo en clientes. Cada prueba dice qué hacer
+y qué debe pasar. Marque [OK] o [FALLA] y anote lo que vea. Si algo falla,
+anote el paso exacto, la hora y una foto de la pantalla.
+
+Las pruebas automáticas (101) ya pasan en el código (comando: flutter test).
+Esta guía es la prueba con hardware, internet y personas reales.
+
+
+-------------------------------------------------------------------------------
+0. PREPARACIÓN
+-------------------------------------------------------------------------------
+
+  Necesita:
+  - 2 PCs con Windows 10/11 (Caja 1 y Caja 2). Ideal: además una tablet Android.
+  - Instalador NovaPOS-Setup-1.7.0.exe (compilado desde la rama main).
+  - Un NEGOCIO DE PRUEBA en Firebase (no use el de un cliente real):
+      * Authentication: usuario admin.prueba@... con PIN de 6 dígitos.
+      * Firestore -> negocios -> documento nuevo: nombre, nit, direccion,
+        estado = activa, licencia_fin = (fecha en 30 días), financiado = false.
+      * Firestore -> usuarios -> documento con ID = UID del usuario:
+        email, nombre, rol = ADMIN, negocio_id = (ID del negocio),
+        esta_activo = true.
+  - Google Drive para escritorio instalado en la Caja 1 y con sesión iniciada
+    (crea una unidad, normalmente G:, con la carpeta "Mi unidad").
+  - Una memoria USB.
+  - Impresora térmica y, si hay, balanza conectada.
+  - Acceso a la consola de Firebase (console.firebase.google.com).
+
+  Anote antes de empezar:
+    Fecha: ______________   Auditor: ______________________________
+    Equipo Caja 1: _______________   Equipo Caja 2: _______________
+
+
+-------------------------------------------------------------------------------
+1. INSTALACIÓN Y PRIMER USO
+-------------------------------------------------------------------------------
+
+  1.1 Instalar en la Caja 1 (PC limpio).
+      Debe: instalar sin errores. Si sale "VCRUNTIME140.dll", instalar
+      Microsoft Visual C++ Redistributable x64 y volver a abrir.        [   ]
+
+  1.2 Entrar con correo y PIN del administrador (con internet).
+      Debe: abrir el ASISTENTE DE PRIMER USO (5 pasos).                  [   ]
+
+  1.3 Paso "Tu negocio": revisar que el nombre, NIT y dirección vengan
+      precargados de Firebase. Escribir "Caja 1" como nombre de la caja.
+      Si se borra el nombre del negocio y se toca Siguiente, debe pedirlo.[   ]
+
+  1.4 Paso balanza: elegir el modo que corresponda (ver sección 3).      [   ]
+
+  1.5 Paso impresora: "Buscar impresoras", elegirla e "Imprimir un ticket
+      de prueba". Debe salir el ticket con los datos del negocio.        [   ]
+
+  1.6 "Ir a vender". Cerrar la app y volver a entrar: el asistente NO debe
+      salir de nuevo. Ajustes -> botón "Asistente" lo vuelve a abrir.    [   ]
+
+  1.7 Inventario: deben aparecer los 136 productos del catálogo (negocio
+      nuevo), con stock 0.                                               [   ]
+
+
+-------------------------------------------------------------------------------
+2. INICIO DE SESIÓN Y MENSAJES
+-------------------------------------------------------------------------------
+
+  2.1 PIN equivocado -> "PIN incorrecto". Tres veces -> bloqueo de 30 s.  [   ]
+  2.2 Correo mal escrito (sin @) -> mensaje de correo mal escrito.        [   ]
+  2.3 Desconectar el internet y tratar de entrar -> mensaje de sin
+      conexión (hoy no se puede entrar sin internet; es un pendiente).    [   ]
+  2.4 En Firebase, poner esta_activo = false al usuario -> al entrar debe
+      decir que el usuario está desactivado (NO "PIN incorrecto").
+      Volver a poner true.                                               [   ]
+
+
+-------------------------------------------------------------------------------
+3. BALANZA
+-------------------------------------------------------------------------------
+
+  Modo "Escribir el peso a mano" (Ajustes -> Balanza):
+  3.1 En el POS, tocar un producto por kilo (ej. Tomate).
+      Debe: ventana con Kilos / Gramos / Por valor $, atajos y la cuenta.  [   ]
+  3.2 Kilos: escribir 0,75 -> "0,750 Kg x precio = total". Agregar.        [   ]
+  3.3 Gramos: escribir 500 -> 0,500 Kg.                                    [   ]
+  3.4 Por valor: escribir 2000 -> calcula los kilos. Agregar.              [   ]
+  3.5 NO debe aparecer el botón "SIMULAR PESO".                            [   ]
+
+  Modo "Con balanza conectada" (si hay balanza):
+  3.6 Elegir puerto y Probar conexión. Cerrar y abrir NovaPOS.
+      Debe: la balanza se conecta sola (sin entrar a Ajustes).             [   ]
+  3.7 Poner un producto en la balanza: el peso aparece en vivo y "USAR ESTE
+      PESO" lo agrega. "Escribir el peso a mano" también funciona.        [   ]
+  3.8 Desconectar la balanza: debe decir "no está conectada" y ofrecer
+      "Reintentar conexión" y escribir a mano.                             [   ]
+
+
+-------------------------------------------------------------------------------
+4. DINERO: VENTAS, DEVOLUCIONES, ANULACIONES Y CIERRE
+-------------------------------------------------------------------------------
+
+  Use números redondos y anote lo que muestra la caja en cada paso.
+
+  4.1 Abrir caja con base $100.000.             Esperado en caja: $100.000 [   ]
+  4.2 Vender 2 unidades de un producto de $10.000 en efectivo ($20.000).
+                                                Esperado: $120.000         [   ]
+  4.3 Vender $10.000 por Nequi.                 Esperado: sigue $120.000   [   ]
+  4.4 Venta mixta de $50.000: efectivo $30.000 + Nequi $25.000 (sobran
+      $5.000 de cambio).                        Esperado: $145.000         [   ]
+  4.5 Historial de ventas -> venta de 4.2 -> devolver 1 de las 2 unidades
+      (motivo "prueba"). La ventana debe mostrar "A devolver $10.000" antes
+      de confirmar.
+                                                Esperado: $135.000         [   ]
+  4.6 Registrar gasto $5.000 categoría "Bolsas, aseo e insumos".
+                                                Esperado: $130.000         [   ]
+  4.7 Cerrar turno: tocar CONFIRMAR sin escribir el conteo.
+      Debe: NO cerrar y pedir el conteo.                                   [   ]
+  4.8 Contar $129.000 (faltan $1.000) y cerrar. Imprimir la tirilla Z.
+      Debe: estado FALTANTE $1.000 y desglose por medio de pago.          [   ]
+  4.9 Abrir caja nueva con base $50.000. Anular la venta de 4.4 (de un
+      turno ya cerrado). Debe avisar cuánto entregar ($25.000) y la caja
+      queda en $25.000. El cierre anterior NO cambia.                     [   ]
+  4.10 Intentar anular otra venta en efectivo mayor a lo que hay en la caja.
+      Debe: rechazar por fondos insuficientes y no cambiar nada.          [   ]
+
+
+-------------------------------------------------------------------------------
+5. CENTRO FINANCIERO
+-------------------------------------------------------------------------------
+
+  5.1 Reportes -> las 7 secciones abren sin errores en el PC y en la tablet.[   ]
+  5.2 Resultados (Hoy): ventas, costo, gastos, mermas y ganancia coherentes
+      con lo hecho en la sección 4. La devolución y la anulación aparecen en
+      "Para tener en cuenta".                                              [   ]
+  5.3 Control: aparecen la anulación (con quién y motivo), la devolución
+      (con motivo) y el descuadre de $1.000.                               [   ]
+  5.4 Cierres de caja: el turno con faltante de $1.000 y el turno en curso,
+      con el nombre "Caja 1".                                              [   ]
+  5.5 Exportar a Excel -> "Informe financiero del período": abre en Excel
+      con todas las hojas.                                                 [   ]
+
+
+-------------------------------------------------------------------------------
+6. SINCRONIZACIÓN ENTRE CAJAS
+-------------------------------------------------------------------------------
+
+  6.1 Instalar en la Caja 2 y entrar con un usuario del MISMO negocio.
+      En el asistente, nombre de caja "Caja 2".
+      Debe: bajan los productos del negocio, SIN duplicar el catálogo.      [   ]
+  6.2 En la Caja 1, poner a un producto precio $9.999 y stock 40. En la
+      Caja 2, en segundos: precio $9.999 y stock 40 (no "AGOTADO").         [   ]
+  6.3 Vender 3 unidades en la Caja 1 -> en la Caja 2 el stock baja a 37 y la
+      venta aparece en el historial.                                       [   ]
+  6.4 Vender a la vez el mismo producto en las dos cajas -> el stock final
+      descuenta las dos ventas.                                            [   ]
+  6.5 Devolver en la Caja 2 una venta de la Caja 1 (en efectivo):
+      el dinero sale del cajón de la Caja 2; la Caja 1 sigue cuadrando; en
+      la Caja 1 la venta queda con el total nuevo.                         [   ]
+  6.6 Crear un cliente con fiado en la Caja 1 -> aparece en la Caja 2 con
+      la misma deuda. Abonar en la Caja 2 -> la deuda baja en la Caja 1.   [   ]
+  6.7 Crear un combo y un paquete en la Caja 1 -> en la Caja 2 aparecen
+      completos y al vender el combo se descuentan sus componentes.       [   ]
+  6.8 Crear una promoción en la Caja 1 -> aplica en la Caja 2. Desactivarla
+      -> deja de aplicar. Eliminarla -> desaparece en la Caja 2.          [   ]
+  6.9 Cerrar turno en la Caja 2 -> en el Centro Financiero de la Caja 1
+      aparece el cierre con el nombre "Caja 2".                            [   ]
+  6.10 Sin internet en la Caja 2: vender 2 productos. Volver a conectar.
+      Debe: en menos de un minuto llegan a la Caja 1 (ventas y stock).    [   ]
+  6.11 Apagar la Caja 2, vender en la Caja 1, prender la Caja 2.
+      Debe: se pone al día sola al abrir.                                  [   ]
+
+
+-------------------------------------------------------------------------------
+7. LICENCIA Y BLOQUEO
+-------------------------------------------------------------------------------
+
+  7.1 En Firebase poner estado = bloqueada. Con la app abierta, esperar
+      hasta 10 minutos. Debe: cerrar sesión y mostrar la pantalla de bloqueo.
+      Volver a poner "activa" y entrar.                                    [   ]
+  7.2 Poner licencia_fin = ayer -> al entrar: licencia vencida. Restaurar.[   ]
+  7.3 Poner licencia_fin = dentro de 3 días -> aviso "vence en 3 días".   [   ]
+  7.4 (Opcional) financiado = true y dejar la caja 72 h sin internet ->
+      debe suspenderse.                                                    [   ]
+  7.5 Atrasar la hora del PC un día -> debe bloquear por reloj modificado.
+      Volver a poner la hora correcta.                                     [   ]
+
+
+-------------------------------------------------------------------------------
+8. COPIAS DE SEGURIDAD (CON ATENCIÓN ESPECIAL A GOOGLE DRIVE)
+-------------------------------------------------------------------------------
+
+  Cómo funciona (para entender lo que se audita):
+  - NovaPOS hace la copia de toda la base (ventas, inventario, caja,
+    clientes...) como una "foto" consistente, aunque la caja esté vendiendo.
+  - Cada copia se VERIFICA antes de darla por buena (si sale dañada, se
+    descarta y se avisa).
+  - Se guarda en Documentos\NovaPOS_Backups (en el PC) y, si se configura,
+    también en una CARPETA EXTRA: una USB o la carpeta de Google Drive para
+    escritorio. Google Drive sube el archivo a la nube de Google solo.
+  - Nombre de los archivos: NovaPOS_AutoBackup_AAAAMMDD_HHMM.db
+  - En el PC se conservan las 3 más recientes (configurable 1/3/5); en la
+    carpeta extra, al menos 7.
+  - Estas copias NO usan Firebase: no consumen nada del plan gratuito.
+
+  8.1 Configurar la carpeta de Drive
+      a) Ajustes -> pestaña "Sistema & Backup" -> tarjeta "Copia extra fuera
+         del PC" -> "Elegir carpeta".
+      b) Elegir (o crear) G:\Mi unidad\NovaPOS_Copias\Caja 1
+         (una carpeta por caja, para no mezclar copias de cajas distintas).
+      Debe: mensaje "Listo: se hizo una copia en la carpeta elegida" y la
+      tarjeta en verde "Copia extra fuera del PC: activa".                 [   ]
+
+  8.2 Ver el archivo en el PC
+      Abrir G:\Mi unidad\NovaPOS_Copias\Caja 1 en el Explorador.
+      Debe: un archivo NovaPOS_AutoBackup_....db de más de 0 KB.           [   ]
+
+  8.3 Ver el archivo en la nube de Google
+      Entrar a drive.google.com con la misma cuenta -> Mi unidad ->
+      NovaPOS_Copias -> Caja 1.
+      Debe: el mismo archivo (puede tardar unos minutos en subir).         [   ]
+
+  8.4 Copia automática al cerrar caja
+      Frecuencia "En cada Cierre de Caja". Abrir y cerrar un turno.
+      Debe: aparece un archivo nuevo en Documentos\NovaPOS_Backups y otro en
+      la carpeta de Drive, con la hora del cierre.                         [   ]
+
+  8.5 Copia diaria
+      Frecuencia "Una vez al día". Cerrar y abrir NovaPOS.
+      Debe: si la última copia tiene más de 20 horas, se hace una al abrir.
+      Si es de hace un rato, no se repite.                                 [   ]
+
+  8.6 Rotación
+      Tocar 9 veces "Crear Respaldo Ahora" (Ajustes -> Sistema & Backup).
+      Debe: en el PC quedan solo las 3 últimas; en Drive las 7 últimas.    [   ]
+
+  8.7 Carpeta no disponible (USB desconectada o Drive cerrado)
+      a) Configurar la carpeta extra en la USB, hacer una copia (OK).
+      b) Retirar la USB y cerrar un turno.
+      Debe: la copia en el PC se hace igual; en Ajustes la tarjeta muestra
+      el error ("No se encontró la carpeta... ¿la USB está conectada?") y
+      en la pantalla de inicio sale el aviso naranja de copia.             [   ]
+      c) Conectar la USB y hacer otra copia -> el error desaparece.        [   ]
+
+  8.8 Aviso en la pantalla de inicio (solo para el ADMIN)
+      - Sin carpeta extra configurada: "Las copias se guardan solo en este
+        PC. Configura una USB o Google Drive."                             [   ]
+      - Con la última copia de hace 3 días o más: "La última copia de
+        seguridad es de hace N días." (se puede probar adelantando la
+        fecha de ultimo_backup_auto_fecha o esperando).                    [   ]
+      - Un cajero NO ve este aviso.                                        [   ]
+
+  8.9 Exportar una copia manual
+      Ajustes -> Sistema & Backup -> "Exportar Copia Manual a USB u otra
+      carpeta" -> elegir dónde guardarla.
+      Debe: el archivo se guarda; mientras se hace, la caja puede seguir
+      vendiendo en el otro PC sin problema.                                [   ]
+
+  8.10 Restaurar una copia válida (en la Caja 1)
+      a) Anotar cuántas ventas hay hoy (Historial de ventas): ______
+      b) Hacer una copia (8.9). Hacer 2 ventas más.
+      c) Ajustes -> Sistema & Backup -> "Restaurar desde archivo externo
+         (.db)" -> elegir la copia del paso b.
+      Debe: el aviso explica que se reemplazan los datos de ESTA caja, que
+      se guarda antes la base actual y que con internet vuelve lo hecho
+      después. Al terminar pide cerrar y abrir NovaPOS.                    [   ]
+      d) Cerrar y abrir NovaPOS (con internet).
+      Debe: las 2 ventas hechas después de la copia vuelven a aparecer
+      (bajan de la nube) y el stock queda correcto.                        [   ]
+      e) En Documentos\Sistema_Fruver_Data debe existir el archivo
+      ..._antes_de_restaurar_<fecha>.db (la base que había antes).         [   ]
+
+  8.11 Restaurar un archivo que NO es copia de NovaPOS
+      Renombrar una foto o un .txt a "prueba.db" y tratar de restaurarlo.
+      Debe: "Ese archivo no es una copia válida de NovaPOS... No se cambió
+      nada." y los datos siguen intactos.                                  [   ]
+
+  8.12 Recuperar un PC dañado (simulación)
+      a) En un PC limpio, instalar NovaPOS y entrar con el usuario.
+      Debe: baja todo lo sincronizado (productos, stock, clientes, ventas,
+      cierres) aunque no se restaure ninguna copia.                        [   ]
+      b) Alternativa sin internet: restaurar la última copia desde la
+      carpeta de Drive (descargándola de drive.google.com).                [   ]
+
+  REGLAS PARA EL CLIENTE (verificar que se le expliquen):
+  - Una carpeta de copias por caja (Caja 1, Caja 2...).
+  - NUNCA restaurar la copia de una caja en otra caja que siga en uso.
+  - No restaurar copias de más de 2 meses en una caja que esté sincronizada.
+  - Google Drive para escritorio debe estar abierto y con sesión iniciada.
+
+
+-------------------------------------------------------------------------------
+9. NUBE: LIMPIEZA AUTOMÁTICA Y CONSUMO
+-------------------------------------------------------------------------------
+
+  Cómo funciona:
+  - Una vez al día (2 minutos después de abrir), cada caja borra de Firebase
+    los movimientos de stock de más de 60 días (el stock total queda en cada
+    producto) y, en el PC, los registros internos ya subidos hace más de
+    7 días.
+  - Si una caja estuvo más de 45 días sin conectarse, al volver toma el stock
+    de cada producto directamente de la nube.
+  - Subir dos veces el mismo movimiento (corte de internet, reintento o
+    copia restaurada) no suma dos veces el stock ni la deuda de un cliente.
+
+  9.1 Firebase -> Firestore -> negocios -> (negocio) -> stock_ops: revisar
+      que haya documentos con fecha_epoch reciente y, con el tiempo, que no
+      queden de más de 60 días.                                            [   ]
+  9.2 Firebase -> Firestore -> Uso (Usage): anotar lecturas y escrituras del
+      día de la auditoría.  Lecturas: ________  Escrituras: ________
+      Referencia: plan gratuito = 50.000 lecturas y 20.000 escrituras por
+      día para TODO el proyecto.                                           [   ]
+  9.3 Cerrar y abrir una caja varias veces seguidas y comparar las lecturas:
+      no deben subir mucho por cada apertura (la sincronización es
+      incremental).                                                        [   ]
+  9.4 Firebase -> Firestore -> espacio (Storage): anotar el tamaño: ______
+      Referencia: plan gratuito = 1 GB por proyecto.                       [   ]
+
+
+-------------------------------------------------------------------------------
+10. REGISTRO DE RESULTADOS
+-------------------------------------------------------------------------------
+
+  Total de pruebas OK: ______   Total con FALLA: ______
+
+  Fallas encontradas:
+  N.º | Prueba | Qué pasó | Hora | ¿Se repite?
+  ----+--------+----------+------+------------
+      |        |          |      |
+      |        |          |      |
+      |        |          |      |
+      |        |          |      |
+
+  Observaciones generales:
+  ______________________________________________________________________________
+  ______________________________________________________________________________
+  ______________________________________________________________________________
+
+  Resultado de la auditoría:  [ ] Aprobado para clientes   [ ] Requiere ajustes
+
+  Firma del auditor: ______________________   Fecha: ______________
+
+
+-------------------------------------------------------------------------------
+ANEXO A. DÓNDE ESTÁ CADA COSA EN EL PC (WINDOWS)
+-------------------------------------------------------------------------------
+
+  Base de datos de la caja ........ Documentos\Sistema_Fruver_Data\
+                                    mifruver_sistema_v12_imagenes_ok.db
+  Copia antes de restaurar ........ misma carpeta, ..._antes_de_restaurar_*.db
+  Copias automáticas .............. Documentos\NovaPOS_Backups\
+  Copia extra ..................... la carpeta elegida (USB o Google Drive)
+  Reportes de Excel ............... Documentos\NovaPOS_Reportes\
+  Modo de interfaz y tema ......... %LOCALAPPDATA%\NovaPOS\
+
+ANEXO B. QUÉ HACER SI ALGO FALLA
+-------------------------------------------------------------------------------
+
+  - Anote el número de la prueba, la hora exacta y saque foto de la pantalla.
+  - No borre ni reinstale nada antes de revisar: la base y las copias sirven
+    para encontrar la causa.
+  - Si es de sincronización, anote qué caja hizo la acción, cuál no la
+    recibió y si las dos tenían internet.
+
+===============================================================================
+                              FIN DE LA GUÍA
+===============================================================================

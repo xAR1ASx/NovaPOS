@@ -102,7 +102,10 @@ class _HomeScreenState extends State<HomeScreen> {
       // Aviso al administrador: copia vieja (o nunca) o sin copia fuera del PC.
       _avisoCopia = SessionService.userRole() != 'ADMIN' || !hayVentas
           ? null
-          : (diasCopia == null
+          : ((cfg['backup_extra_error'] ?? '').isNotEmpty
+              ? 'La copia extra no se pudo guardar: ${cfg['backup_extra_error']}'
+              : null) ??
+            (diasCopia == null
               ? 'Aún no hay ninguna copia de seguridad de este equipo.'
               : (diasCopia >= 3
                   ? 'La última copia de seguridad es de hace $diasCopia días.'
