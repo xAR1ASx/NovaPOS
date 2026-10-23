@@ -2,6 +2,28 @@
 
 Todas las versiones notables de NovaPOS se documentan en este archivo.
 
+## [1.8.0] - 2026-10-23
+
+### Nuevo
+- **Modo del negocio una caja / varias cajas** (`negocios/<id>.modo_sync`: `una_caja` o `multicaja`; sin el campo = `multicaja`, así los negocios instalados siguen igual). Solo lo cambia el proveedor desde la consola. En una caja no se sube nada en vivo: pasa de ~1.800 escrituras diarias a ~10-20. Quedan el inicio de sesión, la licencia, las fotos en Cloudinary y la copia diaria.
+- **Copia diaria en la nube** (`CopiaNubeService`): al cerrar caja la base se comprime (gzip) y se sube a Firestore en pedazos de 900 KB (`negocios/<id>/respaldos/indice` + `partes`). Solo queda la más reciente; la anterior se borra cuando la nueva está completa. Huella SHA-256, reintento automático si no había internet y botón "Subir copia ahora" en Ajustes.
+- **Traer la copia de la nube a un equipo vacío** al iniciar sesión: caja nueva (identidad y cajón propios) o PC que reemplaza a uno dañado (misma caja). Sin duplicar ventas, stock ni fiados.
+- **Paso de una caja a varias**: la caja existente sube productos (stock exacto), clientes (deuda exacta) y promociones, sin el historial venta por venta, y una copia marcada como lista para varias cajas.
+- Fotos de productos que faltan en el equipo se bajan solas de Cloudinary.
+
+### Corregido (auditoría con dos cajas)
+- Una caja que se unió bajando todo de la nube volvía a subir en su segundo arranque todas las ventas y clientes descargados: borraba en la nube anulaciones hechas por otra caja y pisaba la deuda de los clientes (`marcarSubidaInicialHecha`).
+- Producto o cliente editado en dos cajas: ganaba el que subía de último; ahora gana la edición más reciente (transacción que compara `actualizado_epoch`), sin tocar stock ni deuda.
+- La subida inicial no llevaba la foto (`imagen_path` vs `imagen_path_local`) ni los paquetes de cada producto.
+- Cada edición de un producto con foto la volvía a subir a Cloudinary, y cambiar la foto no llegaba a las otras cajas (las subidas sin firma no reemplazan un `public_id` existente). Ahora solo se sube si cambió y con `public_id` único.
+
+### Seguridad (firestore.rules)
+- `modo_sync` protegido como la licencia (solo consola).
+- Copia en la nube: índice y pedazos de la copia vigente no se pueden borrar ni modificar; el índice solo apunta a una copia con todos sus pedazos.
+
+### Pruebas
+- 10 pruebas en `test/copia_nube_test.dart`, 9 de auditoría en `test/sync_auditoria_test.dart` (133 en total) y 31 casos de reglas en el emulador de Firebase.
+
 ## [1.7.3] - 2026-10-22
 
 ### Mejorado

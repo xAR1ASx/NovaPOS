@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import '../database/db_helper.dart';
 import 'cloudinary_service.dart';
+import 'copia_nube_service.dart';
 
 class SyncEstado {
   final bool activo;
@@ -25,17 +26,21 @@ class SyncEstado {
 /// cartera, devoluciones y, para los reportes, los movimientos y cierres de
 /// caja. Cada cajón se cuadra solo con sus propios movimientos.
 class SyncService {
-  SyncService._() : _fInyectado = null;
+  SyncService._() : _fInyectado = null, _copiasInyectadas = null;
 
   /// Para pruebas: una caja que sincroniza contra una nube simulada.
   @visibleForTesting
-  SyncService.paraPruebas(FirebaseFirestore nube) : _fInyectado = nube;
+  SyncService.paraPruebas(FirebaseFirestore nube, {CopiaNubeService? copias})
+      : _fInyectado = nube,
+        _copiasInyectadas = copias;
 
   static final SyncService _instance = SyncService._();
   factory SyncService() => _instance;
 
   final FirebaseFirestore? _fInyectado;
   FirebaseFirestore get _f => _fInyectado ?? FirebaseFirestore.instance;
+  final CopiaNubeService? _copiasInyectadas;
+  CopiaNubeService get _copias => _copiasInyectadas ?? CopiaNubeService();
   final DBHelper _db = DBHelper();
 
   String? _negocioId;
@@ -48,6 +53,7 @@ class SyncService {
   Timer? _timerAutoSync;
   Timer? _timerMantenimiento;
   Timer? _timerSinMarca;
+  Timer? _timerCopiaNube;
   int _enProcesoCount = 0;
 
   /// Notificador reactivo para que pantallas abiertas (POS, Inventario) refresquen en tiempo real
@@ -59,6 +65,9 @@ class SyncService {
   /// Productos cuya imagen remota no se pudo descargar (uuid|url).
   final Set<String> _imagenesPorBajar = {};
 
+  @visibleForTesting
+  Set<String> get imagenesPorSubir => _imagenesPorSubir;
+
   final ValueNotifier<SyncEstado> estado = ValueNotifier(
     const SyncEstado(),
   );
@@ -67,11 +76,48 @@ class SyncService {
   String? get negocioId => _negocioId;
   bool get activo => _negocioId != null;
 
+  /// Modos del negocio (campo `modo_sync` de `negocios/<id>`, solo lo cambia
+  /// el proveedor desde la consola de Firebase):
+  /// - multicaja: varias cajas sincronizadas en vivo (lo de siempre; es el
+  ///   modo si el campo no existe).
+  /// - una_caja: una sola caja. No se sube nada en vivo (ahorra la cuota del
+  ///   plan gratuito); quedan el inicio de sesión, la licencia, las fotos en
+  ///   Cloudinary y la copia diaria en la nube al cerrar caja.
+  static const String modoMulticaja = 'multicaja';
+  static const String modoUnaCaja = 'una_caja';
+
+  static String normalizarModo(Object? v) =>
+      v?.toString().trim() == modoUnaCaja ? modoUnaCaja : modoMulticaja;
+
+  /// El modo que la licencia trajo de la nube la última vez.
+  static Future<String> modoGuardado() async =>
+      normalizarModo((await DBHelper().obtenerConfiguracion())['modo_sync']);
+
+  String _modo = modoMulticaja;
+  String get modo => _modo;
+  bool get unaCaja => activo && _modo == modoUnaCaja;
+
+  static final ValueNotifier<String> modoNotifier = ValueNotifier(modoMulticaja);
+
   CollectionReference<Map<String, dynamic>> _col(String sub) {
     return _f.collection('negocios').doc(_negocioId!).collection(sub);
   }
 
+  bool _iniciando = false;
+
   Future<void> iniciar({
+    required String negocioId,
+    required String usuarioUid,
+  }) async {
+    _iniciando = true;
+    try {
+      await _iniciar(negocioId: negocioId, usuarioUid: usuarioUid);
+    } finally {
+      _iniciando = false;
+    }
+  }
+
+  Future<void> _iniciar({
     required String negocioId,
     required String usuarioUid,
   }) async {
@@ -88,13 +134,26 @@ class SyncService {
     await _db.guardarConfiguracion('sync_usuario_uid', usuarioUid);
 
     final cfg = await _db.obtenerConfiguracion();
+    _modo = normalizarModo(cfg['modo_sync']);
+    modoNotifier.value = _modo;
     if (cfg['sync_activo'] != '1') {
       await _precargarSiVacio();
       await _refrescarEstado();
       return;
     }
 
+    // Fotos de una copia restaurada que no están en este equipo.
+    unawaited(recuperarImagenesFaltantes().catchError((e) => 0));
+    if (_modo == modoUnaCaja) {
+      await _iniciarUnaCaja();
+      return;
+    }
+
+    final veniaDeUnaCaja = cfg['modo_sync_aplicado'] == modoUnaCaja;
     try {
+      // Venía trabajando sola: antes de escuchar, la nube se pone al día.
+      if (veniaDeUnaCaja) await _prepararNubeParaMulticaja();
+      await _db.guardarConfiguracion('modo_sync_aplicado', modoMulticaja);
       final db = await _db.database;
       final cntRes = await db.rawQuery('SELECT COUNT(*) FROM productos');
       final nProds =
@@ -106,6 +165,11 @@ class SyncService {
         await _reconciliarStockSiHaceFalta();
       } else {
         await _descargaInicial();
+        // Todo lo que tiene salió de la nube: no hay nada propio que subir.
+        // Sin esta marca, en el segundo arranque volvía a subir todas las
+        // ventas y clientes descargados, pisando en la nube las anulaciones
+        // y deudas que otra caja hubiera cambiado entretanto.
+        await _db.marcarSubidaInicialHecha(_dispositivoUuid);
         // Negocio nuevo (la nube no tenía productos): arranca con el catálogo.
         if (await _precargarSiVacio()) cambiosRemotosNotifier.value++;
         await _subirPendientes();
@@ -134,15 +198,195 @@ class SyncService {
           return <String, int>{};
         })),
       );
+      _programarCopiaNube(inmediata: veniaDeUnaCaja);
       _refrescarEstado();
     } catch (e) {
       debugPrint('SyncService iniciar error: $e');
       // Sin internet en el primer uso: igual se puede trabajar con el
       // catálogo; al conectarse, la siembra no pisa lo que ya esté en la nube.
       await _precargarSiVacio();
+      _programarCopiaNube(inmediata: false);
       await _refrescarEstado();
       return;
     }
+  }
+
+  // ======================= MODO UNA CAJA =======================
+
+  Future<void> _iniciarUnaCaja() async {
+    await _db.guardarConfiguracion('modo_sync_aplicado', modoUnaCaja);
+    if (await _precargarSiVacio()) cambiosRemotosNotifier.value++;
+    unawaited(_procesarUnaCaja().catchError((e) {}));
+    Timer? debounce;
+    DBHelper.onDatoEncolado = () {
+      debounce?.cancel();
+      debounce = Timer(const Duration(seconds: 2), () {
+        if (unaCaja) unawaited(_procesarUnaCaja().catchError((e) {}));
+      });
+    };
+    // Reintenta las fotos que no subieron por falta de internet.
+    _timerAutoSync = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => unawaited(_procesarUnaCaja().catchError((e) {})),
+    );
+    _timerMantenimiento = Timer(
+      const Duration(minutes: 2),
+      () => unawaited(mantenimiento().catchError((e) => <String, int>{})),
+    );
+    _programarCopiaNube(inmediata: false);
+    await _refrescarEstado();
+  }
+
+  /// Con una sola caja nada se sube en vivo: lo pendiente se descarta (vive
+  /// en este equipo y en la copia diaria), salvo las fotos nuevas de
+  /// productos, que sí se suben a Cloudinary para no perderlas.
+  Future<void> _procesarUnaCaja() async {
+    if (_subiendo || !unaCaja) return;
+    _subiendo = true;
+    try {
+      final pendientes = await _db.obtenerPendientes();
+      final listos = <int>[];
+      var sinInternet = false;
+      for (final p in pendientes) {
+        if (!unaCaja) return;
+        final id = p['id'] as int;
+        if (p['tipo'] != 'PRODUCTO') {
+          listos.add(id);
+          continue;
+        }
+        Map<String, dynamic> data;
+        try {
+          data = jsonDecode((p['datos'] ?? '{}').toString()) as Map<String, dynamic>;
+        } catch (_) {
+          listos.add(id);
+          continue;
+        }
+        final uuid = (p['uuid'] ?? '').toString();
+        final img = (data['imagen_path_local'] ?? data['imagen_path'] ?? '').toString();
+        if (uuid.isEmpty || img.isEmpty || img.startsWith('assets/') || !await File(img).exists()) {
+          listos.add(id);
+          continue;
+        }
+        final cfg = await _db.obtenerConfiguracion();
+        if (cfg['img_local_$uuid'] == img && (cfg['img_url_$uuid'] ?? '').isNotEmpty) {
+          listos.add(id); // esta foto ya está en Cloudinary
+          continue;
+        }
+        if (sinInternet) continue; // espera al próximo intento
+        try {
+          final url = await CloudinaryService().subirImagen(
+            localPath: img,
+            negocioId: _negocioId ?? 'general',
+            productoUuid: uuid,
+          );
+          if (url != null && url.isNotEmpty) {
+            await _db.guardarConfiguracion('img_url_$uuid', url);
+            await _db.guardarConfiguracion('img_local_$uuid', img);
+          }
+          listos.add(id);
+        } catch (e) {
+          // Sin internet: la foto queda pendiente y se reintenta luego.
+          debugPrint('SyncService foto (una caja) $uuid: $e');
+          sinInternet = true;
+        }
+      }
+      if (!unaCaja) return;
+      await _db.descartarPendientes(ids: listos);
+    } finally {
+      _subiendo = false;
+      if (activo) await _refrescarEstado();
+    }
+  }
+
+  /// Pasa de una caja a varias: sube productos, clientes y promociones con
+  /// sus valores exactos y escucha la nube desde ahora. El historial no se
+  /// sube: las cajas nuevas lo traen de la copia en la nube.
+  Future<void> _prepararNubeParaMulticaja() async {
+    final r = await _db.prepararSubidaMulticaja(_dispositivoUuid);
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    _baseStockMs = ahora;
+    await _db.guardarConfiguracion('sync_base_stock', ahora.toString());
+    await _cargarMarcas();
+    for (final tipo in _colecciones.values) {
+      _marcas[tipo] = ahora;
+      await _db.guardarConfiguracion('sync_marca_$tipo', ahora.toString());
+    }
+    debugPrint('SyncService: paso a varias cajas $r');
+  }
+
+  /// La copia en la nube que no se pudo subir (sin internet al cerrar caja)
+  /// se reintenta. Al pasar a varias cajas se sube una enseguida, para que
+  /// la caja nueva arranque con todo.
+  void _programarCopiaNube({required bool inmediata}) {
+    _timerCopiaNube?.cancel();
+    _timerCopiaNube = Timer(
+      inmediata ? const Duration(seconds: 5) : const Duration(minutes: 3),
+      () async {
+        if (!activo) return;
+        if (inmediata) {
+          // Primero lo que quedó por subir: así la copia y la nube coinciden.
+          for (var i = 0; i < 30 && activo; i++) {
+            await _subirPendientes();
+            if ((await _db.obtenerPendientes()).isEmpty) break;
+            await Future.delayed(const Duration(seconds: 10));
+          }
+          if (!activo) return;
+          await _copias.subir(motivo: 'paso_a_multicaja', negocioId: _negocioId);
+        } else {
+          await _copias.reintentarSiQuedoPendiente();
+        }
+        // Mientras la app siga abierta, una copia fallida se reintenta sola.
+        if (!activo) return;
+        _timerCopiaNube = Timer.periodic(
+          const Duration(minutes: 15),
+          (_) => unawaited(_copias.reintentarSiQuedoPendiente().catchError((e) {})),
+        );
+      },
+    );
+  }
+
+  /// La licencia trajo de la nube otro modo (el proveedor lo cambió): la
+  /// sincronización se reinicia en el modo nuevo.
+  Future<void> revisarModo() async {
+    if (!activo || _iniciando) return;
+    final nuevo = await modoGuardado();
+    if (nuevo == _modo) return;
+    final nid = _negocioId!;
+    final uid = _usuarioUid ?? '';
+    await detener();
+    await iniciar(negocioId: nid, usuarioUid: uid);
+  }
+
+  /// Fotos de productos que no están en este equipo (por ejemplo, después de
+  /// traer la copia de la nube a un PC nuevo): se bajan de Cloudinary.
+  Future<int> recuperarImagenesFaltantes() async {
+    final db = await _db.database;
+    final productos = await db.query('productos',
+        columns: ['uuid', 'imagen_path'],
+        where: "uuid IS NOT NULL AND imagen_path IS NOT NULL AND imagen_path <> '' AND imagen_path NOT LIKE 'assets/%'");
+    if (productos.isEmpty) return 0;
+    final cfg = await _db.obtenerConfiguracion();
+    var bajadas = 0;
+    for (final p in productos) {
+      final uuid = p['uuid'].toString();
+      final path = p['imagen_path'].toString();
+      final url = (cfg['img_url_$uuid'] ?? '').toString();
+      if (!url.startsWith('http') || await File(path).exists()) continue;
+      try {
+        final resp = await http.get(Uri.parse(url));
+        if (resp.statusCode != 200) continue;
+        final dir = await _dirImagenesSync();
+        final destino = '${dir.path}${Platform.pathSeparator}$uuid.jpg';
+        await File(destino).writeAsBytes(resp.bodyBytes, flush: true);
+        await db.rawUpdate('UPDATE productos SET imagen_path = ? WHERE uuid = ?', [destino, uuid]);
+        await _db.guardarConfiguracion('img_local_$uuid', destino);
+        bajadas++;
+      } catch (e) {
+        debugPrint('SyncService recuperar foto $uuid: $e');
+      }
+    }
+    if (bajadas > 0) cambiosRemotosNotifier.value++;
+    return bajadas;
   }
 
   // ======================= MANTENIMIENTO =======================
@@ -214,8 +458,9 @@ class SyncService {
 
     // 1. Nube: movimientos de stock de más de 60 días, por tandas pequeñas
     //    (cada borrado cuenta en la cuota diaria gratuita).
+    //    Con una sola caja no se toca la nube.
     final limite = ahora - const Duration(days: diasMovimientosStock).inMilliseconds;
-    for (var tanda = 0; tanda < 10; tanda++) {
+    for (var tanda = 0; tanda < 10 && !unaCaja; tanda++) {
       final viejos = await _col('stock_ops')
           .where('fecha_epoch', isLessThan: limite)
           .limit(400)
@@ -272,6 +517,8 @@ class SyncService {
     _timerMantenimiento = null;
     _timerSinMarca?.cancel();
     _timerSinMarca = null;
+    _timerCopiaNube?.cancel();
+    _timerCopiaNube = null;
     _imagenesPorSubir.clear();
     _imagenesPorBajar.clear();
     for (final s in _subs) {
@@ -682,6 +929,7 @@ class SyncService {
         (await File(pathActual).exists())) {
       if (!activo) return;
       await _db.guardarConfiguracion('img_url_$uuid', url);
+      await _db.guardarConfiguracion('img_local_$uuid', pathActual);
       _imagenesPorBajar.remove('$uuid\u0000$url');
       return;
     }
@@ -713,6 +961,7 @@ class SyncService {
       );
       if (!activo) return;
       await _db.guardarConfiguracion('img_url_$uuid', url);
+      await _db.guardarConfiguracion('img_local_$uuid', destino);
       _imagenesPorBajar.remove('$uuid\u0000$url');
     } catch (e) {
       if (activo) _imagenesPorBajar.add('$uuid\u0000$url');
@@ -733,6 +982,8 @@ class SyncService {
         if (await File(path).exists()) {
           final url = await _subirImagen(uuid, path);
           await _col('productos').doc(uuid).update({'imagen_url': url, 'sync_ts': FieldValue.serverTimestamp()});
+          await _db.guardarConfiguracion('img_url_$uuid', url);
+          await _db.guardarConfiguracion('img_local_$uuid', path);
         }
         _imagenesPorSubir.remove(item);
       } catch (e) {
@@ -1246,7 +1497,8 @@ class SyncService {
   // ======================= SUBIDA DE PENDIENTES =======================
 
   Future<void> _subirPendientes() async {
-    if (_subiendo || !activo) return;
+    // Con una sola caja nunca se sube nada en vivo.
+    if (_subiendo || !activo || unaCaja) return;
     _subiendo = true;
     try {
       final pendientes = await _db.obtenerPendientes();
@@ -1305,15 +1557,26 @@ class SyncService {
         if (data['presentaciones'] != null) {
           payload['presentaciones'] = data['presentaciones'];
         }
-        final imgLocal = (data['imagen_path_local'] ?? '').toString();
+        // 'imagen_path': así venían los productos de la subida inicial antes
+        // de la 1.8.0 (sus fotos no se subían); puede quedar alguno en cola.
+        final imgLocal = (data['imagen_path_local'] ?? data['imagen_path'] ?? '').toString();
         // Las fotos del catálogo maestro vienen dentro de la app en todas las
         // cajas: no se suben (ahorra cuota de Cloudinary y tiempo); se indica
         // cuál es para que la otra caja la tome de sí misma.
         final esDelCatalogo = imgLocal.startsWith('assets/');
         if (esDelCatalogo) payload['imagen_asset'] = imgLocal;
-        if (!esDelCatalogo && imgLocal.isNotEmpty && await File(imgLocal).exists()) {
+        final cfgImg = await _db.obtenerConfiguracion();
+        final yaSubida = (cfgImg['img_url_$uuid'] ?? '').toString();
+        if (!esDelCatalogo && imgLocal.isNotEmpty && cfgImg['img_local_$uuid'] == imgLocal &&
+            yaSubida.startsWith('http')) {
+          // La foto no cambió: no se vuelve a subir en cada edición.
+          payload['imagen_url'] = yaSubida;
+        } else if (!esDelCatalogo && imgLocal.isNotEmpty && await File(imgLocal).exists()) {
           try {
-            payload['imagen_url'] = await _subirImagen(uuid, imgLocal);
+            final url = await _subirImagen(uuid, imgLocal);
+            payload['imagen_url'] = url;
+            await _db.guardarConfiguracion('img_url_$uuid', url);
+            await _db.guardarConfiguracion('img_local_$uuid', imgLocal);
           } catch (e) {
             // Si falla, la meta se sube igual y la imagen queda en cola de retry.
             _imagenesPorSubir.add('$uuid\u0000$imgLocal');
@@ -1322,10 +1585,6 @@ class SyncService {
         }
         payload['sync_ts'] = FieldValue.serverTimestamp();
         final esSemilla = data['semilla'] == true;
-        if (!esSemilla && !payload.containsKey('stock_recon')) {
-          await _col('productos').doc(uuid).set(payload, SetOptions(merge: true));
-          return true;
-        }
         await _f.runTransaction((tx) async {
           final ref = _col('productos').doc(uuid);
           final actual = await tx.get(ref);
@@ -1346,6 +1605,12 @@ class SyncService {
             payload.remove('stock_recon');
             payload.remove('stock_recon_epoch');
           }
+          // Gana la edición más reciente, no la que suba de última: una caja
+          // que editó sin internet y se conecta después no pisa un cambio
+          // más nuevo de otra caja (su ajuste de stock sí cuenta).
+          _quitarSiHayVersionMasNueva(payload, actual.data(),
+              conservar: const {'stock_recon', 'stock_recon_epoch'});
+          if (payload.length <= 1) return; // solo quedó sync_ts
           // update: solo cambia los campos enviados, nunca borra los demás.
           tx.update(ref, payload);
         });
@@ -1436,10 +1701,20 @@ class SyncService {
         if (data['deuda_seed'] == true) {
           payload['deuda_actual'] = data['deuda_actual'];
         }
-        await _col('clientes').doc(uuid).set(
-              payload,
-              SetOptions(merge: true),
-            );
+        await _f.runTransaction((tx) async {
+          final ref = _col('clientes').doc(uuid);
+          final actual = await tx.get(ref);
+          if (!actual.exists) {
+            tx.set(ref, payload);
+            return;
+          }
+          // Igual que los productos: gana la edición más reciente.
+          _quitarSiHayVersionMasNueva(payload, actual.data(),
+              conservar: const {'deuda_actual'});
+          if (payload.length <= 1) return;
+          // update: solo cambia los campos enviados (la deuda no se toca).
+          tx.update(ref, payload);
+        });
         return true;
 
       case 'CARTERA':
@@ -1494,7 +1769,21 @@ class SyncService {
     }
   }
 
-  Future<void> sincronizarAhora() => _subirPendientes();
+  /// Si la nube ya tiene una versión editada después que [payload], deja
+  /// en él solo sync_ts y los campos de [conservar] (no son datos editables).
+  static void _quitarSiHayVersionMasNueva(
+    Map<String, dynamic> payload,
+    Map<String, dynamic>? enNube, {
+    Set<String> conservar = const {},
+  }) {
+    final nube = (enNube?['actualizado_epoch'] as num?)?.toInt() ?? 0;
+    final este = (payload['actualizado_epoch'] as num?)?.toInt() ?? 0;
+    if (nube <= este) return;
+    payload.removeWhere((k, _) => k != 'sync_ts' && !conservar.contains(k));
+  }
+
+  Future<void> sincronizarAhora() =>
+      unaCaja ? _procesarUnaCaja() : _subirPendientes();
 
   Future<void> _refrescarEstado() async {
     try {

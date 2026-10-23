@@ -5,6 +5,7 @@ import '../database/db_helper.dart';
 import '../services/cash_service.dart';
 import '../services/session_service.dart';
 import '../services/auto_backup_service.dart';
+import '../services/copia_nube_service.dart';
 import '../services/printer_service.dart';
 import '../utils/numero.dart';
 import '../utils/categorias_caja.dart';
@@ -960,6 +961,8 @@ class _CashControlScreenState extends State<CashControlScreen> {
 
                       // 💾 Disparo de Copia de Seguridad Automática si está configurada
                       unawaited(AutoBackupService().ejecutarBackupSiCorresponde(motivo: 'cierre_caja'));
+                      // ☁️ Copia diaria en la nube (reemplaza la anterior)
+                      unawaited(CopiaNubeService().subir(motivo: 'cierre_caja'));
 
                       if (!context.mounted) return;
                       Navigator.pop(context);

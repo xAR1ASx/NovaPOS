@@ -1,0 +1,19 @@
+PRUEBAS DE LAS REGLAS DE FIRESTORE (firestore.rules)
+=====================================================
+
+Prueban en el emulador de Firebase (en este PC, sin tocar la nube real) que:
+  - la sincronización entre cajas sigue funcionando para los usuarios del
+    negocio y que otro negocio no puede leer ni escribir nada ajeno;
+  - nadie puede cambiar modo_sync, licencia_fin ni estado desde la app;
+  - la copia en la nube (respaldos) está separada por negocio, la copia
+    vigente no se puede borrar ni modificar y las copias viejas sí se borran.
+
+Requisitos: Node.js, Java 21 (brew install openjdk@21) y firebase-tools.
+
+Cómo correrlas (desde esta carpeta):
+  npm install
+  PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH" npm test
+
+Debe terminar con "31 correctas, 0 fallidas". Correrlas siempre antes de
+publicar las reglas con:
+  firebase deploy --only firestore:rules --project novapos-bc9d3

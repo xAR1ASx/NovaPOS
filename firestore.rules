@@ -36,14 +36,40 @@ service cloud.firestore {
     match /negocios/{negocioId} {
       allow read: if esDelNegocio(negocioId);
       
-      // Prohibir que la app modifique campos críticos de licencia
+      // Prohibir que la app modifique campos críticos de licencia y el modo
+      // del negocio (una caja / varias cajas): solo desde la consola.
       allow update: if esDelNegocio(negocioId) &&
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['financiado', 'estado', 'licencia_fin']));
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['financiado', 'estado', 'licencia_fin', 'modo_sync']));
         
       allow create: if false; // Solo se crean por backend/consola o functions
 
-      match /{documento=**} {
-        allow read, write: if esDelNegocio(negocioId);
+      // Datos de sincronización entre cajas (todo menos la copia en la nube).
+      match /{coleccion}/{documento=**} {
+        allow read, write: if esDelNegocio(negocioId) && coleccion != 'respaldos';
+      }
+
+      // Copia diaria en la nube: un índice que dice cuál es la copia vigente
+      // y sus pedazos. Nadie puede borrar el índice ni los pedazos de la
+      // copia vigente: el negocio nunca se queda sin copia.
+      match /respaldos/indice {
+        allow read: if esDelNegocio(negocioId);
+        // Solo puede apuntar a una copia cuyo último pedazo ya está arriba.
+        allow create, update: if esDelNegocio(negocioId) &&
+          request.resource.data.partes is int &&
+          request.resource.data.partes > 0 &&
+          request.resource.data.partes <= 50 &&
+          exists(/databases/$(database)/documents/negocios/$(negocioId)/respaldos/indice/partes/$(request.resource.data.copia_id + '_' + string(request.resource.data.partes - 1)));
+        allow delete: if false;
+
+        match /partes/{parteId} {
+          allow read: if esDelNegocio(negocioId);
+          // Se crean una vez y no se cambian.
+          allow create: if esDelNegocio(negocioId) &&
+            parteId == request.resource.data.copia_id + '_' + string(request.resource.data.parte);
+          allow update: if false;
+          allow delete: if esDelNegocio(negocioId) &&
+            resource.data.copia_id != get(/databases/$(database)/documents/negocios/$(negocioId)/respaldos/indice).data.copia_id;
+        }
       }
     }
   }

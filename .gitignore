@@ -58,3 +58,8 @@ key.properties
 android/app/google-services.json
 firebase.json
 lib/firebase_options.dart
+
+# Pruebas de reglas (Node)
+herramientas/pruebas_reglas/node_modules/
+herramientas/pruebas_reglas/package-lock.json
+herramientas/pruebas_reglas/*.log

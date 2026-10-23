@@ -311,6 +311,11 @@ class LicenseMonitor {
       'licencia_bloqueada',
       ((data['estado'] ?? '').toString() == 'bloqueada') ? '1' : '0',
     );
+    // Una caja o varias: lo decide el proveedor en negocios/<id>.modo_sync.
+    await db.guardarConfiguracion(
+      'modo_sync',
+      SyncService.normalizarModo(data['modo_sync']),
+    );
   }
 
   Future<void> _comprobar() async {
@@ -349,6 +354,8 @@ class LicenseMonitor {
       await _bloquear(r.mensaje ?? 'Licencia no valida');
       return;
     }
+    // Si el proveedor cambió el modo (una caja / varias), se aplica ya.
+    unawaited(SyncService().revisarModo().catchError((e) {}));
     await _avisarVencimiento(r);
   }
 

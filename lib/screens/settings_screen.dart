@@ -17,6 +17,7 @@ import '../services/locale_service.dart';
 import '../services/ui_mode_service.dart';
 import '../services/theme_service.dart';
 import '../services/sync_service.dart';
+import '../widgets/copia_nube_tile.dart';
 import '../services/balanza_barcode_service.dart';
 import 'promociones_screen.dart';
 
@@ -1956,7 +1957,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                       valueListenable: SyncService().estado,
                       builder: (context, st, child) {
                         final activa = _syncActivo && st.activo;
-                        final linea = activa
+                        final linea = activa && SyncService().unaCaja
+                            ? _t("Una sola caja: sin sincronización en vivo")
+                            : activa
                             ? st.pendientes > 0
                                 ? "${_t('Sincronizando...')} (${st.pendientes} ${_t('Pendientes por subir')})"
                                 : _t("Sincronización activa")
@@ -1980,6 +1983,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         );
                       },
                     ),
+                    CopiaNubeTile(t: _t),
                     const SizedBox(height: 15),
                     const Text(
                       "☁️ Almacenamiento de Fotos (Cloudinary)",

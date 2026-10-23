@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import '../services/locale_service.dart';
 import '../services/pin_auth_service.dart';
 import '../services/session_service.dart';
 import '../services/permission_service.dart';
 import '../services/role_permissions.dart';
 import '../services/sync_service.dart';
+import '../services/copia_nube_service.dart';
 import '../services/license_monitor.dart';
 import '../database/db_helper.dart';
 import 'home_screen.dart';
@@ -111,6 +113,133 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
     });
   }
 
+  /// Devuelve true si el ingreso sigue normal; false si se detiene (se
+  /// trajo la copia y hay que volver a poner el PIN, o no se puede seguir).
+  Future<bool> _ofrecerCopiaNube(String negocioId) async {
+    InfoCopiaNube? info;
+    try {
+      info = await CopiaNubeService().leerIndice(negocioId);
+    } catch (e) {
+      debugPrint('Copia en la nube (lectura): $e');
+      return true; // sin copia legible: se entra como siempre
+    }
+    if (info == null || !mounted) return true;
+    final modo = await SyncService.modoGuardado();
+    final varias = modo == SyncService.modoMulticaja;
+
+    void parar(String? error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error;
+        _pin = '';
+        _cargando = false;
+      });
+    }
+
+    if (varias && !info.multicaja) {
+      parar(_t('La caja principal todavía no ha preparado la nube para varias cajas. '
+          'Ábrela, entra con internet, espera unos minutos y vuelve a intentar aquí.'));
+      return false;
+    }
+
+    final fecha = DateFormat('dd/MM/yyyy hh:mm a').format(info.fecha);
+    final origen = info.cajaNombre.isEmpty ? _t('la caja principal') : info.cajaNombre;
+    if (!mounted) return false;
+    final nombreCtrl = TextEditingController(text: 'Caja 2');
+    final traer = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(_t('Este equipo está vacío')),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${_t('El negocio tiene una copia de sus datos en la nube')} '
+                  '($origen, $fecha).'),
+              const SizedBox(height: 12),
+              Text(varias
+                  ? _t('Este equipo se sumará como otra caja: trae productos, clientes y el historial, y desde ahí se sincroniza con las demás. Su cajón empieza vacío.')
+                  : _t('Úsalo si este equipo reemplaza a la caja anterior (por ejemplo, si el PC se dañó). Trae todo tal como quedó en la copia.')),
+              if (varias) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nombreCtrl,
+                  decoration: InputDecoration(
+                    labelText: _t('Nombre de esta caja'),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(varias ? _t('Cancelar') : _t('Empezar sin datos')),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.cloud_download),
+            label: Text(_t('Traer los datos')),
+          ),
+        ],
+      ),
+    );
+    final nombre = nombreCtrl.text;
+    nombreCtrl.dispose();
+    if (!mounted) return false;
+
+    if (traer != true) {
+      if (varias) {
+        // Una caja nueva sin los datos quedaría incompleta: no se entra.
+        parar(null);
+        return false;
+      }
+      final seguro = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(_t('¿Empezar sin datos?')),
+          content: Text(_t('Este equipo arrancará vacío y, en el próximo cierre de caja, su copia reemplazará la que hay en la nube. Hazlo solo si de verdad quieres empezar de cero.')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(_t('Volver'))),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(_t('Sí, empezar de cero'))),
+          ],
+        ),
+      );
+      if (seguro == true) return true;
+      return _ofrecerCopiaNube(negocioId);
+    }
+
+    try {
+      await CopiaNubeService().restaurar(
+        negocioId: negocioId,
+        cajaNueva: varias,
+        modoSync: modo,
+        nombreCaja: nombre,
+      );
+    } catch (e) {
+      parar('${_t('No se pudo traer la copia')}: $e');
+      return false;
+    }
+    parar(null);
+    if (mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(_t('Datos traídos')),
+          content: Text(_t('Listo: este equipo ya tiene los datos del negocio. Ingresa tu PIN otra vez para entrar.')),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(_t('Entendido'))),
+          ],
+        ),
+      );
+    }
+    return false;
+  }
+
   Future<void> _intentarLogin() async {
     if (!_soloPin && _emailCtrl.text.trim().isEmpty) {
       setState(() => _error = 'Ingresa tu correo electronico');
@@ -195,6 +324,13 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
 
       // Conteo local de días disponibles (sirve de respaldo sin internet)
       if (!sinInternet) await LicenseMonitor.instance.guardarCacheLocal(negocioId);
+
+      // Equipo vacío de un negocio que ya tiene copia en la nube (PC nuevo o
+      // caja nueva): se ofrece traer los datos antes de entrar.
+      if (!sinInternet && await DBHelper().equipoSinDatos()) {
+        final seguir = await _ofrecerCopiaNube(negocioId);
+        if (!seguir) return;
+      }
 
       await SessionService.login(usuario, negocioId: negocioId);
 

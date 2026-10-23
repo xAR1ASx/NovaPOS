@@ -37,7 +37,7 @@ class CloudinaryService {
   }
 
   /// Sube la imagen a Cloudinary en la carpeta `negocios/<negocioId>/productos/`
-  /// con identificador público igual al uuid del producto.
+  /// con identificador público = uuid del producto + hora (uno por foto).
   /// Retorna la URL HTTPS segura generada por Cloudinary CDN.
   Future<String?> subirImagen({
     required String localPath,
@@ -55,7 +55,11 @@ class CloudinaryService {
 
     request.fields['upload_preset'] = uploadPreset;
     request.fields['folder'] = 'negocios/$negocioId/productos';
-    request.fields['public_id'] = productoUuid;
+    // Un nombre por cada foto: las subidas sin firma no reemplazan una
+    // imagen que ya existe con el mismo nombre (devuelven la vieja), así que
+    // con el uuid solo, cambiar la foto no llegaba a las otras cajas.
+    request.fields['public_id'] =
+        '${productoUuid}_${DateTime.now().millisecondsSinceEpoch}';
 
     request.files.add(await http.MultipartFile.fromPath('file', localPath));
 

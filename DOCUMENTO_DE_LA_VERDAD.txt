@@ -3,9 +3,9 @@
             Sistema de punto de venta para Fruvers y Minimarkets
 ===============================================================================
 
-Versión del documento ..... 1.1
-Versión del sistema ....... 1.7.3 (base de datos local v14)
-Fecha ..................... 22 de octubre de 2026
+Versión del documento ..... 1.2
+Versión del sistema ....... 1.8.0 (base de datos local v14)
+Fecha ..................... 23 de octubre de 2026
 Repositorio ............... github.com/xAR1ASx/NovaPOS (rama main)
 
 Este documento es la referencia oficial de NovaPOS: qué queremos que sea el
@@ -48,7 +48,7 @@ Quién lo usa:
     atiende clientes. No ve utilidades ni configuración.
 
 Plataformas:
-  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.7.1.exe.
+  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.8.0.exe.
   - Android 8 o superior (tablets): APK, con modo kiosco opcional.
   - macOS: solo para desarrollo (no se entrega a clientes).
 
@@ -84,8 +84,8 @@ Principios:
      cuándo se vende más y quién anuló, devolvió o descuadró.
 
   f) NO SE PIERDE NADA. Copias automáticas en el PC y fuera de él (USB o
-     Google Drive), y la nube como respaldo: si se daña un PC, se instala en
-     otro y baja todo.
+     Google Drive), y una copia diaria en la nube: si se daña un PC, se
+     instala en otro y trae todo.
 
   g) CONTROL DE LICENCIA. El dueño de NovaPOS puede bloquear un cliente que no
      paga, y no se puede saltar desconectando el internet.
@@ -260,6 +260,9 @@ Principios:
   apertura.
 
 4.5 Caja nueva que se une a un negocio
+  Desde la 1.8.0, si el negocio ya tiene copia en la nube, la caja nueva la
+  trae al entrar (ver 4.11.4): es más rápido y gasta muchas menos lecturas.
+  Lo siguiente es lo que pasa si el negocio todavía no tiene copia:
   1. Se instala NovaPOS y se entra con un usuario del negocio.
   2. Si la caja no tiene productos, descarga una sola vez todo lo del
      negocio: productos con su stock actual, clientes, fiados, ventas,
@@ -275,7 +278,8 @@ Principios:
 4.6 Reglas cuando dos cajas cambian lo mismo
   - Stock: se suman los movimientos de las dos cajas (no se pierde ninguno).
   - Producto, cliente o promoción editados en dos cajas: queda el cambio
-    más reciente.
+    más reciente (por la hora de la edición, no por cuál sube primero: desde
+    la 1.8.0 la nube no deja que una edición vieja pise una más nueva).
   - Ventas, cierres, gastos, devoluciones y mermas: nunca chocan; cada uno es
     un registro nuevo con su propio identificador.
   - Deuda de un cliente: se suma movimiento por movimiento (fiado, abono).
@@ -312,13 +316,113 @@ Principios:
   - Caja que estuvo más de 45 días sin conectarse: al volver toma el stock
     de cada producto directamente de la nube.
 
-4.10 Cómo está probado
+4.10 Cómo está probado (sincronización)
   Hay pruebas automáticas con dos cajas reales (cada una con su propia base
   de datos) contra una nube simulada: caja nueva que se une sin pisar nada;
   venta, stock, devolución y cierre que llegan a la otra caja; combos y
   paquetes; promociones creadas, desactivadas y eliminadas; y lectura
   incremental al reabrir, limpieza de la nube, caja que vuelve tras 50 días
   apagada y reintentos que no duplican stock ni deudas.
+  Auditoría (test/sync_auditoria_test.dart, 9 pruebas): fiado en una caja y
+  abono en la otra; anular en una caja la venta de la otra; compra y merma
+  cruzadas; las dos cajas vendiendo lo mismo sin internet (stock exacto en
+  las dos y en la nube); misma edición en las dos cajas (gana la más
+  reciente); subida inicial con foto y paquetes; foto que no se vuelve a
+  subir al editar el precio; foto pendiente sin internet en modo una caja;
+  copia hecha con un abono sin subir.
+
+4.11 Modos del negocio: una caja o varias cajas (desde la versión 1.8.0)
+  Cada negocio tiene un modo, que se pone en Firebase en el documento del
+  negocio (negocios/<id>), campo modo_sync (texto):
+
+    modo_sync = "multicaja"  -> VARIAS CAJAS. Todo lo de las secciones 4.1 a
+                                4.9: sincronización en vivo.
+    modo_sync = "una_caja"   -> UNA SOLA CAJA. No se sube nada en vivo.
+    (sin el campo)           -> igual que "multicaja". Los negocios que ya
+                                estaban instalados siguen como siempre.
+
+  Solo el dueño de NovaPOS lo cambia, desde la consola de Firebase: las
+  reglas de la nube no dejan que la app ni el administrador del negocio lo
+  modifiquen (igual que la licencia). Cada caja lo lee al iniciar sesión y
+  cada 10 minutos; si cambió, se aplica sola.
+
+  4.11.1 Por qué existe
+    Con una sola caja la sincronización en vivo no tiene a quién pasarle los
+    datos, y cada venta gasta escrituras del plan gratuito (que comparten
+    todos los clientes del proyecto). En modo una caja ese gasto pasa de
+    1.500-2.000 escrituras al día a unas 10-20 (solo la copia diaria).
+
+  4.11.2 Qué hace el modo una caja
+    - Sigue igual: inicio de sesión, licencia (bloqueo y vencimiento), fotos
+      de productos en Cloudinary, copias en el PC y en la carpeta extra.
+    - No sube ventas, stock, clientes ni nada en vivo. Lo que se iba a subir
+      se descarta (vive en el PC y en la copia diaria). Las fotos nuevas de
+      productos sí se suben a Cloudinary; si no hay internet, se reintenta
+      cada 2 minutos.
+    - Al cerrar caja sube la copia diaria a la nube (sección 7.1).
+    - En Ajustes -> Sistema se ve "Modo del negocio: una sola caja".
+
+  4.11.3 Pasar de una caja a varias (el negocio compra otra caja)
+    1. En la consola de Firebase: negocios/<id>, modo_sync = "multicaja".
+    2. Abrir la caja que ya existe con internet (o esperar máximo 10
+       minutos si está abierta). Esa caja, sola:
+         - sube los productos con su stock exacto, los clientes con su deuda
+           exacta y las promociones (una sola vez, unas cuantas cientos de
+           escrituras);
+         - NO sube el historial venta por venta (agotaría la cuota del día);
+         - empieza a sincronizar en vivo;
+         - sube una copia nueva a la nube, marcada "lista para varias cajas".
+    3. Instalar la caja nueva y entrar con un usuario del negocio (sección
+       4.11.4). Si la caja principal todavía no terminó el paso 2, la caja
+       nueva no deja entrar y lo explica: hay que esperar unos minutos.
+
+  4.11.4 Caja nueva o PC nuevo: traer la copia de la nube
+    Al entrar con internet en un equipo VACÍO (que nunca ha vendido, comprado
+    ni abierto caja), si el negocio tiene copia en la nube, NovaPOS pregunta:
+    - Con varias cajas: "Este equipo se sumará como otra caja". Se le pone el
+      nombre (ej. "Caja 2") y se traen todos los datos: productos, clientes,
+      fiados y TODO el historial. La caja nueva recibe su propia identidad,
+      su cajón empieza vacío y desde ahí sincroniza en vivo con las demás.
+      No se puede entrar sin traer los datos (la caja quedaría incompleta).
+    - Con una caja: "Úsalo si este equipo reemplaza a la caja anterior (por
+      ejemplo, si el PC se dañó)". Trae todo tal como quedó en la copia, con
+      la misma caja y el mismo turno. También se puede "Empezar sin datos",
+      con una advertencia: en el próximo cierre su copia reemplazará la de la
+      nube.
+    Después de traer la copia se vuelve a poner el PIN y se entra normal. Las
+    fotos de productos que no estén en el equipo se bajan solas de Cloudinary.
+
+  4.11.5 Por qué no se duplica nada al traer la copia
+    Cada caja anota qué ventas, movimientos de stock y de fiado ya aplicó o
+    hizo. Esa lista viaja dentro de la copia. Cuando la caja nueva empieza a
+    escuchar la nube (desde la hora de la copia, con margen), todo lo que ya
+    estaba en la copia lo reconoce y no lo vuelve a sumar; lo posterior sí lo
+    aplica. Lo que la caja de origen tenía sin subir cuando se hizo la copia
+    lo sube ella misma después, y la caja nueva tampoco lo cuenta dos veces.
+    Los productos y clientes que lleguen de la nube actualizan sus datos
+    (precio, nombre...), pero el stock y la deuda solo cambian con sus
+    movimientos.
+
+  4.11.6 Pasar de varias cajas a una
+    Poner modo_sync = "una_caja". Antes, verificar que las otras cajas
+    tengan "0 pendientes por subir" (Ajustes) y dejarlas de usar. La caja que
+    queda deja de sincronizar en vivo.
+
+  4.11.7 Cómo está probado
+    10 pruebas automáticas (test/copia_nube_test.dart): copia en varios
+    pedazos que baja idéntica y reemplaza a la anterior; pedazos de una
+    subida cortada o de dos cajas a la vez que se limpian; copia dañada o de una versión más nueva
+    que se rechaza sin tocar la base; modo una caja que no escribe nada en la
+    nube; PC nuevo que reemplaza a la caja; paso de una caja a varias con la
+    caja nueva vendiendo y recibiendo ventas sin duplicar stock; ventas sin
+    subir al momento de la copia que no se duplican; cambio de precio
+    posterior a la copia que sí llega. Se comprobó que las pruebas detectan
+    el error: con la protección contra duplicados desactivada a propósito,
+    la caja nueva contaba una venta dos veces y la prueba falló.
+    Las reglas de la nube se probaron en el emulador de Firebase (31 casos):
+    sincronización de siempre intacta, otro negocio no lee ni toca nada,
+    nadie cambia modo_sync ni la licencia, y la copia vigente no se puede
+    borrar ni modificar.
 
 
 ===============================================================================
@@ -387,6 +491,39 @@ Principios:
 7. COPIAS DE SEGURIDAD Y RECUPERACIÓN
 ===============================================================================
 
+7.1 Copia diaria en la nube (desde la versión 1.8.0)
+  - Al cerrar caja, NovaPOS hace una copia de la base, la comprime (queda
+    entre 3 y 5 veces más pequeña) y la sube a Firestore en pedazos de 900 KB
+    (un documento de Firestore admite máximo 1 MB). Funciona igual en modo
+    una caja y en varias cajas.
+  - Gasto: un documento por pedazo + 1 índice + el borrado de la copia
+    anterior. Un negocio con un año de ventas ocupa unos pocos pedazos: unas
+    10-20 escrituras por cierre.
+  - En la nube queda SOLO la copia más reciente, en este orden seguro:
+      1. se suben todos los pedazos de la copia nueva;
+      2. el índice pasa a apuntar a la copia nueva;
+      3. recién ahí se borran los pedazos de la copia anterior.
+    Si se va el internet a mitad de la subida, la copia anterior sigue
+    intacta y los pedazos sueltos se borran en la siguiente subida.
+  - Sin internet al cerrar caja: queda pendiente y se reintenta sola (a los
+    3 minutos de abrir NovaPOS). En Ajustes -> Sistema se ve la fecha y el
+    tamaño de la última copia, el aviso si falló y el botón "Subir copia
+    ahora".
+  - Antes de subirla se quitan los registros internos de sincronización ya
+    subidos (no sirven en otra caja y pueden pesar varios MB).
+  - Al bajarla se verifica: que estén todos los pedazos, la huella (SHA-256)
+    de lo descargado, que sea una base válida de NovaPOS y que no sea de una
+    versión más nueva de la app. Si algo falla, no se toca la base del equipo.
+  - Dónde está: negocios/<id>/respaldos/indice y sus pedazos en
+    negocios/<id>/respaldos/indice/partes. Separada por negocio: las reglas
+    de Firestore revisan en el servidor que el usuario pertenezca a ESE
+    negocio (no se fían de la app). Ningún usuario puede borrar el índice ni
+    los pedazos de la copia vigente, ni modificar un pedazo ya subido, ni
+    apuntar el índice a una copia incompleta.
+  - Para traerla a un equipo nuevo: sección 4.11.4.
+
+7.2 Copias en el PC y en la carpeta extra
+
   - Copia automática de la base completa en Documentos\NovaPOS_Backups, al
     cerrar caja (recomendado), una vez al día o semanal. Conserva las 1, 3 o
     5 más recientes.
@@ -397,7 +534,7 @@ Principios:
     conservan al menos las 7 últimas). Una carpeta por caja.
   - Si la carpeta extra no está disponible (USB desconectada, Drive cerrado),
     la copia del PC se hace igual y se avisa en Ajustes y en el inicio.
-  - Las copias NO usan Firebase: no consumen nada del plan gratuito.
+  - Estas copias (PC y carpeta extra) no usan Firebase.
   - Aviso en el inicio (para el ADMIN) si nunca se ha hecho copia, si la
     última tiene 3 días o más, o si las copias solo están en el PC.
   - Restaurar: Ajustes -> Sistema & Backup. Antes de reemplazar, verifica que
@@ -405,8 +542,8 @@ Principios:
     ..._antes_de_restaurar_<fecha>.db. Una copia de una versión anterior se
     actualiza sola. Con internet, lo hecho después de la copia vuelve a bajar
     de la nube. Nunca restaurar la copia de una caja en otra que siga en uso.
-  - La nube también es respaldo: en un PC nuevo, al entrar, baja todo lo
-    sincronizado (no baja la configuración del equipo).
+  - La nube también es respaldo: en un PC nuevo, al entrar, ofrece traer la
+    copia diaria de la nube (sección 4.11.4).
   - Exportación a Excel de inventario, ventas, compras, mermas e informes.
 
 
@@ -428,9 +565,11 @@ Principios:
   Consumo aproximado:
   - Lecturas: con la sincronización incremental, cada caja lee solo lo que
     cambió (antes leía todo el historial en cada apertura).
-  - Escrituras: cada venta cuesta 1 + 2 por cada producto (una venta de 4
-    productos = 9 escrituras). Una caja con unas 200 ventas diarias consume
-    unas 1.800 escrituras por día.
+  - Escrituras (varias cajas): cada venta cuesta 1 + 2 por cada producto
+    (una venta de 4 productos = 9 escrituras). Una caja con unas 200 ventas
+    diarias consume unas 1.800 escrituras por día.
+  - Escrituras (una caja): solo la copia diaria, unas 10-20 por cierre.
+  - Copia diaria: unos pocos MB por negocio (solo se guarda la última).
 
   Espacio: el plan gratuito da 1 GB por proyecto. Un cliente con 2 cajas y
   unas 200 ventas diarias usa aprox. 150-200 MB al año en ventas; los
@@ -457,7 +596,8 @@ Principios:
      compilar installer/NovaPOS_setup.iss con Inno Setup.
   2. En Firebase: crear el usuario en Authentication (correo + PIN de 6
      dígitos), el documento del negocio en "negocios" (nombre, nit,
-     direccion, estado = activa, licencia_fin, financiado) y el perfil en
+     direccion, estado = activa, licencia_fin, financiado y modo_sync =
+     "una_caja" o "multicaja" según cuántas cajas tenga) y el perfil en
      "usuarios" con ID = UID del usuario (email, nombre, rol = ADMIN,
      negocio_id, esta_activo = true).
 
@@ -467,8 +607,9 @@ Principios:
   4. Si falta VCRUNTIME140.dll, instalar Microsoft Visual C++ Redistributable.
   5. Entrar con correo y PIN (con internet) y seguir el asistente.
   6. Cargar productos y costos; crear los cajeros.
-  7. Segunda caja: instalar, entrar con un usuario del mismo negocio y
-     ponerle otro nombre en el asistente (ej. "Caja 2").
+  7. Segunda caja: modo_sync = "multicaja" (sección 4.11.3), instalar,
+     entrar con un usuario del mismo negocio, traer la copia de la nube y
+     ponerle otro nombre (ej. "Caja 2").
   8. Prueba completa: abrir caja, vender (efectivo y Nequi), devolver, gasto,
      cerrar e imprimir Z; ver el Centro Financiero. Anular las ventas de
      prueba al terminar.
@@ -478,6 +619,37 @@ Principios:
 ===============================================================================
 10. ÚLTIMOS CAMBIOS REALIZADOS
 ===============================================================================
+
+  Versión 1.8.0 (23-oct-2026) - Modo una caja y copia diaria en la nube
+  - Nuevo: modo del negocio "una_caja" / "multicaja" (campo modo_sync en
+    negocios/<id>, solo lo cambia el proveedor). En una caja no se sube nada
+    en vivo: de ~1.800 escrituras al día a ~10-20.
+  - Nuevo: copia diaria de la base en la nube al cerrar caja, comprimida y en
+    pedazos; solo queda la última y la anterior se borra cuando la nueva
+    está completa.
+  - Nuevo: equipo vacío que trae la copia de la nube al entrar (caja nueva o
+    PC que reemplaza a uno dañado), sin duplicar ventas ni stock.
+  - Nuevo: paso de una caja a varias sin subir el historial venta por venta.
+  - Nuevo: en Ajustes, modo del negocio, estado de la copia en la nube y
+    botón "Subir copia ahora".
+  - Reglas de Firestore: modo_sync protegido como la licencia; copia en la
+    nube protegida contra borrado y separada por negocio (publicadas el
+    23-oct-2026).
+  - Corregido (auditoría con dos cajas): una caja que se unió bajando todo
+    de la nube volvía a subir en su segundo arranque todas las ventas y
+    clientes descargados; eso borraba en la nube las anulaciones hechas por
+    otra caja entretanto y pisaba la deuda de los clientes.
+  - Corregido: si dos cajas editaban el mismo producto o cliente, ganaba el
+    que subía de último (una caja que editó sin internet pisaba un cambio
+    más nuevo). Ahora gana la edición más reciente; el stock y la deuda no
+    se ven afectados.
+  - Corregido: en la subida inicial de un equipo que ya tenía datos no se
+    subían las fotos de los productos ni sus paquetes.
+  - Corregido: cada edición de un producto con foto (por ejemplo, el precio)
+    volvía a subir la foto a Cloudinary; y cambiar la foto no llegaba a las
+    otras cajas (Cloudinary no reemplaza una imagen con el mismo nombre en
+    subidas sin firma). Ahora la foto solo se sube si cambió, con un nombre
+    nuevo cada vez.
 
   Versión 1.7.3 (22-oct-2026) - Cajón monedero y protección de la base
   - Mejorado: el cajón monedero abre con la orden directa de la impresora
@@ -543,7 +715,7 @@ Principios:
 
   Versión 1.5.0 y anteriores: ver CHANGELOG.md.
 
-  Pruebas automáticas: 112, todas pasando (flutter test).
+  Pruebas automáticas: 133, todas pasando (flutter test).
 
 
 ===============================================================================
@@ -571,6 +743,10 @@ Principios:
 
   11.8 Hacer la auditoría con hardware real: ver GUIA_DE_AUDITORIA.txt.
 
+  11.9 Probar en real la copia en la nube: cerrar caja con internet, ver la
+       fecha en Ajustes, instalar en otro PC de prueba con el mismo negocio y
+       traer la copia. Probar también el paso de una caja a varias.
+
 
 ===============================================================================
 12. DATOS TÉCNICOS DE REFERENCIA
@@ -586,24 +762,31 @@ Principios:
     lib/services/finanzas_service.dart . cálculos del Centro Financiero
     lib/services/license_monitor.dart .. licencia y bloqueo
     lib/services/auto_backup_service.dart copias de seguridad
+    lib/services/copia_nube_service.dart copia diaria en la nube
+    lib/widgets/copia_nube_tile.dart ... modo y copia en Ajustes
     lib/screens/pos_screen.dart ........ punto de venta
     lib/screens/cash_control_screen.dart caja
     lib/screens/reports_screen.dart .... Centro Financiero
     lib/screens/asistente_inicio_screen.dart asistente de primer uso
     firestore.rules .................... reglas de seguridad de la nube
+    herramientas/pruebas_reglas/ ....... pruebas de las reglas en el
+                                         emulador (ver su LEEME.txt)
 
   Colecciones en la nube (negocios/<id>/...):
     productos, stock_ops, ventas, compras, clientes, cartera, mermas,
-    promociones, caja_movimientos, cierres, devoluciones.
+    promociones, caja_movimientos, cierres, devoluciones y respaldos
+    (copia diaria: respaldos/indice y respaldos/indice/partes).
   Fuera del negocio: usuarios/<uid> (perfil y rol) y negocios/<id>
-  (licencia).
+  (licencia y modo_sync).
 
   Base local: archivo mifruver_sistema_v12_imagenes_ok.db en
   Documentos\Sistema_Fruver_Data (el nombre del archivo se conserva por
   compatibilidad; la versión real del esquema es 14).
 
   Comandos:
-    flutter test ........................ correr las 114 pruebas
+    flutter test ........................ correr las 133 pruebas
+    firebase deploy --only firestore:rules --project novapos-bc9d3
+                                          publicar las reglas de la nube
     flutter build windows --release ..... compilar para Windows
     flutter build apk --release ......... compilar para Android
     ISCC.exe installer\NovaPOS_setup.iss  generar el instalador

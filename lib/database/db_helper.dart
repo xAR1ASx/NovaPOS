@@ -14,6 +14,10 @@ class DBHelper {
   factory DBHelper() => _instance;
   DBHelper._internal();
 
+  /// Versión del esquema de la base. Una copia hecha con una versión más
+  /// nueva de la app no se puede abrir en esta.
+  static const int versionBaseDatos = 14;
+
   static Database? _database;
   static void Function()? onDatoEncolado;
 
@@ -29,7 +33,7 @@ class DBHelper {
     final db = await databaseFactory.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(
-        version: 14,
+        version: versionBaseDatos,
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
       ),
@@ -46,7 +50,7 @@ class DBHelper {
     final db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 14,
+        version: versionBaseDatos,
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
       ),
@@ -91,7 +95,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 14,
+      version: versionBaseDatos,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -2389,7 +2393,19 @@ CREATE TABLE roles_permisos(
           'combo_componentes':
               await _componentesComboPayload(db, (p['id'] as num).toInt()),
         'esta_activo': p['esta_activo'] ?? 1,
-        'imagen_path': p['imagen_path'],
+        'imagen_path_local': p['imagen_path'],
+        // Paquetes del producto (six pack, bulto x 5...): sin esto la otra
+        // caja no los recibía en la subida inicial.
+        'presentaciones': [
+          for (final k in await db.query('presentaciones',
+              where: 'producto_id = ?', whereArgs: [p['id']]))
+            {
+              'nombre': k['nombre'],
+              'cantidad': k['cantidad'],
+              'precio': k['precio'],
+              'codigo_barras': k['codigo_barras'],
+            }
+        ],
         'stock_recon': (p['stock_actual'] as num?)?.toDouble() ?? 0,
         'stock_recon_epoch': DateTime.now().millisecondsSinceEpoch,
         'actualizado_epoch': DateTime.now().millisecondsSinceEpoch,
@@ -3693,13 +3709,206 @@ CREATE TABLE roles_permisos(
       // copia de una versión anterior se actualiza sola).
       _database = await databaseFactory.openDatabase(
         destinoPath,
-        options: OpenDatabaseOptions(version: 14, onCreate: _createDB, onUpgrade: _upgradeDB),
+        options: OpenDatabaseOptions(version: versionBaseDatos, onCreate: _createDB, onUpgrade: _upgradeDB),
       );
       return true;
     } catch (e) {
       debugPrint('Error restaurando backup: $e');
       return false;
     }
+  }
+
+  // --- COPIA DIARIA EN LA NUBE Y MODOS DE SINCRONIZACIÓN ---
+
+  /// Un equipo "vacío" nunca ha vendido, comprado ni abierto caja: traerle
+  /// la copia de la nube no reemplaza nada propio (el catálogo maestro que
+  /// trae de fábrica no cuenta).
+  Future<bool> equipoSinDatos() async {
+    final db = await database;
+    for (final t in ['ventas', 'compras', 'caja_movimientos', 'cierres_caja']) {
+      final r = await db.rawQuery('SELECT COUNT(*) AS n FROM $t');
+      if (((r.first['n'] as num?)?.toInt() ?? 0) > 0) return false;
+    }
+    return true;
+  }
+
+  /// Copia para subir a la nube: igual a la de seguridad, pero sin los
+  /// registros de sincronización que ya se subieron (no sirven en otra caja
+  /// y pueden pesar varios MB).
+  Future<bool> exportarCopiaParaNube(String rutaDestino) async {
+    if (!await exportarBackup(rutaDestino)) return false;
+    Database? copia;
+    try {
+      copia = await databaseFactory.openDatabase(
+        rutaDestino,
+        options: OpenDatabaseOptions(singleInstance: false),
+      );
+      await copia.delete('sync_pendientes', where: 'estado = 1');
+      await copia.execute('VACUUM');
+    } catch (e) {
+      debugPrint('Copia para la nube (limpieza): $e');
+    } finally {
+      await copia?.close();
+    }
+    return esCopiaValida(rutaDestino);
+  }
+
+  /// Modo una caja: lo que se iba a subir no se necesita (está en este equipo
+  /// y en la copia diaria). Se marca como subido y la limpieza lo borra.
+  Future<int> descartarPendientes({List<int>? ids}) async {
+    final db = await database;
+    if (ids != null) {
+      if (ids.isEmpty) return 0;
+      return db.rawUpdate(
+        'UPDATE sync_pendientes SET estado = 1 WHERE estado = 0 AND id IN (${List.filled(ids.length, '?').join(',')})',
+        ids,
+      );
+    }
+    return db.rawUpdate('UPDATE sync_pendientes SET estado = 1 WHERE estado = 0');
+  }
+
+  /// La caja que trabajaba sola pasa a varias cajas: la nube no tiene sus
+  /// datos al día. Se suben productos (con su stock exacto), clientes (con
+  /// su deuda exacta) y promociones; el historial no se sube venta por venta
+  /// (agotaría la cuota del día): las cajas nuevas lo toman de la copia.
+  Future<Map<String, int>> prepararSubidaMulticaja(String dispositivoUuid) async {
+    final db = await database;
+    final res = {'descartados': 0, 'productos': 0, 'clientes': 0, 'promociones': 0};
+    res['descartados'] = await descartarPendientes();
+
+    await _asegurarUuidTabla('productos');
+    await _asegurarUuidTabla('clientes');
+    await _asegurarUuidTabla('ventas');
+    await _asegurarUuidTabla('compras');
+    await _asegurarUuidTabla('caja_movimientos');
+    await _asegurarUuidTabla('cierres_caja');
+    await _asegurarUuidTabla('movimientos_cartera');
+    // Lo que se registró sin caja es de esta caja (antes de sincronizar).
+    for (final t in ['ventas', 'caja_movimientos', 'cierres_caja']) {
+      await db.rawUpdate(
+        "UPDATE $t SET dispositivo_uuid = ? WHERE dispositivo_uuid IS NULL OR dispositivo_uuid = ''",
+        [dispositivoUuid],
+      );
+    }
+
+    // Primero los productos simples y luego los combos.
+    final productos = await db.query('productos', orderBy: 'es_combo ASC, id ASC');
+    for (final p in productos) {
+      await encolarProductoCambio(p, stockRecon: true);
+      res['productos'] = res['productos']! + 1;
+    }
+    final clientes = await db.query('clientes');
+    for (final c in clientes) {
+      final cu = (c['uuid'] ?? '').toString();
+      if (cu.isEmpty) continue;
+      await encolarPendiente('CLIENTE', cu, jsonEncode({
+        'uuid': cu,
+        'nombre': c['nombre'],
+        'telefono': c['telefono'],
+        'direccion': c['direccion'],
+        'deuda_actual': c['deuda_actual'] ?? 0,
+        'cupo_credito': c['cupo_credito'] ?? 0,
+        'esta_activo': c['esta_activo'] ?? 1,
+        'deuda_seed': true,
+        'actualizado_epoch': DateTime.now().millisecondsSinceEpoch,
+        'dispositivo_uuid': dispositivoUuid,
+      }));
+      res['clientes'] = res['clientes']! + 1;
+    }
+    final promos = await db.query('promociones', columns: ['id', 'uuid']);
+    for (final pr in promos) {
+      if ((pr['uuid'] ?? '').toString().isEmpty) continue;
+      await _encolarPromocion((pr['id'] as num).toInt());
+      res['promociones'] = res['promociones']! + 1;
+    }
+
+    // La subida inicial de todo el historial no se hace: ya quedó cubierta.
+    await marcarSubidaInicialHecha(dispositivoUuid);
+    return res;
+  }
+
+  /// Este equipo ya tiene en la nube todo lo suyo (lo bajó de ella): la
+  /// subida inicial de su historial no se hace.
+  Future<void> marcarSubidaInicialHecha(String dispositivoUuid) async {
+    final db = await database;
+    for (final k in ['sync_semilla', 'sync_semilla_finanzas']) {
+      await db.insert('configuracion', {'clave': k, 'valor': dispositivoUuid},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  /// Ajusta una copia de la nube recién restaurada en este equipo.
+  ///
+  /// [cajaNueva]: el equipo se suma como otra caja (identidad propia, su
+  /// propio cajón). Si es false, reemplaza a la caja de la copia (PC dañado).
+  /// [copiaEpoch]: hora de la copia. Todo lo anterior ya viene en la base, así
+  /// lo que llegue de la nube con esa fecha o antes no se aplica dos veces.
+  Future<void> prepararCopiaRestaurada({
+    required bool cajaNueva,
+    required int copiaEpoch,
+    required String modoSync,
+    String? nombreCaja,
+  }) async {
+    final db = await database;
+    final origen = await obtenerDispositivoUuid();
+    await db.transaction((txn) async {
+      // Lo que la caja de origen tenía por subir lo sube ella misma.
+      await txn.delete('sync_pendientes');
+      // Registros viejos sin caja: son de la caja de origen.
+      for (final t in ['ventas', 'caja_movimientos', 'cierres_caja']) {
+        await txn.rawUpdate(
+          "UPDATE $t SET dispositivo_uuid = ? WHERE dispositivo_uuid IS NULL OR dispositivo_uuid = ''",
+          [origen],
+        );
+      }
+      // El PIN sin internet solo vale para quien entró con internet en ESTE
+      // equipo; y el estado de la copia en la nube es de la otra caja.
+      await txn.delete('configuracion',
+          where: "clave LIKE 'login_offline_%' OR clave LIKE 'copia_nube_%' OR clave IN ('login_intentos_fallidos', 'login_bloqueo_hasta')");
+      await txn.insert('configuracion', {'clave': 'modo_sync', 'valor': modoSync},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert('configuracion', {'clave': 'modo_sync_aplicado', 'valor': modoSync},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      if (!cajaNueva) return;
+
+      final nuevo = generateUuidV4();
+      final valores = <String, String>{
+        'dispositivo_uuid': nuevo,
+        // Nada del historial se vuelve a subir desde esta caja.
+        'sync_semilla': nuevo,
+        'sync_semilla_finanzas': nuevo,
+        'caja_nombre': (nombreCaja ?? '').trim().isEmpty ? 'Caja nueva' : nombreCaja!.trim(),
+      };
+      for (final e in valores.entries) {
+        await txn.insert('configuracion', {'clave': e.key, 'valor': e.value},
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      // Cada caja usa su propia carpeta extra de copias (no se mezclan).
+      await txn.delete('configuracion',
+          where: "clave IN ('backup_carpeta_extra', 'backup_extra_error', 'ultimo_backup_extra_fecha')");
+      // Escuchar la nube desde la copia: lo de antes ya está en la base.
+      for (final tipo in const ['PRODUCTO', 'STOCK_OP', 'CLIENTE', 'VENTA', 'COMPRA',
+          'CARTERA', 'MERMA', 'PROMOCION', 'CAJA_MOV', 'CIERRE', 'DEVOLUCION']) {
+        final r = await txn.query('configuracion',
+            where: 'clave = ?', whereArgs: ['sync_marca_$tipo'], limit: 1);
+        final actual = r.isEmpty ? null : int.tryParse((r.first['valor'] ?? '').toString());
+        if (actual == null || actual <= 0 || actual > copiaEpoch) {
+          await txn.insert('configuracion', {'clave': 'sync_marca_$tipo', 'valor': '$copiaEpoch'},
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+      // Productos y clientes de la copia ya son conocidos: si llegan de la
+      // nube se actualizan sus datos, pero el stock y la deuda no se
+      // reemplazan (esos cambian solo con sus movimientos, que no se cuentan
+      // dos veces). Epoch 0: cualquier versión que llegue se aplica.
+      for (final e in const {'productos': 'PRODUCTO', 'clientes': 'CLIENTE', 'promociones': 'PROMOCION'}.entries) {
+        await txn.rawInsert(
+          "INSERT OR IGNORE INTO sync_aplicados (uuid, tipo, epoch) "
+          "SELECT uuid, ?, 0 FROM ${e.key} WHERE uuid IS NOT NULL AND uuid <> ''",
+          [e.value],
+        );
+      }
+    });
   }
 
 
