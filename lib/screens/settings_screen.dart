@@ -1206,16 +1206,23 @@ class _SettingsScreenState extends State<SettingsScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Row(
-                  children: [
-                    Icon(Icons.receipt_long, color: Colors.green),
-                    SizedBox(width: 8),
-                    Text(
-                      "Borrador en Vivo (80 mm)",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
-                  ],
+                // Expanded + Flexible: en una ventana angosta el título baja
+                // de línea en vez de salirse de la tarjeta.
+                const Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.receipt_long, color: Colors.green),
+                      SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          "Borrador en Vivo (80 mm)",
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(

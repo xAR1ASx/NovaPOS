@@ -4,7 +4,7 @@
 ===============================================================================
 
 Versión del documento ..... 1.2
-Versión del sistema ....... 1.8.1 (base de datos local v14)
+Versión del sistema ....... 1.8.2 (base de datos local v14)
 Fecha ..................... 23 de octubre de 2026
 Repositorio ............... github.com/xAR1ASx/NovaPOS (rama main)
 
@@ -48,7 +48,7 @@ Quién lo usa:
     atiende clientes. No ve utilidades ni configuración.
 
 Plataformas:
-  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.8.1.exe.
+  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.8.2.exe.
   - Android 8 o superior (tablets): APK, con modo kiosco opcional.
   - macOS: solo para desarrollo (no se entrega a clientes).
 
@@ -624,6 +624,14 @@ Principios:
 ===============================================================================
 10. ÚLTIMOS CAMBIOS REALIZADOS
 ===============================================================================
+
+  Versión 1.8.2 (23-oct-2026) - Detalle visual y compilación
+  - Corregido: en Ajustes -> Empresa & Ticket, el título "Borrador en Vivo
+    (80 mm)" se salía de la tarjeta en ventanas angostas.
+  - Compilación en GitHub: acciones actualizadas (checkout y upload-artifact
+    v5) por el retiro de Node.js 20.
+  - Probado en el Mac con la cuenta de prueba: modo una caja sin subidas en
+    vivo y copia en la nube al cerrar caja (184 KB comprimidos a 22 KB).
 
   Versión 1.8.1 (23-oct-2026) - Validaciones de la auditoría de Antigravity
   - Corregido: la base aceptaba ventas con cantidad negativa o cero, o con

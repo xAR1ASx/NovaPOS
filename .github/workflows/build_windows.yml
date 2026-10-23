@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restaurar configuración de Firebase desde Secrets
         shell: pwsh
@@ -67,8 +67,8 @@ jobs:
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\NovaPOS_setup.iss
 
       - name: Subir Instalador como Artefacto descargable
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
-          name: NovaPOS-Windows-Setup-1.8.1
+          name: NovaPOS-Windows-Setup-1.8.2
           path: installer/output/*.exe
           retention-days: 30
