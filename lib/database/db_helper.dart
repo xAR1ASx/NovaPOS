@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../services/password_service.dart';
 import '../data/catalogo_maestro.dart';
 import '../utils/categorias_caja.dart';
+import '../services/reporte_z.dart';
 
 class DBHelper {
   static final DBHelper _instance = DBHelper._internal();
@@ -814,6 +815,272 @@ CREATE TABLE roles_permisos(
     };
   }
 
+  /// Datos del Reporte Z del turno abierto de esta caja (vista previa
+  /// parcial, sin efectivo declarado). null si no hay turno abierto.
+  Future<DatosZ?> datosZTurnoAbierto({int? usuarioId}) async {
+    final db = await database;
+    final disp = await obtenerDispositivoUuid();
+    final turno = await _turnoAbierto(db, disp);
+    if (turno == null) return null;
+    return _datosZ(db, fi: turno['fecha'] as String, disp: disp, usuarioId: usuarioId);
+  }
+
+  /// Datos del Reporte Z de un cierre. Los cierres desde la 1.8.3 los traen
+  /// congelados; los anteriores se rearman con sus movimientos, respetando
+  /// el esperado y lo contado que quedaron guardados.
+  Future<DatosZ> datosZDeCierre(Map<String, dynamic> cierre) async {
+    final congelado = DatosZ.desdeDetalle(cierre['detalle']?.toString());
+    if (congelado != null) return congelado;
+    final db = await database;
+    final disp = (cierre['dispositivo_uuid'] ?? '').toString().isNotEmpty
+        ? cierre['dispositivo_uuid'].toString()
+        : await obtenerDispositivoUuid();
+    final fin = (cierre['fecha_fin'] ?? cierre['fecha'])?.toString();
+    final fi = (cierre['fecha_inicio'] ?? fin ?? '').toString();
+    final z = await _datosZ(db,
+        fi: fi,
+        ff: fin,
+        disp: disp,
+        usuarioId: (cierre['usuario_id'] as num?)?.toInt(),
+        esperado: (cierre['total_sistema'] as num?)?.toDouble(),
+        cajaNombre: (cierre['caja_nombre'] ?? '').toString());
+    return z.conCierre(
+      cierre: DateTime.tryParse(fin ?? '') ?? DateTime.now(),
+      declarado: (cierre['real_contado'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  /// Cómo va cada caja del negocio (Centro Financiero → Cajas en vivo).
+  /// Las demás cajas se ven con lo que ya llegó por la sincronización.
+  Future<List<EstadoCaja>> estadoDeLasCajas() async {
+    final db = await database;
+    final propia = await obtenerDispositivoUuid();
+    final filas = await db.rawQuery(
+      "SELECT dispositivo_uuid AS d FROM caja_movimientos WHERE dispositivo_uuid IS NOT NULL AND dispositivo_uuid <> '' "
+      "UNION SELECT dispositivo_uuid FROM ventas WHERE dispositivo_uuid IS NOT NULL AND dispositivo_uuid <> ''",
+    );
+    final disps = <String>[propia, for (final f in filas) if (f['d'] != propia) f['d'].toString()];
+    final cfg = await obtenerConfiguracion();
+    final hoy = DateTime.now();
+    final inicioHoy = DateTime(hoy.year, hoy.month, hoy.day).toIso8601String();
+    final out = <EstadoCaja>[];
+    for (final d in disps) {
+      final otra = d != propia;
+      final deLaCaja = otra ? 'dispositivo_uuid = ?' : _deEstaCaja;
+      final ap = await db.query('caja_movimientos',
+          where: "tipo = 'APERTURA' AND $deLaCaja", whereArgs: [d], orderBy: 'fecha DESC', limit: 1);
+      var abierta = false;
+      if (ap.isNotEmpty) {
+        final ci = await db.query('caja_movimientos',
+            where: "tipo = 'CIERRE' AND fecha > ? AND $deLaCaja", whereArgs: [ap.first['fecha'], d], limit: 1);
+        abierta = ci.isEmpty;
+      }
+      final ultimoCierre = await db.query('cierres_caja',
+          where: deLaCaja, whereArgs: [d], orderBy: 'fecha DESC', limit: 1);
+      var nombre = otra ? (cfg['caja_nombre_$d'] ?? '').trim() : await nombreCaja();
+      if (nombre.isEmpty && ultimoCierre.isNotEmpty) {
+        nombre = (ultimoCierre.first['caja_nombre'] ?? '').toString().trim();
+      }
+      if (nombre.isEmpty) nombre = 'Caja ${d.length >= 4 ? d.substring(0, 4).toUpperCase() : d}';
+      final hoyV = await db.rawQuery(
+          "SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS t FROM ventas WHERE anulada = 0 AND fecha >= ? AND $deLaCaja",
+          [inicioHoy, d]);
+      final ultimo = await db.rawQuery(
+          "SELECT MAX(f) AS f FROM (SELECT MAX(fecha) AS f FROM ventas WHERE $deLaCaja "
+          "UNION ALL SELECT MAX(fecha) FROM caja_movimientos WHERE $deLaCaja)",
+          [d, d]);
+      DatosZ? z;
+      if (abierta) {
+        z = await _datosZ(db, fi: ap.first['fecha'] as String, disp: d, otraCaja: otra, cajaNombre: nombre,
+            usuarioId: (ap.first['usuario_id'] as num?)?.toInt());
+      }
+      out.add(EstadoCaja(
+        dispositivo: d,
+        nombre: nombre,
+        esEstaCaja: !otra,
+        abierta: abierta,
+        turno: z,
+        ventasHoy: (hoyV.first['t'] as num?)?.toDouble() ?? 0,
+        pedidosHoy: (hoyV.first['n'] as num?)?.toInt() ?? 0,
+        ultimaActividad: DateTime.tryParse((ultimo.first['f'] ?? '').toString()),
+        ultimoCierre: ultimoCierre.isEmpty ? null : DateTime.tryParse((ultimoCierre.first['fecha'] ?? '').toString()),
+        ultimaDiferencia: ultimoCierre.isEmpty ? null : (ultimoCierre.first['diferencia'] as num?)?.toDouble(),
+      ));
+    }
+    // Primero las abiertas; dentro de cada grupo, por nombre.
+    out.sort((a, b) => a.abierta != b.abierta ? (a.abierta ? -1 : 1) : a.nombre.compareTo(b.nombre));
+    return out;
+  }
+
+  static String _nombreMedio(String m) {
+    switch (m.toUpperCase()) {
+      case 'EFECTIVO':
+        return DatosZ.efectivo;
+      case 'TRANSFERENCIA':
+        return 'Transferencia';
+      case 'TARJETA':
+        return 'Tarjeta';
+      case 'NEQUI':
+        return 'Nequi';
+      case 'DAVIPLATA':
+        return 'Daviplata';
+      case 'CREDITO':
+        return 'Fiado (crédito)';
+      case '':
+        return 'Otro';
+      default:
+        return m[0].toUpperCase() + m.substring(1).toLowerCase();
+    }
+  }
+
+  /// Arma el Reporte Z de un turno de esta caja entre [fi] y [ff] (sin [ff]:
+  /// hasta ahora). El efectivo de ventas es el mismo del cuadre
+  /// (_calcularTurno): lo cobrado menos lo devuelto de ventas del mismo
+  /// turno. Si se pasa [esperado] (el guardado al cerrar) se usa ese.
+  Future<DatosZ> _datosZ(
+    DatabaseExecutor ex, {
+    required String fi,
+    String? ff,
+    required String disp,
+    int? usuarioId,
+    double? esperado,
+    String? cajaNombre,
+    bool otraCaja = false,
+  }) async {
+    // De otra caja: solo lo marcado con ella (lo sin marca es de esta caja).
+    final deLaCaja = otraCaja ? 'dispositivo_uuid = ?' : _deEstaCaja;
+    final rango = ff == null ? 'fecha >= ?' : 'fecha >= ? AND fecha <= ?';
+    final args = ff == null ? [fi] : [fi, ff];
+
+    final ventas = await ex.query('ventas',
+        columns: ['id', 'total', 'metodo_pago', 'metodo_pago_detalle', 'anulada', 'efectivo_cobrado'],
+        where: "$rango AND $deLaCaja",
+        whereArgs: [...args, disp]);
+    double cobrado = 0, fiado = 0;
+    var pedidos = 0;
+    final idsTurno = <int>{};
+    final medios = <String, double>{};
+    for (final v in ventas) {
+      idsTurno.add(v['id'] as int);
+      final ec = (v['efectivo_cobrado'] as num?)?.toDouble();
+      final anulada = (v['anulada'] ?? 0) == 1;
+      if (ec != null) {
+        cobrado += ec;
+      } else if (!anulada) {
+        cobrado += efectivoDeVenta(v);
+      }
+      if (anulada) continue;
+      pedidos++;
+      final total = (v['total'] as num?)?.toDouble() ?? 0;
+      final mp = (v['metodo_pago'] ?? '').toString().toUpperCase();
+      if (mp == 'EFECTIVO') continue;
+      if (mp == 'CREDITO') fiado += total;
+      if (mp == 'MIXTO') {
+        final det = v['metodo_pago_detalle']?.toString();
+        final dig = partesMixto(total, det)['digital']!;
+        if (dig <= 0) continue;
+        var nombre = 'DIGITAL';
+        try {
+          final d = jsonDecode(det ?? '');
+          if (d is Map && d['metodo_digital'] != null) nombre = d['metodo_digital'].toString();
+        } catch (_) {}
+        medios[_nombreMedio(nombre)] = (medios[_nombreMedio(nombre)] ?? 0) + dig;
+        continue;
+      }
+      medios[_nombreMedio(mp)] = (medios[_nombreMedio(mp)] ?? 0) + total;
+    }
+
+    final movs = await ex.query('caja_movimientos',
+        where: "$rango AND $deLaCaja", whereArgs: [...args, disp], orderBy: 'id ASC');
+    double base = 0, otras = 0, compras = 0, gastos = 0, devTurno = 0, devOtros = 0;
+    int? usuarioApertura;
+    final detalle = <MovimientoZ>[];
+    for (final m in movs) {
+      final v = (m['monto'] as num?)?.toDouble() ?? 0;
+      switch (m['tipo']) {
+        case 'APERTURA':
+          base += v;
+          usuarioApertura ??= (m['usuario_id'] as num?)?.toInt();
+          break;
+        case 'INGRESO':
+          otras += v;
+          break;
+        case 'COMPRA':
+        case 'GASTO':
+          final esCompra = m['tipo'] == 'COMPRA';
+          if (esCompra) {
+            compras += v;
+          } else {
+            gastos += v;
+          }
+          detalle.add(MovimientoZ(esCompra: esCompra, concepto: (m['descripcion'] ?? '').toString(), monto: v));
+          break;
+        case 'DEVOLUCION':
+        case 'ANULACION':
+          if ((m['resta_caja'] ?? 0) == 1) {
+            final vid = (m['venta_id'] as num?)?.toInt();
+            if (vid != null && idsTurno.contains(vid)) {
+              devTurno += v;
+            } else {
+              devOtros += v;
+            }
+          }
+          break;
+      }
+    }
+    // Efectivo de ventas = lo que entró al cajón por ventas (neto de lo
+    // devuelto en el mismo turno, que se muestra como menos venta).
+    final medioEfectivo = <String, double>{DatosZ.efectivo: cobrado - devTurno, ...medios};
+
+    final cats = await ex.rawQuery(
+      "SELECT COALESCE(NULLIF(TRIM(p.categoria), ''), 'Sin categoría') AS cat, SUM(d.subtotal) AS total "
+      'FROM detalle_ventas d JOIN ventas v ON v.id = d.venta_id '
+      'LEFT JOIN productos p ON p.id = d.producto_id '
+      "WHERE v.anulada = 0 AND ${rango.replaceAll('fecha', 'v.fecha')} "
+      "AND ${otraCaja ? 'v.dispositivo_uuid = ?' : '(v.dispositivo_uuid IS NULL OR v.dispositivo_uuid = ?)'} "
+      'GROUP BY cat ORDER BY total DESC',
+      [...args, disp],
+    );
+    final porCobrar = await ex.rawQuery(
+        'SELECT COALESCE(SUM(deuda_actual), 0) AS t FROM clientes WHERE deuda_actual > 0');
+    final turnoNum = await ex.rawQuery(
+        "SELECT COUNT(*) AS n FROM caja_movimientos WHERE tipo = 'APERTURA' AND fecha <= ? AND $deLaCaja",
+        [fi, disp]);
+    final cfg = await ex.query('configuracion', where: "clave = 'empresa_nombre'", limit: 1);
+    final uid = usuarioId ?? usuarioApertura;
+    final usr = uid == null
+        ? const <Map<String, Object?>>[]
+        : await ex.query('usuarios', columns: ['nombre_completo', 'usuario'], where: 'id = ?', whereArgs: [uid], limit: 1);
+
+    final calculado = base + (cobrado - devTurno) + otras - compras - gastos - devOtros;
+    return DatosZ(
+      negocio: cfg.isEmpty ? '' : (cfg.first['valor'] ?? '').toString().trim(),
+      caja: (cajaNombre != null && cajaNombre.trim().isNotEmpty) ? cajaNombre.trim() : await nombreCaja(ex),
+      cajero: usr.isEmpty
+          ? ''
+          : ((usr.first['nombre_completo'] ?? '').toString().trim().isNotEmpty
+              ? usr.first['nombre_completo'].toString().trim()
+              : (usr.first['usuario'] ?? '').toString()),
+      turno: (turnoNum.first['n'] as num?)?.toInt() ?? 0,
+      apertura: DateTime.tryParse(fi) ?? DateTime.now(),
+      cierre: null,
+      base: base,
+      pedidos: pedidos,
+      ventasPorMedio: medioEfectivo,
+      otrasEntradas: otras,
+      compras: compras,
+      gastos: gastos,
+      esperado: esperado ?? calculado,
+      declarado: null,
+      detalle: detalle,
+      ventaPorCategoria: {
+        for (final c in cats) c['cat'].toString(): (c['total'] as num?)?.toDouble() ?? 0,
+      },
+      fiadoTurno: fiado,
+      saldoPorCobrar: (porCobrar.first['t'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
   Future<Map<String, double>> obtenerResumenCaja() async {
     final db = await database;
     final disp = await obtenerDispositivoUuid();
@@ -882,6 +1149,8 @@ CREATE TABLE roles_permisos(
       'venta_uuid': await _uuidDeTabla(db, 'ventas', fila['venta_id']),
       'usuario_uid': await authUidPorUsuario(fila['usuario_id']),
       'dispositivo_uuid': fila['dispositivo_uuid'],
+      // Para que la caja principal la muestre con su nombre (Cajas en vivo).
+      'caja_nombre': await nombreCaja(),
     }));
   }
 
@@ -1098,11 +1367,21 @@ CREATE TABLE roles_permisos(
           metodos[nombreDig] = (metodos[nombreDig] ?? 0) + partes['digital']!;
         }
       }
+      // Reporte Z congelado: reimprimir este cierre siempre da lo mismo.
+      final fechaCierreNow = DateTime.now().toIso8601String();
+      final z = (await _datosZ(txn, fi: fi, disp: disp, usuarioId: usuarioId, esperado: totalSistema))
+          .conCierre(cierre: DateTime.parse(fechaCierreNow), declarado: realContado);
+      // El desglose por medio de pago es el de ESTA caja en el turno (antes
+      // sumaba las ventas de todas las cajas del negocio).
+      metodos
+        ..clear()
+        ..addAll(z.ventasPorMedio);
       final desgloseJson = jsonEncode(metodos);
       // AJUSTE:NO = cierre sin movimiento de ajuste (el descuadre está aquí).
+      // METODOS va de último: los reportes lo leen hasta el final.
       final nuevoDetalle = detalle.isEmpty
-          ? 'AJUSTE:NO|METODOS:$desgloseJson'
-          : '$detalle|AJUSTE:NO|METODOS:$desgloseJson';
+          ? 'AJUSTE:NO|${z.codificar()}|METODOS:$desgloseJson'
+          : '$detalle|AJUSTE:NO|${z.codificar()}|METODOS:$desgloseJson';
 
       filaMov = _filaMovCaja(
         tipo: 'CIERRE',
@@ -1112,7 +1391,6 @@ CREATE TABLE roles_permisos(
         disp: disp,
       );
       await txn.insert('caja_movimientos', filaMov);
-      final fechaCierreNow = DateTime.now().toIso8601String();
       final idCierre = await txn.insert('cierres_caja', {
         'fecha': fechaCierreNow,
         'fecha_inicio': fi,

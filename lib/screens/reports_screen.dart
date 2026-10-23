@@ -7,6 +7,7 @@ import '../services/finanzas_service.dart';
 import '../services/permission_service.dart';
 import '../services/theme_service.dart';
 import '../widgets/finanzas_ui.dart';
+import 'finanzas/cajas_vivo_seccion.dart';
 import 'finanzas/control_cierres_seccion.dart';
 import 'finanzas/rentabilidad_ventas_seccion.dart';
 import 'finanzas/resultados_seccion.dart';
@@ -34,6 +35,7 @@ class _Seccion {
 
 const _secciones = [
   _Seccion('PANORAMA', 'Panorama', 'Hoy, mes y año', Icons.dashboard_rounded, FinColor.azul, usaPeriodo: false),
+  _Seccion('CAJAS', 'Cajas en vivo', 'Cómo va cada caja', Icons.devices_rounded, FinColor.verde, usaPeriodo: false),
   _Seccion('RESULTADOS', 'Resultados', 'Ganancia del período', Icons.account_balance_rounded, FinColor.verde),
   _Seccion('GASTOS', 'Gastos y compras', 'En qué se va la plata', Icons.receipt_long_rounded, FinColor.rosa),
   _Seccion('RENTABILIDAD', 'Rentabilidad', 'Qué deja más', Icons.trending_up_rounded, FinColor.ambar),
@@ -270,6 +272,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     switch (_seccion) {
       case 'PANORAMA':
         return PanoramaSeccion(fin: _fin, clave: _clave);
+      case 'CAJAS':
+        return CajasVivoSeccion(clave: _clave);
       case 'RESULTADOS':
         return ResultadosSeccion(fin: _fin, periodo: args.periodo, usuarioId: args.usuarioId, clave: args.clave);
       case 'GASTOS':

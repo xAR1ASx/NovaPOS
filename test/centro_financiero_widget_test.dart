@@ -55,9 +55,14 @@ void main() {
     await db.cerrarTurno(
         realContado: total - 500,
         fechaInicio: (await db.obtenerFechaAperturaActual())!, usuarioId: 1);
+    // Un turno abierto, para "Cajas en vivo" y el Reporte Z parcial
+    await db.registrarMovimientoCaja('APERTURA', 20000, 'Base', 1);
+    await db.registrarVenta(6000, 'TRANSFERENCIA', [
+      {'id': p, 'nombre': 'Papa pastusa', 'cantidad': 3, 'precio': 2000, 'subtotal': 6000, 'costo_unitario': 1200}
+    ], usuarioId: 1);
   }
 
-  const secciones = ['Panorama', 'Resultados', 'Gastos y compras', 'Rentabilidad', 'Ventas', 'Control', 'Cierres de caja'];
+  const secciones = ['Panorama', 'Cajas en vivo', 'Resultados', 'Gastos y compras', 'Rentabilidad', 'Ventas', 'Control', 'Cierres de caja'];
 
   for (final tam in [const Size(1440, 900), const Size(800, 1280)]) {
     testWidgets('Todas las secciones se dibujan sin errores (${tam.width.toInt()}x${tam.height.toInt()})', (tester) async {
@@ -100,6 +105,20 @@ void main() {
         expect(tester.takeException(), isNull, reason: 'Sección $s');
         expect(find.textContaining('No se pudo cargar'), findsNothing, reason: 'Sección $s');
       }
+      // Cajas en vivo: abrir el Reporte Z del turno (vista previa)
+      await abrir('Cajas en vivo');
+      await esperar();
+      final verZ = find.text('Ver Reporte Z del turno');
+      expect(verZ, findsOneWidget);
+      await tester.ensureVisible(verZ);
+      await tester.tap(verZ);
+      await esperar();
+      expect(find.textContaining('CIERRE DE CAJA - REPORTE Z'), findsOneWidget);
+      await tester.tap(find.text('58 mm').last);
+      await esperar();
+      expect(tester.takeException(), isNull, reason: 'Vista previa del Reporte Z');
+      await tester.tap(find.text('Cerrar').last);
+      await esperar();
       // Cambiar el período y volver a Resultados
       await abrir('Resultados');
       await esperar();

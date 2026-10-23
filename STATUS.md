@@ -1,9 +1,10 @@
 # NovaPOS - Estado del Proyecto y Siguientes Pasos
 
 **Fecha de última actualización:** 2026-10-23
-**Versión Actual:** 1.8.2
+**Versión Actual:** 1.9.0
 
 ## 🎯 Hitos Completados
+- [x] **v1.9.0**: Reporte Z (80/58 mm, vista previa, congelado en el cierre) y Centro Financiero → Cajas en vivo. 153 tests pasando.
 - [x] **v1.8.2**: detalle visual en Ajustes y acciones de GitHub actualizadas. Modo una caja y copia en la nube probados en el Mac con la cuenta de prueba.
 - [x] **v1.8.1**: validaciones de la auditoría de Antigravity (ventas, mermas y compras con datos imposibles). 146 tests pasando. Pendiente: cola de sync dentro de la transacción.
 - [x] **v1.8.0**: modo una caja / varias cajas (`modo_sync`), copia diaria comprimida en la nube al cerrar caja (solo la última), equipo vacío que trae la copia sin duplicar nada y paso de una caja a varias. Reglas de Firestore actualizadas y publicadas (23-oct). Auditoría con dos cajas: 4 errores de sincronización y Cloudinary corregidos. 133 tests pasando.

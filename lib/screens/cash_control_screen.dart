@@ -6,7 +6,7 @@ import '../services/cash_service.dart';
 import '../services/session_service.dart';
 import '../services/auto_backup_service.dart';
 import '../services/copia_nube_service.dart';
-import '../services/printer_service.dart';
+import '../widgets/reporte_z_vista.dart';
 import '../utils/numero.dart';
 import '../utils/categorias_caja.dart';
 import '../services/locale_service.dart';
@@ -1090,7 +1090,7 @@ class _CashControlScreenState extends State<CashControlScreen> {
               child: ElevatedButton.icon(
                 icon: const Icon(Icons.print, size: 20),
                 label: Text(
-                  _t("IMPRIMIR TIRILLA DE CIERRE (Z)"),
+                  _t("VER E IMPRIMIR REPORTE Z"),
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
@@ -1100,7 +1100,9 @@ class _CashControlScreenState extends State<CashControlScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 onPressed: () async {
-                  await PrinterService().imprimirArqueo(cierre);
+                  final z = await DBHelper().datosZDeCierre(cierre);
+                  if (!ctx.mounted) return;
+                  await mostrarReporteZ(ctx, z);
                 },
               ),
             ),
@@ -1366,6 +1368,23 @@ class _CashControlScreenState extends State<CashControlScreen> {
                           backgroundColor: Colors.purple,
                           foregroundColor: Colors.white,
                         ),
+                      ),
+                    ),
+                  ),
+                if (_cajaAbierta)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        // Cómo va el turno antes de cerrarlo (sin efectivo declarado).
+                        onPressed: () async {
+                          final z = await DBHelper().datosZTurnoAbierto(usuarioId: SessionService.userId());
+                          if (z == null || !mounted) return;
+                          await mostrarReporteZ(context, z);
+                        },
+                        icon: const Icon(Icons.receipt_long),
+                        label: Text(_t("VER REPORTE Z DEL TURNO")),
                       ),
                     ),
                   ),

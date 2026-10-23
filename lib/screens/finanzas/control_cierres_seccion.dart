@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../database/db_helper.dart';
 import '../../services/finanzas_service.dart';
-import '../../services/printer_service.dart';
+import '../../widgets/reporte_z_vista.dart';
 import '../../services/theme_service.dart';
 import '../../utils/categorias_caja.dart';
 import '../../widgets/finanzas_ui.dart';
@@ -261,7 +261,7 @@ class CierresSeccion extends StatelessWidget {
                             IconButton(
                               tooltip: ft('Reimprimir tirilla de cierre'),
                               icon: Icon(Icons.print_outlined, size: 18, color: context.textSecondary),
-                              onPressed: () => _reimprimirCierre(t),
+                              onPressed: () => _reimprimirCierre(context, t),
                             ),
                           ] else ...[
                             const SizedBox(width: 6),
@@ -280,7 +280,7 @@ class CierresSeccion extends StatelessWidget {
     );
   }
 
-  Future<void> _reimprimirCierre(CierreAuditoria t) async {
+  Future<void> _reimprimirCierre(BuildContext context, CierreAuditoria t) async {
     if (t.id <= 0) return;
     final db = await DBHelper().database;
     final filas = await db.query('cierres_caja', where: 'id = ?', whereArgs: [t.id], limit: 1);
@@ -301,7 +301,9 @@ class CierresSeccion extends StatelessWidget {
             'estado': t.estado == 'CUADRADO' ? 'OK' : t.estado,
             if (t.metodos.isNotEmpty) 'detalle': 'METODOS:${jsonEncode(t.metodos)}',
           };
-    await PrinterService().imprimirArqueo(mapa);
+    final z = await DBHelper().datosZDeCierre(mapa);
+    if (!context.mounted) return;
+    await mostrarReporteZ(context, z);
   }
 
   static (String, Color) _metaMovimiento(MovimientoTurno m) {
@@ -516,10 +518,10 @@ class CierresSeccion extends StatelessWidget {
                   ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(ctx);
-                      _reimprimirCierre(t);
+                      _reimprimirCierre(context, t);
                     },
                     icon: const Icon(Icons.print_rounded, size: 18),
-                    label: Text(ft('Reimprimir tirilla de cierre (Z)')),
+                    label: Text(ft('Ver e imprimir Reporte Z')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: FinColor.violeta,
                       foregroundColor: Colors.white,

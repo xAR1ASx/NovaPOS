@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:novapos/database/db_helper.dart';
 import 'package:novapos/services/copia_nube_service.dart';
 import 'package:novapos/services/permission_service.dart';
+import 'package:novapos/services/reporte_z.dart';
 import 'package:novapos/services/role_permissions.dart';
 import 'package:novapos/services/session_service.dart';
 import 'package:novapos/services/sync_service.dart';
@@ -131,6 +132,56 @@ void main() {
     final d = await db.database;
     return (await d.rawQuery('SELECT COUNT(*) AS n FROM $tabla${where == null ? '' : ' WHERE $where'}')).first['n'] as int;
   }
+
+  test('Cajas en vivo: la caja principal ve cómo va la otra caja, con su nombre y su efectivo', () async {
+    await enCaja('caja1', (s) async {
+      await db.guardarConfiguracion('caja_nombre', 'Caja principal');
+      await darStock('Papa Pastusa', 100);
+    });
+    double esperadoCaja2 = 0;
+    await enCaja('caja2', (s) async {
+      await db.guardarConfiguracion('caja_nombre', 'Caja frutas');
+      await esperar(() => stock('Papa Pastusa'), (v) => v == 100);
+      await abrirCaja(); // base 50.000
+      await vender('Papa Pastusa', 5); // 10.000 en efectivo
+      await vender('Papa Pastusa', 2, metodo: 'TRANSFERENCIA'); // 4.000
+      await db.registrarMovimientoCaja('GASTO', 3000, 'Bolsas', 1);
+      esperadoCaja2 = (await db.obtenerResumenCaja())['total_en_caja']!;
+      expect(esperadoCaja2, 57000);
+    });
+    await enCaja('caja1', (s) async {
+      await abrirCaja();
+      await vender('Papa Pastusa', 1);
+      final cajas = await esperar(() => db.estadoDeLasCajas(),
+          (List<EstadoCaja> l) => l.any((c) => c.nombre == 'Caja frutas' && (c.turno?.pedidos ?? 0) == 2));
+      expect(cajas.length, 2);
+      final principal = cajas.singleWhere((c) => c.esEstaCaja);
+      expect(principal.nombre, 'Caja principal');
+      expect(principal.abierta, isTrue);
+      expect(principal.turno!.ventasTotal, 2000);
+      final frutas = cajas.singleWhere((c) => !c.esEstaCaja);
+      expect(frutas.nombre, 'Caja frutas');
+      expect(frutas.abierta, isTrue);
+      expect(frutas.turno!.esperado, esperadoCaja2, reason: 'lo mismo que la caja 2 calcula para su cajón');
+      expect(frutas.turno!.ventasTotal, 14000);
+      expect(frutas.turno!.ventasPorMedio['Transferencia'], 4000);
+      expect(frutas.turno!.gastos, 3000);
+      expect(frutas.ventasHoy, 14000);
+      // La venta de la caja 1 no se cuenta en la caja 2 ni al revés
+      expect(principal.turno!.pedidos, 1);
+    });
+    // La caja 2 cierra: la principal la ve cerrada con la diferencia del cierre
+    await enCaja('caja2', (s) async {
+      await db.cerrarTurno(realContado: 56000, fechaInicio: '', usuarioId: 1);
+    });
+    await enCaja('caja1', (s) async {
+      final cajas = await esperar(() => db.estadoDeLasCajas(),
+          (List<EstadoCaja> l) => l.any((c) => c.nombre == 'Caja frutas' && !c.abierta && c.ultimaDiferencia != null));
+      final frutas = cajas.singleWhere((c) => !c.esEstaCaja);
+      expect(frutas.abierta, isFalse);
+      expect(frutas.ultimaDiferencia, -1000);
+    });
+  });
 
   test('Fiado en una caja y abono en la otra: la deuda queda igual en las dos', () async {
     await enCaja('caja1', (s) async {

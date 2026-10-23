@@ -4,7 +4,7 @@
 ===============================================================================
 
 Versión del documento ..... 1.2
-Versión del sistema ....... 1.8.2 (base de datos local v14)
+Versión del sistema ....... 1.9.0 (base de datos local v14)
 Fecha ..................... 23 de octubre de 2026
 Repositorio ............... github.com/xAR1ASx/NovaPOS (rama main)
 
@@ -48,7 +48,7 @@ Quién lo usa:
     atiende clientes. No ve utilidades ni configuración.
 
 Plataformas:
-  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.8.2.exe.
+  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.9.0.exe.
   - Android 8 o superior (tablets): APK, con modo kiosco opcional.
   - macOS: solo para desarrollo (no se entrega a clientes).
 
@@ -138,8 +138,7 @@ Principios:
   - Asistente para pagar un pedido mayor al efectivo disponible (ingresa el
     faltante y paga en una sola operación).
   - Cierre de turno con conteo obligatorio, semáforo de cuadre (perfecto /
-    sobrante / faltante) y tirilla Z imprimible con desglose por medio de
-    pago y firmas. La diferencia se calcula en el cierre (no se registra un
+    sobrante / faltante) y Reporte Z (ver 3.9). La diferencia se calcula en el cierre (no se registra un
     gasto de "ajuste"), así la tirilla cuadra: base + ventas + ingresos -
     gastos = esperado; contado - esperado = diferencia.
   - Historial de cierres y reimpresión.
@@ -208,6 +207,56 @@ Principios:
     ticket de prueba. Se puede repetir desde Ajustes -> Asistente.
   - Ajustes en tres pestañas: Empresa y ticket, Hardware, Sistema y copias.
   - Modo claro / oscuro y español / inglés.
+
+3.9 Reporte Z (tirilla de cierre de caja) - desde la versión 1.9.0
+  Para impresora térmica de 80 mm (42 letras por renglón) o 58 mm (32),
+  según Ajustes -> Hardware -> Ancho del papel. Tiene vista previa en
+  pantalla (con selector 80/58 mm) y se imprime con el mismo botón. La vista
+  previa y el papel salen de UNA sola lista de renglones (lib/services/
+  reporte_z.dart): nunca se diferencian.
+  Dónde se ve: al cerrar caja ("VER E IMPRIMIR REPORTE Z"), con el turno
+  abierto ("VER REPORTE Z DEL TURNO", parcial y sin efectivo declarado), en
+  el historial de cierres, en Centro Financiero -> Cierres de caja y en
+  Centro Financiero -> Cajas en vivo (de cualquier caja abierta).
+  Orden: encabezado (negocio, turno, caja, cajero, apertura y cierre); base
+  inicial; ventas del turno de ESA caja con cómo se pagaron (Efectivo,
+  Transferencia y Tarjeta siempre; Nequi, Daviplata, fiado... solo si
+  hubo); ventas que no son efectivo; otras entradas de efectivo (abonos de
+  fiados, préstamos devueltos...); compras; gastos; devoluciones en
+  efectivo de ventas de turnos anteriores; efectivo esperado; efectivo
+  declarado; diferencia con aviso grande (FALTANTE DE $X / SOBRANTE DE $X /
+  CAJA CUADRADA, o "Sin efectivo declarado" en el parcial); detalle de cada
+  compra y gasto con su concepto; otros datos (venta por categoría, fiado
+  del turno y saldo por cobrar de clientes); firmas de cajero y
+  administrador.
+  Regla de oro, el papel siempre cuadra:
+    base + ventas - ventas no efectivo + otras entradas - compras - gastos
+    - devoluciones = efectivo esperado.
+  Una devolución en efectivo de una venta del MISMO turno ya resta de la
+  venta (no se resta otra vez); la de un turno anterior aparece como
+  "Devoluciones en efectivo".
+  Al cerrar, todo el reporte se guarda congelado dentro del cierre (campo
+  detalle, segmento "Z:", antes de "METODOS:"), así reimprimirlo después da
+  exactamente lo mismo aunque cambien categorías, deudas, etc., y viaja a
+  las otras cajas con la sincronización. Los cierres de antes de la 1.9.0
+  se rearman con sus movimientos respetando el esperado y lo contado.
+  Desde la 1.9.0, el desglose por medio de pago del cierre es el de ESA caja
+  (antes sumaba las ventas de todas las cajas).
+  "Cortesías" no existe en NovaPOS (no hay ventas de cortesía), por eso no
+  aparece.
+
+3.10 Cajas en vivo (Centro Financiero) - desde la versión 1.9.0
+  Desde cualquier caja (normalmente la principal) el dueño ve cómo va cada
+  caja del negocio: si el turno está abierto o cerrado, desde qué hora y
+  quién; ventas de hoy y del turno con el desglose por medio de pago;
+  compras y gastos; efectivo que debería haber en el cajón; diferencia del
+  último cierre; último movimiento; y el Reporte Z parcial de cada caja
+  abierta. Arriba: ventas de hoy de todas las cajas, cuántas están abiertas
+  y el efectivo total en los cajones. Se actualiza sola cuando llegan datos
+  de otra caja. Lo de las otras cajas es lo que ya llegó por la
+  sincronización (una caja sin internet se ve con lo último que subió). En
+  modo una caja solo se ve esa caja. Cada movimiento de caja lleva el nombre
+  de su caja para mostrarla con su nombre.
 
 
 ===============================================================================
@@ -625,6 +674,16 @@ Principios:
 10. ÚLTIMOS CAMBIOS REALIZADOS
 ===============================================================================
 
+  Versión 1.9.0 (23-oct-2026) - Reporte Z y Cajas en vivo
+  - Nuevo: Reporte Z para 80 y 58 mm con vista previa (sección 3.9).
+  - Nuevo: Centro Financiero -> Cajas en vivo (sección 3.10).
+  - Nuevo: Ajustes -> Hardware -> Ancho del papel (80 / 58 mm).
+  - Cambio: el desglose por medio de pago del cierre es el de esa caja.
+  - Pruebas: 153 (Reporte Z: regla de oro con turno abierto y cerrado,
+    reimpresión idéntica, detalle sin devoluciones, avisos FALTANTE /
+    SOBRANTE / CAJA CUADRADA, ancho exacto en 42 y 32 columnas; Cajas en
+    vivo con dos cajas; dibujo en pantalla de computador y tablet).
+
   Versión 1.8.2 (23-oct-2026) - Detalle visual y compilación
   - Corregido: en Ajustes -> Empresa & Ticket, el título "Borrador en Vivo
     (80 mm)" se salía de la tarjeta en ventanas angostas.
@@ -745,7 +804,7 @@ Principios:
 
   Versión 1.5.0 y anteriores: ver CHANGELOG.md.
 
-  Pruebas automáticas: 146, todas pasando (flutter test).
+  Pruebas automáticas: 153, todas pasando (flutter test).
 
 
 ===============================================================================
@@ -822,7 +881,7 @@ Principios:
   compatibilidad; la versión real del esquema es 14).
 
   Comandos:
-    flutter test ........................ correr las 146 pruebas
+    flutter test ........................ correr las 153 pruebas
     firebase deploy --only firestore:rules --project novapos-bc9d3
                                           publicar las reglas de la nube
     flutter build windows --release ..... compilar para Windows

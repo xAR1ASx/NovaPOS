@@ -1156,6 +1156,11 @@ class SyncService {
     final data = doc.data();
     if (data == null) return false;
     if ((data['dispositivo_uuid'] ?? '') == _dispositivoUuid) return false;
+    final nombreOtra = (data['caja_nombre'] ?? '').toString().trim();
+    final dispOtra = (data['dispositivo_uuid'] ?? '').toString();
+    if (nombreOtra.isNotEmpty && dispOtra.isNotEmpty) {
+      await _db.guardarConfiguracion('caja_nombre_$dispOtra', nombreOtra);
+    }
     final db = await _db.database;
     if (!activo) return false;
     final existe = await db.query('caja_movimientos',

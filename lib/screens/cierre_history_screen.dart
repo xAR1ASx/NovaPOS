@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
-import '../services/printer_service.dart';
+import '../widgets/reporte_z_vista.dart';
 import '../services/locale_service.dart';
 import '../services/theme_service.dart';
 
@@ -149,13 +149,15 @@ class _CierreHistoryScreenState extends State<CierreHistoryScreen> {
               width: double.infinity,
               child: ElevatedButton.icon(
                 icon: const Icon(Icons.print, size: 18),
-                label: Text(_t("IMPRIMIR ARQUEO")),
+                label: Text(_t("VER E IMPRIMIR REPORTE Z")),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.indigo[800],
                   foregroundColor: Colors.white,
                 ),
                 onPressed: () async {
-                  await PrinterService().imprimirArqueo(c);
+                  final z = await DBHelper().datosZDeCierre(c);
+                  if (!context.mounted) return;
+                  await mostrarReporteZ(context, z);
                 },
               ),
             ),

@@ -6,6 +6,7 @@ import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import 'impresora_raw.dart';
+import 'reporte_z.dart';
 
 class PrinterService {
   final formater = NumberFormat.currency(
@@ -499,158 +500,26 @@ class PrinterService {
     }
   }
 
+  /// Tirilla Z de un cierre (reimpresión incluida): sale de los datos
+  /// congelados al cerrar, así siempre es idéntica.
   Future<void> imprimirArqueo(Map<String, dynamic> cierre) async {
+    await imprimirReporteZ(await DBHelper().datosZDeCierre(cierre));
+  }
+
+  /// Ancho del papel de la impresora térmica (Ajustes → Hardware): 80 o 58.
+  static Future<int> anchoPapelMm() async {
+    final v = (await DBHelper().obtenerConfiguracion())['papel_ancho'] ?? '80';
+    return v.trim() == '58' ? 58 : 80;
+  }
+
+  Future<void> imprimirReporteZ(DatosZ z, {int? anchoMm}) async {
+    final ancho = anchoMm ?? await anchoPapelMm();
+    final lineas = ReporteZ.lineas(ReporteZ.renglones(z), ReporteZ.columnasPara(ancho));
+    final doc = pdfReporteZ(lineas, ancho);
     final config = await DBHelper().obtenerConfiguracion();
-    String empresa = config['empresa_nombre'] ?? "NovaPOS";
-
-    final doc = pw.Document();
-
-    doc.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.roll80,
-        margin: const pw.EdgeInsets.all(5),
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
-            mainAxisSize: pw.MainAxisSize.min,
-            children: [
-              pw.Text(
-                empresa,
-                style: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              pw.SizedBox(height: 2),
-              pw.Text(
-                "CIERRE DE CAJA / ARQUEO Z",
-                style: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-              pw.SizedBox(height: 2),
-              pw.Text(
-                "Fecha Emisión: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}",
-                style: const pw.TextStyle(fontSize: 9),
-              ),
-              if (cierre['fecha_inicio'] != null)
-                pw.Text(
-                  "Turno Desde: ${cierre['fecha_inicio'].toString().substring(0, 16).replaceAll('T', ' ')}",
-                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
-                ),
-              pw.Divider(thickness: 1.5),
-
-              // SECCIÓN: VENTAS TOTALES Y DESGLOSE POR MÉTODO
-              pw.Align(
-                alignment: pw.Alignment.centerLeft,
-                child: pw.Text(
-                  "VENTAS TOTALES DEL TURNO",
-                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
-                ),
-              ),
-              pw.SizedBox(height: 3),
-              _filaArqueo("TOTAL FACTURADO", (cierre['ventas_turno_global'] ?? cierre['ventas_turno'] ?? 0), negrita: true),
-              pw.Divider(borderStyle: pw.BorderStyle.dashed),
-
-              pw.Align(
-                alignment: pw.Alignment.centerLeft,
-                child: pw.Text(
-                  "DESGLOSE POR MÉTODO DE PAGO:",
-                  style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800),
-                ),
-              ),
-              pw.SizedBox(height: 2),
-              ...(() {
-                final d = cierre['detalle']?.toString() ?? '';
-                if (d.contains('METODOS:')) {
-                  try {
-                    String jsonPart = d.split('METODOS:')[1];
-                    Map<String, dynamic> map = jsonDecode(jsonPart);
-                    List<pw.Widget> rows = [];
-                    map.forEach((k, v) {
-                      double montoMetodo = (v as num?)?.toDouble() ?? 0;
-                      if (montoMetodo > 0) {
-                        rows.add(_filaArqueo("  $k", montoMetodo));
-                      }
-                    });
-                    if (rows.isNotEmpty) {
-                      return rows;
-                    }
-                  } catch (_) {}
-                }
-                // Si no hay desglose en detalle, mostrar al menos ventas turno (efectivo)
-                return [
-                  _filaArqueo("  EFECTIVO", (cierre['ventas_turno'] ?? 0)),
-                ];
-              })(),
-              pw.Divider(thickness: 1.5),
-
-              // SECCIÓN: CUADRE DE CAJA FÍSICA
-              pw.Align(
-                alignment: pw.Alignment.centerLeft,
-                child: pw.Text(
-                  "CUADRE DE EFECTIVO EN CAJÓN",
-                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
-                ),
-              ),
-              pw.SizedBox(height: 3),
-              _filaArqueo("(+) Base inicial", (cierre['base'] ?? 0)),
-              _filaArqueo("(+) Ventas en efectivo", (cierre['ventas_turno'] ?? 0)),
-              _filaArqueo("(+) Ingresos / Refuerzos", (cierre['ingresos_turno'] ?? 0)),
-              _filaArqueo("(-) Gastos / Salidas", (cierre['gastos_turno'] ?? 0)),
-              pw.Divider(borderStyle: pw.BorderStyle.dashed),
-              _filaArqueo("(=) Total Esperado Sistema", (cierre['total_sistema'] ?? 0), negrita: true),
-              _filaArqueo("Real Contado por Cajero", (cierre['real_contado'] ?? 0), negrita: true),
-              _filaArqueo("Diferencia (Sobrante/Falta)", (cierre['diferencia'] ?? 0), negrita: true),
-              pw.Divider(thickness: 1.5),
-
-              pw.Container(
-                padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.black, width: 1),
-                ),
-                child: pw.Text(
-                  "ESTADO CUADRE: ${cierre['estado'] ?? 'OK'}",
-                  style: pw.TextStyle(
-                    fontSize: 11,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
-              pw.SizedBox(height: 30),
-
-              // FIRMAS DE AUDITORÍA
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    children: [
-                      pw.Container(width: 80, height: 1, color: PdfColors.black),
-                      pw.SizedBox(height: 3),
-                      pw.Text("Firma Cajero", style: const pw.TextStyle(fontSize: 8)),
-                    ],
-                  ),
-                  pw.Column(
-                    children: [
-                      pw.Container(width: 80, height: 1, color: PdfColors.black),
-                      pw.SizedBox(height: 3),
-                      pw.Text("Firma Administrador", style: const pw.TextStyle(fontSize: 8)),
-                    ],
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 20),
-            ],
-          );
-        },
-      ),
-    );
-
     final directa = config['impresion_directa'] == '1';
     final impresoraNombre = config['impresora_nombre'] ?? '';
-    final nombreDoc = 'Arqueo_${DateTime.now().millisecondsSinceEpoch}';
-
+    final nombreDoc = 'ReporteZ_${DateTime.now().millisecondsSinceEpoch}';
     if (directa && impresoraNombre.isNotEmpty) {
       await _imprimirDirecto(
         impresoras: await obtenerImpresoras(),
@@ -666,31 +535,56 @@ class PrinterService {
     }
   }
 
-  pw.Widget _filaArqueo(String label, dynamic valor, {bool negrita = false}) {
-    double v = (valor as num?)?.toDouble() ?? 0;
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 2),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(
-            label,
-            style: pw.TextStyle(
-              fontSize: 10,
-              fontWeight: negrita ? pw.FontWeight.bold : pw.FontWeight.normal,
-            ),
-          ),
-          pw.Text(
-            formater.format(v),
-            style: pw.TextStyle(
-              fontSize: 10,
-              fontWeight: negrita ? pw.FontWeight.bold : pw.FontWeight.bold,
-            ),
-          ),
-        ],
+  /// Dibuja las líneas del Reporte Z con letra de ancho fijo (Courier),
+  /// del tamaño justo para que quepan las columnas del papel. El aviso
+  /// grande va a doble tamaño (la mitad de columnas).
+  @visibleForTesting
+  static pw.Document pdfReporteZ(List<LineaZ> lineas, int anchoMm) {
+    final columnas = ReporteZ.columnasPara(anchoMm);
+    final formato = PdfPageFormat(
+      anchoMm * PdfPageFormat.mm,
+      double.infinity,
+      marginAll: (anchoMm <= 58 ? 2 : 4) * PdfPageFormat.mm,
+    );
+    // Courier: cada letra mide 0,6 del tamaño de la fuente.
+    final tam = formato.availableWidth / (columnas * 0.6);
+    final normal = pw.Font.courier();
+    final negrita = pw.Font.courierBold();
+    final doc = pw.Document();
+    doc.addPage(
+      pw.Page(
+        pageFormat: formato,
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          mainAxisSize: pw.MainAxisSize.min,
+          children: [
+            for (final l in lineas)
+              pw.Text(
+                _soloLatin1(l.texto),
+                softWrap: false,
+                style: pw.TextStyle(
+                  font: l.negrita ? negrita : normal,
+                  fontSize: l.grande ? tam * 2 : tam,
+                  lineSpacing: 0,
+                ),
+              ),
+            pw.SizedBox(height: 10 * PdfPageFormat.mm),
+          ],
+        ),
       ),
     );
+    return doc;
   }
+
+  /// Las fuentes de la impresora (Courier) solo traen Latin-1: un emoji o una
+  /// raya larga en un concepto se cambia por un carácter que sí imprime.
+  static String _soloLatin1(String s) => String.fromCharCodes(s.runes.map((c) {
+        if (c <= 0xFF) return c;
+        if (c == 0x2013 || c == 0x2014) return 0x2D; // – —
+        if (c == 0x2018 || c == 0x2019) return 0x27; // ‘ ’
+        if (c == 0x201C || c == 0x201D) return 0x22; // “ ”
+        return 0x3F; // ?
+      }));
 
   /// Lista los nombres de impresoras disponibles en Windows.
   Future<List<String>> obtenerImpresoras() async {

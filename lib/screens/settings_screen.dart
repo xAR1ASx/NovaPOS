@@ -62,6 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _impresoraSeleccionada = "";
   List<String> _impresoras = [];
   bool _impresionDirecta = false;
+  String _papelAncho = '80';
   String _balanzaPuerto = "COM1";
   String _balanzaVelocidad = "9600";
   List<String> _puertosSerial = [];
@@ -152,6 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
       _impresoraSeleccionada = config['impresora_nombre'] ?? "";
       _impresionDirecta = config['impresion_directa'] == '1';
+      _papelAncho = config['papel_ancho'] == '58' ? '58' : '80';
       _balanzaPuerto = config['balanza_puerto'] ?? "COM1";
       _balanzaModo = (config['balanza_modo'] == BalanzaService.modoBalanza ||
               config['balanza_modo'] == BalanzaService.modoManual)
@@ -195,6 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       'impresion_directa',
       _impresionDirecta ? '1' : '0',
     );
+    await db.guardarConfiguracion('papel_ancho', _papelAncho);
     await db.guardarConfiguracion('balanza_puerto', _balanzaPuerto);
     await db.guardarConfiguracion('balanza_velocidad', _balanzaVelocidad);
     await db.guardarPermitirStockNegativo(_permitirStockNegativo);
@@ -2116,6 +2119,20 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ),
                       value: _impresionDirecta,
                       onChanged: (v) => setState(() => _impresionDirecta = v),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.straighten),
+                      title: const Text("Ancho del papel"),
+                      subtitle: const Text("Para la tirilla de cierre (Reporte Z): 80 mm = 42 letras, 58 mm = 32"),
+                      trailing: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: '80', label: Text('80 mm')),
+                          ButtonSegment(value: '58', label: Text('58 mm')),
+                        ],
+                        selected: {_papelAncho},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (v) => setState(() => _papelAncho = v.first),
+                      ),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),

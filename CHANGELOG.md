@@ -2,6 +2,20 @@
 
 Todas las versiones notables de NovaPOS se documentan en este archivo.
 
+## [1.9.0] - 2026-10-23
+
+### Nuevo
+- **Reporte Z** (tirilla de cierre) para 80 mm (42 columnas) y 58 mm (32), con vista previa en pantalla. Vista previa e impresión salen de una sola lista de renglones (`lib/services/reporte_z.dart`). Regla de oro: base + ventas − no efectivo + otras entradas − compras − gastos − devoluciones = esperado. Aviso grande FALTANTE / SOBRANTE / CAJA CUADRADA (o "Sin efectivo declarado"). Detalle de compras y gastos con concepto partido por palabras y valor abajo a la derecha.
+- Los datos del Z se congelan en el cierre (`detalle`, segmento `Z:` en base64 antes de `METODOS:`): la reimpresión es idéntica. Cierres anteriores se rearman con sus movimientos.
+- **Centro Financiero → Cajas en vivo**: estado de cada caja (abierta/cerrada, ventas, desglose, efectivo esperado, última diferencia, Reporte Z parcial). Los movimientos de caja sincronizados llevan `caja_nombre`.
+- **Ajustes → Hardware → Ancho del papel** (80 / 58 mm).
+
+### Cambiado
+- El desglose `METODOS` del cierre es el de esa caja en el turno (antes sumaba todas las cajas).
+
+### Pruebas
+- 153 en total (`test/reporte_z_test.dart`, Cajas en vivo en `test/sync_auditoria_test.dart`, Centro Financiero y vista previa en `test/centro_financiero_widget_test.dart`).
+
 ## [1.8.2] - 2026-10-23
 
 ### Corregido
