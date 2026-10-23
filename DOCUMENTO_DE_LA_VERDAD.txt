@@ -4,7 +4,7 @@
 ===============================================================================
 
 Versión del documento ..... 1.2
-Versión del sistema ....... 1.8.0 (base de datos local v14)
+Versión del sistema ....... 1.8.1 (base de datos local v14)
 Fecha ..................... 23 de octubre de 2026
 Repositorio ............... github.com/xAR1ASx/NovaPOS (rama main)
 
@@ -48,7 +48,7 @@ Quién lo usa:
     atiende clientes. No ve utilidades ni configuración.
 
 Plataformas:
-  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.8.0.exe.
+  - Windows 10/11 de 64 bits: instalador NovaPOS-Setup-1.8.1.exe.
   - Android 8 o superior (tablets): APK, con modo kiosco opcional.
   - macOS: solo para desarrollo (no se entrega a clientes).
 
@@ -123,8 +123,11 @@ Principios:
   - Bloqueo de productos sin stock (configurable).
   - Ventas en espera (varios tickets abiertos a la vez).
   - Impresión del ticket en impresora térmica 58/80 mm y apertura del cajón.
-  - Seguridad de precios: el sistema recalcula el total; un cajero no puede
-    cobrar menos del precio vigente.
+  - Seguridad de precios: el POS pone el precio desde el inventario (con la
+    promoción que aplique) y el cajero no lo puede escribir. Además, al
+    guardar, la base revisa cada línea: cantidad mayor a cero, subtotal =
+    cantidad × precio y total = suma de las líneas (margen de $1). Lo que se
+    guarda, se sube a la nube y se carga al fiado es esa suma.
 
 3.2 Caja (gestión de efectivo)
   - Abrir turno con base, ingresar dinero (base extra, aporte, préstamo
@@ -157,7 +160,9 @@ Principios:
   - Compras a proveedores (actualiza stock y costo); pueden pagarse con la
     caja (valida que haya fondos) o por fuera.
   - Mermas (fruta dañada, madura, consumo) solo para el ADMIN; se pueden
-    pesar con la balanza.
+    pesar con la balanza. No se puede dar de baja más de lo que hay en
+    inventario (salvo que esté permitido vender con stock negativo).
+  - Compras: el total debe ser la suma de los productos (nunca negativo).
 
 3.5 Clientes y fiados
   - Clientes con cupo de crédito, deuda actual y movimientos (fiado, abono,
@@ -620,6 +625,23 @@ Principios:
 10. ÚLTIMOS CAMBIOS REALIZADOS
 ===============================================================================
 
+  Versión 1.8.1 (23-oct-2026) - Validaciones de la auditoría de Antigravity
+  - Corregido: la base aceptaba ventas con cantidad negativa o cero, o con
+    el carrito vacío (una cantidad -1 sumaba stock y restaba de la caja).
+  - Corregido: la protección de precios (H-01) solo comparaba la suma de
+    los subtotales con el total; ahora cada línea debe ser cantidad × precio
+    (5 × $2.000 ya no se puede cobrar por $1).
+  - Corregido: diferencia de hasta $1 entre el total guardado y el que iba
+    a la nube y a la deuda del fiado; ahora todo usa la suma de las líneas.
+  - Corregido: una merma podía ser negativa (sumaba stock) o mayor que el
+    inventario (lo dejaba en negativo aunque no estuviera permitido). La
+    pantalla de mermas ahora muestra el motivo y deja corregir.
+  - Corregido: una compra con total negativo pagada con la caja sumaba plata
+    a la caja, y se aceptaba un total distinto de la suma de los productos.
+  - Ninguno se podía provocar desde las pantallas salvo la merma mayor al
+    inventario; los demás son defensa por si llega un dato malo.
+  - Pruebas: 146 (13 nuevas en test/validaciones_operaciones_test.dart).
+
   Versión 1.8.0 (23-oct-2026) - Modo una caja y copia diaria en la nube
   - Nuevo: modo del negocio "una_caja" / "multicaja" (campo modo_sync en
     negocios/<id>, solo lo cambia el proveedor). En una caja no se sube nada
@@ -715,7 +737,7 @@ Principios:
 
   Versión 1.5.0 y anteriores: ver CHANGELOG.md.
 
-  Pruebas automáticas: 133, todas pasando (flutter test).
+  Pruebas automáticas: 146, todas pasando (flutter test).
 
 
 ===============================================================================
@@ -746,6 +768,14 @@ Principios:
   11.9 Probar en real la copia en la nube: cerrar caja con internet, ver la
        fecha en Ajustes, instalar en otro PC de prueba con el mismo negocio y
        traer la copia. Probar también el paso de una caja a varias.
+
+  11.10 Cola de sincronización dentro de la misma transacción (hallazgo 5
+       de la auditoría de Antigravity): hoy cada operación se guarda y,
+       justo después, se anota para subir. Si se va la luz exactamente entre
+       las dos cosas (milisegundos), esa operación queda solo en esta caja y
+       no llega a las otras. Poco probable, pero toca unas 15 funciones
+       (venta, devolución, anulación, caja, fiado, compra, merma): hacerlo en
+       una versión aparte, con pruebas.
 
 
 ===============================================================================
@@ -784,7 +814,7 @@ Principios:
   compatibilidad; la versión real del esquema es 14).
 
   Comandos:
-    flutter test ........................ correr las 133 pruebas
+    flutter test ........................ correr las 146 pruebas
     firebase deploy --only firestore:rules --project novapos-bc9d3
                                           publicar las reglas de la nube
     flutter build windows --release ..... compilar para Windows

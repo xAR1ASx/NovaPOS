@@ -2,6 +2,21 @@
 
 Todas las versiones notables de NovaPOS se documentan en este archivo.
 
+## [1.8.1] - 2026-10-23
+
+### Corregido (auditoría de Antigravity, verificada en el código)
+- `registrarVenta` aceptaba cantidades negativas o cero, carrito vacío, NaN e infinito (una cantidad -1 sumaba stock y restaba caja). Nueva validación `validarItemsVenta`.
+- H-01 solo comparaba Σ subtotal con el total (ambos de la UI): ahora cada línea debe cumplir subtotal = cantidad × precio (±$1). El precio no se compara con el inventario porque promociones, paquetes y precios especiales lo cambian legítimamente.
+- El total guardado era la suma de las líneas, pero la nube y la deuda del fiado usaban el de la UI (hasta $1 de diferencia): ahora todo usa la suma.
+- `registrarMerma` aceptaba cantidad negativa (sumaba stock) o mayor al inventario aunque `permitir_stock_negativo` estuviera apagado. Lanza `OperacionInvalida` y la pantalla de mermas muestra el mensaje.
+- `registrarCompra` aceptaba total negativo (la caja subía) o distinto de la suma de los productos.
+
+### Pruebas
+- 13 nuevas en `test/validaciones_operaciones_test.dart` (146 en total), verificadas desactivando la validación a propósito.
+
+### Pendiente
+- Hallazgo 5 (cola de sincronización fuera de la transacción): real pero de muy baja probabilidad; queda para una versión aparte (DOCUMENTO_DE_LA_VERDAD 11.10).
+
 ## [1.8.0] - 2026-10-23
 
 ### Nuevo

@@ -309,14 +309,27 @@ class _MermasScreenState extends State<MermasScreen> {
                     return;
                   }
 
-                  Navigator.pop(ctx);
                   final usuarioId = SessionService.userId() ?? 1;
-                  await DBHelper().registrarMerma(
-                    productoId: productoSeleccionado!['id'] as int,
-                    cantidad: cant,
-                    motivo: motivoSeleccionado,
-                    usuarioId: usuarioId,
-                  );
+                  try {
+                    await DBHelper().registrarMerma(
+                      productoId: productoSeleccionado!['id'] as int,
+                      cantidad: cant,
+                      motivo: motivoSeleccionado,
+                      usuarioId: usuarioId,
+                    );
+                  } catch (e) {
+                    // Por ejemplo, más cantidad de la que hay en inventario:
+                    // el diálogo sigue abierto para corregirla.
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('⚠️ ${e is OperacionInvalida ? e.mensaje : e}'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                  if (ctx.mounted) Navigator.pop(ctx);
 
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(

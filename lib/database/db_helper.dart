@@ -1218,6 +1218,12 @@ CREATE TABLE roles_permisos(
     if (!cajaAbierta) {
       return {'exito': false, 'mensaje': 'Debe abrir la caja antes de vender'};
     }
+    final invalida = validarItemsVenta(total, items);
+    if (invalida != null) return {'exito': false, 'mensaje': invalida};
+    // Desde aquí se usa la suma de las líneas: la venta, el pago mixto, la
+    // nube, la deuda del fiado y el cajón quedan con el mismo valor (antes
+    // podían diferir hasta en $1).
+    total = _sumaSubtotales(items);
     final cfg = await obtenerConfiguracion();
     final permitirNegativo = (cfg['permitir_stock_negativo'] ?? '0') == '1';
     if (metodo == 'CREDITO') {
@@ -1241,6 +1247,7 @@ CREATE TABLE roles_permisos(
         if (original['efectivo'] != null) 'efectivo_recibido': original['efectivo'],
       });
     }
+    final totalCalculado = total;
     try {
       int ventaId = await db.transaction((txn) async {
         if (metodo == 'CREDITO' && clienteId > 0) {
@@ -1263,17 +1270,8 @@ CREATE TABLE roles_permisos(
           }
         }
 
-        // H-01 VALIDACIÓN DE SEGURIDAD: Recalcular el total desde los items para evitar
-        // que una alteración manual en la UI o en la base de datos evada el cobro real.
-        double totalCalculado = 0.0;
-        for (var i in items) {
-          totalCalculado += (i['subtotal'] as num).toDouble();
-        }
-        
-        // Permitimos una tolerancia de $1 peso/centavo por redondeo
-        if ((totalCalculado - total).abs() > 1.0) {
-          throw Exception('ALERTA DE SEGURIDAD: El total recibido ($total) no coincide con la suma de los productos ($totalCalculado). Venta rechazada.');
-        }
+        // H-01: el total que se guarda es la suma de las líneas, y cada línea
+        // ya se validó (cantidad × precio = subtotal) en validarItemsVenta.
 
         int id = await txn.insert('ventas', {
           'fecha': DateTime.now().toIso8601String(),
@@ -1460,6 +1458,51 @@ CREATE TABLE roles_permisos(
   }
 
   static double _redondear(double v) => (v * 100).roundToDouble() / 100;
+
+  /// 3, 2.5 o 0.75 (sin ".0" de más) para mensajes al usuario.
+  static String _cantidadTexto(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(3).replaceFirst(RegExp(r'0+$'), '');
+
+  static double _sumaSubtotales(List<Map<String, dynamic>> items) {
+    var t = 0.0;
+    for (final i in items) {
+      t += (i['subtotal'] as num).toDouble();
+    }
+    return t;
+  }
+
+  /// H-01: valida el carrito antes de vender. Cada línea debe tener cantidad
+  /// positiva y subtotal = cantidad × precio (margen de $1 por redondeo), y
+  /// el total debe ser la suma de las líneas. El precio no se compara con
+  /// el de inventario: promociones, días de plaza, paquetes y precios
+  /// especiales lo cambian legítimamente (eso lo calcula el POS).
+  /// Devuelve el mensaje del problema o null si está bien.
+  @visibleForTesting
+  static String? validarItemsVenta(double total, List<Map<String, dynamic>> items) {
+    if (items.isEmpty) return 'El carrito está vacío';
+    bool numeroValido(Object? v) => v is num && v.isFinite;
+    for (final i in items) {
+      final nombre = (i['nombre'] ?? 'producto').toString();
+      if (i['id'] is! num) return 'Producto no válido en el carrito ($nombre)';
+      final cant = i['cantidad'], precio = i['precio'], sub = i['subtotal'];
+      if (!numeroValido(cant) || (cant as num) <= 0) {
+        return 'Cantidad no válida para "$nombre"';
+      }
+      if (!numeroValido(precio) || (precio as num) < 0) {
+        return 'Precio no válido para "$nombre"';
+      }
+      if (!numeroValido(sub) || (sub as num) < 0) {
+        return 'Subtotal no válido para "$nombre"';
+      }
+      if ((cant.toDouble() * precio.toDouble() - sub.toDouble()).abs() > 1.0) {
+        return 'El valor de "$nombre" no coincide con cantidad × precio. Venta rechazada';
+      }
+    }
+    if (!total.isFinite || (total - _sumaSubtotales(items)).abs() > 1.0) {
+      return 'El total no coincide con la suma de los productos. Venta rechazada';
+    }
+    return null;
+  }
 
   /// $12.500 para mensajes al usuario.
   static String _pesos(double v) {
@@ -1900,6 +1943,23 @@ CREATE TABLE roles_permisos(
     required int usuarioId,
   }) async {
     final db = await database;
+    if (productos.isEmpty) {
+      return {'exito': false, 'mensaje': 'La compra no tiene productos'};
+    }
+    var sumaLineas = 0.0;
+    for (final item in productos) {
+      final sub = item['subtotal_compra'];
+      if (sub is! num || !sub.isFinite || sub < 0) {
+        return {'exito': false, 'mensaje': 'Valor no válido para "${item['nombre'] ?? 'producto'}"'};
+      }
+      sumaLineas += sub.toDouble();
+    }
+    // El total pagado es la suma de los productos (antes podía llegar uno
+    // negativo, que en vez de sacar plata de la caja la sumaba).
+    if (!total.isFinite || total < 0 || (total - sumaLineas).abs() > 1.0) {
+      return {'exito': false, 'mensaje': 'El total de la compra no coincide con la suma de los productos'};
+    }
+    total = sumaLineas;
     Map<String, dynamic>? filaCaja;
     if (pagoConCaja) {
       final cajaAbierta = await verificarCajaAbiertaHoy();
@@ -3544,6 +3604,9 @@ CREATE TABLE roles_permisos(
     required String motivo,
     required int usuarioId,
   }) async {
+    if (!cantidad.isFinite || cantidad <= 0) {
+      throw const OperacionInvalida('Ingresa una cantidad mayor a cero');
+    }
     final db = await database;
     final prod = await db.query(
       'productos',
@@ -3551,20 +3614,31 @@ CREATE TABLE roles_permisos(
       whereArgs: [productoId],
       limit: 1,
     );
-    if (prod.isEmpty) throw Exception('Producto no encontrado');
+    if (prod.isEmpty) throw const OperacionInvalida('Producto no encontrado');
 
     final p = prod.first;
     final nombre = p['nombre']?.toString() ?? '';
+    final permitirNegativo =
+        ((await obtenerConfiguracion())['permitir_stock_negativo'] ?? '0') == '1';
     final costoUnitario = (p['precio_costo'] as num?)?.toDouble() ?? 0.0;
     final totalPerdida = costoUnitario * cantidad;
     final mermaUuid = generateUuidV4();
     final fecha = DateTime.now().toIso8601String();
 
     return await db.transaction((txn) async {
-      await txn.rawUpdate(
-        'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?',
-        [cantidad, productoId],
+      // Igual que en la venta: sin stock negativo permitido, no se puede dar
+      // de baja más de lo que hay (se revisa en la misma escritura).
+      final cambiados = await txn.rawUpdate(
+        permitirNegativo
+            ? 'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?'
+            : 'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ? AND stock_actual >= (? - 0.001)',
+        permitirNegativo ? [cantidad, productoId] : [cantidad, productoId, cantidad],
       );
+      if (cambiados == 0) {
+        final hay = (p['stock_actual'] as num?)?.toDouble() ?? 0;
+        throw OperacionInvalida(
+            'No hay suficiente "$nombre" para dar de baja: hay ${_cantidadTexto(hay)} y quieres dar de baja ${_cantidadTexto(cantidad)}');
+      }
 
       final datosMerma = {
         'fecha': fecha,
@@ -4119,3 +4193,10 @@ CREATE TABLE roles_permisos(
   }
 }
 
+/// Una operación que no se puede hacer, con el mensaje para el usuario.
+class OperacionInvalida implements Exception {
+  final String mensaje;
+  const OperacionInvalida(this.mensaje);
+  @override
+  String toString() => mensaje;
+}
