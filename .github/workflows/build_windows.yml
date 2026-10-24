@@ -52,38 +52,14 @@ jobs:
       - name: Obtener dependencias
         run: flutter pub get
 
-      - name: Ejecutar pruebas automáticas
-        run: flutter test
-
       - name: Compilar aplicación Windows en Release
         run: flutter build windows --release
 
-      # Las DLL de Visual C++ van junto a NovaPOS.exe: Windows las usa antes que
-      # las del sistema, y un PC con una versión vieja (ej. 14.29) cerraba la
-      # app al iniciar sesión (falla en MSVCP140.dll).
-      - name: Incluir Visual C++ Runtime junto a la app
-        shell: pwsh
-        run: |
-          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
-          $crt = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory |
-            Sort-Object { $_.Parent.Parent.Name } -Descending | Select-Object -First 1
-          if (-not $crt) { throw "No se encontró el Visual C++ Runtime en $vs" }
-          Write-Host "Copiando desde $($crt.FullName)"
-          Copy-Item "$($crt.FullName)\*.dll" "build\windows\x64\runner\Release\"
-          Get-ChildItem "build\windows\x64\runner\Release\*140*.dll" |
-            ForEach-Object { Write-Host "$($_.Name) $($_.VersionInfo.FileVersion)" }
-
-      - name: Instalar Inno Setup
-        run: choco install innosetup --no-progress -y
-
-      - name: Generar Instalador con Inno Setup
-        shell: pwsh
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\NovaPOS_setup.iss
-
-      - name: Subir Instalador como Artefacto descargable
+      - name: Subir exe y mapa (diagnóstico)
         uses: actions/upload-artifact@v5
         with:
-          name: NovaPOS-Windows-Setup-1.9.2
-          path: installer/output/*.exe
-          retention-days: 30
+          name: diagnostico-mapa
+          path: |
+            build/windows/x64/runner/Release/NovaPOS.exe
+            build/windows/x64/**/*.map
+          retention-days: 7
