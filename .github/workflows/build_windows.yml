@@ -84,6 +84,6 @@ jobs:
       - name: Subir Instalador como Artefacto descargable
         uses: actions/upload-artifact@v5
         with:
-          name: NovaPOS-Windows-Setup-1.9.2
+          name: NovaPOS-Windows-Setup-1.9.3
           path: installer/output/*.exe
           retention-days: 30

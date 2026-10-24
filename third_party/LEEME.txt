@@ -1,0 +1,32 @@
+===============================================================================
+NOVAPOS - LIBRERÍAS DE TERCEROS CORREGIDAS (third_party)
+===============================================================================
+
+cloud_firestore 5.6.12 (copia de pub.dev con un arreglo para Windows)
+-------------------------------------------------------------------------------
+  Problema: en Windows el plugin ignoraba "persistenceEnabled: false". En
+  windows/cloud_firestore_plugin.cpp hacía
+
+      bool persistEnabled = pigeonApp.settings().persistence_enabled();
+
+  (convierte el puntero en bool: siempre true) y nunca llamaba a
+  settings.set_persistence_enabled(false). Firestore siempre guardaba su
+  caché en disco (LevelDB) en %LOCALAPPDATA%\firestore.
+
+  Por qué importa: en el PC del primer cliente (Intel Core i5-2400, año 2011,
+  sin instrucciones BMI2/AVX2) NovaPOS se cerraba al entrar por segunda vez
+  con 0xc000001d (instrucción ilegal) dentro de NovaPOS.exe, donde va
+  Firebase. La primera entrada funcionaba porque la caché estaba vacía.
+
+  Arreglo (única línea cambiada, marcada "NovaPOS:"):
+
+      bool persistEnabled = *pigeonApp.settings().persistence_enabled();
+      settings.set_persistence_enabled(persistEnabled);
+
+  Se usa con dependency_overrides en pubspec.yaml. lib/main.dart pide
+  persistenceEnabled: false solo en Windows; NovaPOS guarda todo en SQLite
+  y tiene su propia cola de subida, así que no necesita esa caché.
+
+  Al actualizar cloud_firestore: copiar la versión nueva de pub.dev (sin
+  example, test ni dartpad), revisar si el error sigue y volver a aplicar
+  el arreglo; o quitar la copia si la versión oficial ya lo corrigió.

@@ -11,7 +11,7 @@
 ; directo en el Escritorio y en el Menu de Inicio, y desinstalador.
 
 #define MyAppName "NovaPOS"
-#define MyAppVersion "1.9.2"
+#define MyAppVersion "1.9.3"
 #define MyAppPublisher "NovaPOS"
 #define MyAppExeName "NovaPOS.exe"
 

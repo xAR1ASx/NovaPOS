@@ -20,7 +20,8 @@ void main() async {
   // Windows: sin caché en disco de Firestore. En el PC del primer cliente la
   // app se cerraba al entrar por segunda vez (instrucción ilegal 0xc000001d
   // dentro de Firebase, al leer esa caché). NovaPOS guarda todo en SQLite y
-  // tiene su propia cola de subida, así que no la necesita.
+  // tiene su propia cola de subida, así que no la necesita. Requiere la copia
+  // corregida de cloud_firestore (third_party/LEEME.txt).
   if (Platform.isWindows) {
     FirebaseFirestore.instance.settings =
         const Settings(persistenceEnabled: false);

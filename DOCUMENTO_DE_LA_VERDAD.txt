@@ -674,6 +674,13 @@ Principios:
 10. ÚLTIMOS CAMBIOS REALIZADOS
 ===============================================================================
 
+  Versión 1.9.3 (23-oct-2026) - Cierre al entrar por segunda vez (de raíz)
+  - Corregido: la 1.9.2 no bastó porque Firebase para Windows ignoraba la
+    orden de no usar la memoria en disco (error del propio plugin). NovaPOS
+    trae ahora una copia corregida del plugin (third_party/LEEME.txt).
+  - Al instalar en un PC donde ya se cerró: borrar o renombrar la carpeta
+    C:\Users\<usuario>\AppData\Local\firestore antes de abrir NovaPOS.
+
   Versión 1.9.2 (23-oct-2026) - Cierre al entrar por segunda vez
   - Corregido: en el PC del cliente NovaPOS se cerraba al volver a entrar
     (error 0xc000001d). En Windows se apagó la memoria en disco de

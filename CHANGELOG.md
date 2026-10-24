@@ -2,6 +2,11 @@
 
 Todas las versiones notables de NovaPOS se documentan en este archivo.
 
+## [1.9.3] - 2026-10-23
+
+### Corregido
+- **La 1.9.2 no bastaba**: el plugin `cloud_firestore` 5.6.12 para Windows ignoraba `persistenceEnabled: false` (convertía el puntero en bool y nunca apagaba la persistencia), así que la caché LevelDB en `%LOCALAPPDATA%\firestore` se seguía escribiendo y leyendo (archivos de las 11:32 p. m., después de instalar la 1.9.2). Copia corregida en `third_party/cloud_firestore` con `dependency_overrides` (ver `third_party/LEEME.txt`).
+
 ## [1.9.2] - 2026-10-23
 
 ### Corregido
