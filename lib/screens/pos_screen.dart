@@ -136,6 +136,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
   // Categorías
   List<String> _categorias = ["TODO", "⭐ FAVORITOS"];
+  List<String> _catsGuardadas = [];
+  bool _hayCombos = false;
   String _categoriaActual = "TODO";
   List<Map<String, dynamic>> _promocionesActivas = [];
   bool _permitirStockNegativo = false;
@@ -163,9 +165,21 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     final cats = await DBHelper().obtenerCategorias();
     if (mounted) {
       setState(() {
-        _categorias = ["TODO", "⭐ FAVORITOS", ...cats];
+        _catsGuardadas = cats;
+        _armarCategorias();
       });
     }
+  }
+
+  // Los combos y ofertas tienen su propia pestaña junto a favoritos; sin ella
+  // quedaban perdidos entre todos los productos y no se encontraban al vender.
+  void _armarCategorias() {
+    _categorias = [
+      "TODO",
+      "⭐ FAVORITOS",
+      if (_hayCombos) "Combos",
+      ..._catsGuardadas.where((c) => c != "Combos"),
+    ];
   }
 
   void _agregarNuevaCategoria() {
@@ -348,6 +362,8 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
       setState(() {
         _products = data;
         _favoritos = favs;
+        _hayCombos = data.any((p) => (p['es_combo'] as num?)?.toInt() == 1);
+        _armarCategorias();
         _promocionesActivas = promos;
         _permitirStockNegativo = permitirStockNeg;
         _modoBalanza = modoBalanza;

@@ -674,6 +674,15 @@ Principios:
 10. ÚLTIMOS CAMBIOS REALIZADOS
 ===============================================================================
 
+  Versión 1.9.1 (23-oct-2026) - Arreglos de la primera instalación
+  - Corregido: los combos y ofertas creados no se encontraban al vender.
+    Ahora el POS tiene la pestaña "Combos" junto a Favoritos.
+  - Corregido: con impresora de 58 mm el ticket salía cortado a la derecha.
+    El ticket usa el ancho de Ajustes -> Hardware -> Ancho del papel.
+    IMPORTANTE al instalar: si el rollo es angosto (58 mm), elegir 58.
+  - Corregido: NovaPOS se cerraba al iniciar sesión en un PC con el
+    componente Visual C++ de Microsoft viejo. El instalador ya lo trae.
+
   Versión 1.9.0 (23-oct-2026) - Reporte Z y Cajas en vivo
   - Nuevo: Reporte Z para 80 y 58 mm con vista previa (sección 3.9).
   - Nuevo: Centro Financiero -> Cajas en vivo (sección 3.10).

@@ -2,6 +2,13 @@
 
 Todas las versiones notables de NovaPOS se documentan en este archivo.
 
+## [1.9.1] - 2026-10-23
+
+### Corregido (primera instalación en cliente)
+- **Combos y ofertas no se encontraban al vender**: se creaban pero quedaban perdidos entre todos los productos. Ahora el POS muestra la pestaña **Combos** junto a Favoritos cuando hay alguno.
+- **Impresora de 58 mm**: el ticket de venta y el ticket de prueba eran siempre de 80 mm y se cortaban a la derecha. Ahora usan el ancho de Ajustes → Hardware → Ancho del papel; en 58 mm dejan 5 mm a cada lado (estas impresoras solo imprimen unos 48 mm). El Reporte Z en 58 mm también deja 5 mm.
+- **NovaPOS se cerraba al iniciar sesión** en un PC con Visual C++ Runtime viejo (MSVCP140.dll 14.29, excepción 0xc0000005). El instalador ahora lleva las DLL de Visual C++ junto a `NovaPOS.exe`.
+
 ## [1.9.0] - 2026-10-23
 
 ### Nuevo

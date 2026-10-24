@@ -63,12 +63,13 @@ class PrinterService {
     });
 
     // 2. Crear Documento PDF (Formato Ticket)
+    final ancho = await anchoPapelMm();
     final doc = pw.Document();
 
     doc.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.roll80, // Rollo estándar de 80mm
-        margin: const pw.EdgeInsets.all(5),
+        pageFormat: _paginaTicket(ancho),
+        margin: _margenTicket(ancho),
         build: (pw.Context context) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -333,12 +334,13 @@ class PrinterService {
             ? config['ticket_leyenda']!
             : "Documento equivalente POS - Sistema NovaPOS");
 
+    final ancho = await anchoPapelMm();
     final doc = pw.Document();
 
     doc.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.roll80,
-        margin: const pw.EdgeInsets.all(5),
+        pageFormat: _paginaTicket(ancho),
+        margin: _margenTicket(ancho),
         build: (pw.Context context) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -512,6 +514,17 @@ class PrinterService {
     return v.trim() == '58' ? 58 : 80;
   }
 
+  /// Página del ticket según el papel de Ajustes (80 o 58 mm).
+  static PdfPageFormat _paginaTicket(int anchoMm) => anchoMm <= 58
+      ? const PdfPageFormat(58 * PdfPageFormat.mm, double.infinity)
+      : PdfPageFormat.roll80;
+
+  /// Las impresoras de 58 mm solo imprimen unos 48 mm del centro del papel:
+  /// se dejan 5 mm a cada lado para que no se corte el texto.
+  static pw.EdgeInsets _margenTicket(int anchoMm) => anchoMm <= 58
+      ? const pw.EdgeInsets.symmetric(horizontal: 5 * PdfPageFormat.mm, vertical: 5)
+      : const pw.EdgeInsets.all(5);
+
   Future<void> imprimirReporteZ(DatosZ z, {int? anchoMm}) async {
     final ancho = anchoMm ?? await anchoPapelMm();
     final lineas = ReporteZ.lineas(ReporteZ.renglones(z), ReporteZ.columnasPara(ancho));
@@ -544,7 +557,7 @@ class PrinterService {
     final formato = PdfPageFormat(
       anchoMm * PdfPageFormat.mm,
       double.infinity,
-      marginAll: (anchoMm <= 58 ? 2 : 4) * PdfPageFormat.mm,
+      marginAll: (anchoMm <= 58 ? 5 : 4) * PdfPageFormat.mm,
     );
     // Courier: cada letra mide 0,6 del tamaño de la fuente.
     final tam = formato.availableWidth / (columnas * 0.6);
