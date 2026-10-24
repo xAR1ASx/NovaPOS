@@ -2,6 +2,11 @@
 
 Todas las versiones notables de NovaPOS se documentan en este archivo.
 
+## [1.9.2] - 2026-10-23
+
+### Corregido
+- **NovaPOS se cerraba al entrar por segunda vez** en el PC del cliente (excepción 0xc000001d, instrucción ilegal, dentro de NovaPOS.exe, donde va Firebase). La primera entrada funcionaba; la segunda leía la caché en disco de Firestore. En Windows esa caché queda apagada (`persistenceEnabled: false`): NovaPOS guarda todo en SQLite y tiene su propia cola de subida (`sync_pendientes`).
+
 ## [1.9.1] - 2026-10-23
 
 ### Corregido (primera instalación en cliente)

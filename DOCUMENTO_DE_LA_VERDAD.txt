@@ -674,6 +674,11 @@ Principios:
 10. ÚLTIMOS CAMBIOS REALIZADOS
 ===============================================================================
 
+  Versión 1.9.2 (23-oct-2026) - Cierre al entrar por segunda vez
+  - Corregido: en el PC del cliente NovaPOS se cerraba al volver a entrar
+    (error 0xc000001d). En Windows se apagó la memoria en disco de
+    Firebase; NovaPOS no la necesita porque guarda todo en su propia base.
+
   Versión 1.9.1 (23-oct-2026) - Arreglos de la primera instalación
   - Corregido: los combos y ofertas creados no se encontraban al vender.
     Ahora el POS tiene la pestaña "Combos" junto a Favoritos.

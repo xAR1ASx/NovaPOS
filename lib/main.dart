@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
@@ -15,6 +16,15 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Windows: sin caché en disco de Firestore. En el PC del primer cliente la
+  // app se cerraba al entrar por segunda vez (instrucción ilegal 0xc000001d
+  // dentro de Firebase, al leer esa caché). NovaPOS guarda todo en SQLite y
+  // tiene su propia cola de subida, así que no la necesita.
+  if (Platform.isWindows) {
+    FirebaseFirestore.instance.settings =
+        const Settings(persistenceEnabled: false);
+  }
 
   if (Platform.isWindows || Platform.isLinux) {
     sqfliteFfiInit();
